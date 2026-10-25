@@ -1,0 +1,22 @@
+name: test
+on:
+  push:
+    branches: [main]
+  pull_request:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: sudo apt-get update && sudo apt-get install -y lua5.2
+      - run: pip install pillow
+      - name: Card data and art are up to date with cards.csv
+        run: |
+          python tools/csv2json.py games/sample/cards.csv
+          python tools/make_sheets.py games/sample --title "Ember Guilds"
+          git diff --exit-code -- games/sample/cards.json games/sample/art.json
+      - run: python tools/bundle.py games/sample
+      - run: lua tests/run.lua
