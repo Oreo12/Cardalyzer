@@ -60,6 +60,8 @@ function getObjectsWithTag(tag) return tts.live(function(o) return o.tags[tag] e
 
 function broadcastToAll(msg) tts.broadcasts[#tts.broadcasts + 1] = msg end
 function broadcastToColor(msg, color) tts.broadcasts[#tts.broadcasts + 1] = color .. ": " .. msg end
+function printToAll(msg) tts.broadcasts[#tts.broadcasts + 1] = msg end
+function printToColor(msg, color) tts.broadcasts[#tts.broadcasts + 1] = color .. ": " .. msg end
 
 UI = {
   setXml = function(xml) tts.ui.xml = xml end,

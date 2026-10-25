@@ -5,12 +5,16 @@ local Util = require("engine.util")
 
 local game
 
+-- Errors and refusals go to the info panel, not broadcasts: TTS draws
+-- broadcast text behind custom UI, so it would get hidden.
 local function report(err)
-  broadcastToAll("[Cardalyzer] " .. tostring(err), { 1, 0.4, 0.4 })
   print("[Cardalyzer] " .. tostring(err))
+  if game then return game:notify("Error: " .. tostring(err)) end
+  broadcastToAll("[Cardalyzer] " .. tostring(err), { 1, 0.4, 0.4 })
 end
 
 local function tell(color, msg)
+  if game then return game:notify(msg, color) end
   broadcastToColor(msg, color, { 1, 0.8, 0.4 })
 end
 
@@ -18,7 +22,11 @@ end
 local function run(color, method, ...)
   local ok, done, why = pcall(method, game, ...)
   if not ok then return report(done) end
-  if not done and why then tell(color, why) end
+  if done then
+    game:clearNotice(color)
+  elseif why then
+    tell(color, why)
+  end
 end
 
 function onLoad(saved)

@@ -119,7 +119,8 @@ To play:
    `build/Global.lua`. If you use VS Code, the
    [TTS Editor extension](https://marketplace.visualstudio.com/items?itemName=sebaestschjin.tts-editor)
    can push it for you.
-3. Click **Save & Play**. A panel appears at the top left:
+3. Click **Save & Play**. The info panel appears on its own at the top centre of
+   the screen, with each player's line in their seat colour:
    ```
    Ember Guilds
    Press New Game to deal.
@@ -127,6 +128,10 @@ To play:
       Red: Gold 0 · Might 0 · Health 40 · Deck 0 · Discard 0
    [New Game] [Tidy table]
    ```
+   Messages, such as "It's not your turn", appear inside this panel (the last
+   three for everyone, plus a private line just below it for the player they
+   concern), and are copied to chat. Cardalyzer doesn't use TTS broadcasts for
+   them, because TTS draws broadcast text behind custom UI.
 4. Sit at White and press **New Game** (only the host can). Each seat
    gets its starter deck, the first player draws 3 cards and the second draws
    5, and five cards fill the market row.
@@ -502,7 +507,7 @@ src/
     actions.lua      buy, play, allies, scrap, attack, prompts, turn start/end
     zones.lua        table layout maths + spawning scripting/hand zones
     board.lua        renders state as TTS objects
-    ui.lua           XML status panel and the active player's action panel
+    ui.lua           XML info panel, messages and the active player's action panel
     game.lua         facade that wires the modules together
 games/sample/
   cards.csv          the card spreadsheet (edit this)

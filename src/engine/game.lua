@@ -29,6 +29,9 @@ function Game.new(opts)
   for _, card in ipairs(self.cards:inDeck("fixed")) do self.fixedIds[#self.fixedIds + 1] = card.id end
   self.layout = Zones.layout(self.rules, self.fixedIds)
   self.state = State.new(self.rules)
+  -- Messages shown inside the UI (not saved): the latest few for everyone,
+  -- and the latest one for each player colour.
+  self.notices = { all = {}, byColor = {} }
   return self
 end
 
@@ -94,6 +97,30 @@ end
 
 function Game:refreshUI()
   UI_.refresh(self)
+end
+
+-- Shows a message in the info panel (or only to one colour) and copies it to
+-- the chat log. Used instead of broadcasts, which TTS draws behind the UI.
+function Game:notify(msg, color)
+  msg = tostring(msg)
+  if color then
+    self.notices.byColor[color] = msg
+    printToColor(msg, color, { 1, 0.8, 0.4 })
+  else
+    local all = self.notices.all
+    all[#all + 1] = msg
+    while #all > 3 do table.remove(all, 1) end
+    printToAll(msg, { 1, 0.8, 0.4 })
+  end
+  self:refreshUI()
+end
+
+-- Clears a colour's private message once that player does something that works.
+function Game:clearNotice(color)
+  if self.notices.byColor[color] then
+    self.notices.byColor[color] = nil
+    self:refreshUI()
+  end
 end
 
 function Game:newGame()

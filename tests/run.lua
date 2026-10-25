@@ -153,6 +153,30 @@ test("End Turn is refused for the wrong player", function()
   assert(tts.broadcasts[#tts.broadcasts]:find("turn"), "told why")
 end)
 
+test("the info panel stands alone at the top centre and holds messages", function()
+  local game = boot()
+  Cardalyzer_onStartGame(HOST)
+  local xml = tts.ui.xml
+  assert(xml:find('id="cz_panel" width="620" height="%d+" rectAlignment="UpperCenter"'), "info panel centred")
+  assert(xml:find('id="cz_actions"[^>]*rectAlignment="UpperRight"'), "action panel kept to the side")
+  assert(xml:find('id="cz_seat_2" fontSize="15" color="#E5413F"', 1, true), "seat lines tinted")
+  assert(not xml:find('color="[^"]*"[^>]-color="'), "no duplicate color attributes")
+
+  Cardalyzer_onEndTurn(GUEST)
+  xml = tts.ui.xml
+  assert(xml:find('id="cz_notice_' .. GUEST.color .. '" visibility="' .. GUEST.color .. '"', 1, true), "private notice panel")
+  assert(xml:find("turn", 1, true), "reason shown in the UI")
+
+  game:notify("Hello table")
+  assert(tts.ui.xml:find("Hello table", 1, true), "public notice in the info panel")
+  for i = 1, 5 do game:notify("msg " .. i) end
+  assert(not tts.ui.xml:find("Hello table", 1, true), "only the latest three kept")
+  assert(tts.ui.xml:find("msg 5", 1, true), "newest kept")
+
+  Cardalyzer_onEndTurn(HOST)
+  assert(tts.ui.xml:find('id="cz_notice_' .. GUEST.color .. '"', 1, true), "guest notice stays until the guest acts")
+end)
+
 test("End Turn discards, draws a new hand and passes play", function()
   local game = boot()
   Cardalyzer_onStartGame(HOST)
