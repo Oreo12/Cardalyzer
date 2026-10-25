@@ -5,7 +5,7 @@
 -- uid to its card id. Piles are lists of uids, and the LAST element is the top.
 local State = {}
 
-State.VERSION = 1
+State.VERSION = 2
 State.EMPTY = "" -- marks an empty market slot (JSON can't hold holes in arrays)
 
 function State.new(rules)
@@ -16,8 +16,9 @@ function State.new(rules)
     cards = {},
     players = {},
     market = { deck = {}, row = {}, fixed = {}, scrap = {} },
-    turn = { active = 1, number = 1 },
-    view = { piles = {}, zones = {}, hands = {} }, -- GUIDs of spawned objects, owned by board/zones
+    turn = { active = 1, number = 1, allyFired = {} },
+    winner = nil, -- seat number once someone has won
+    view = { piles = {}, sig = {}, zones = {}, hands = {} }, -- spawned objects, owned by board/zones
   }
   for seat, def in ipairs(rules.seats) do
     local player = {
@@ -25,7 +26,10 @@ function State.new(rules)
       color = def.color,
       name = def.name or def.color,
       deck = {}, hand = {}, discard = {}, play = {}, bases = {},
-      resources = {}, stats = {}, pending = {},
+      resources = {}, stats = {},
+      prompts = {}, -- choices waiting on this player, answered in order (engine/actions.lua)
+      owed = {},    -- things owed at the start of their next turn, e.g. { discard = 1 }
+      flags = {},   -- this turn only, e.g. flags.buyToTop for "put the next card you buy on top"
     }
     State.resetResources(player, rules)
     for _, stat in ipairs(rules.stats or {}) do

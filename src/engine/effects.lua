@@ -2,7 +2,8 @@
 -- Resource and stat keywords come from the rules module, so a game that calls
 -- its money "trade" gets a `trade` keyword without writing any code.
 --
--- A handler is { apply = function(game, seat, amount, ctx), text = function(amount) }.
+-- A handler is { apply = function(game, seat, amount, ctx, effect), text = function(amount) }.
+-- ctx carries { uid, card } of the card the effect came from, when there is one.
 -- `game` is the facade from engine/game.lua; handlers change game.state only.
 local Util = require("engine.util")
 
@@ -43,23 +44,56 @@ function Effects.new(rules)
     text = function(amount) return "Draw " .. amount end,
   })
 
-  -- Choices the player makes later (milestone 4 adds the prompts); for now
-  -- they are recorded as pending counts on the player.
+  -- Effects that need the player to pick something add a prompt; the player
+  -- answers it from the action panel (see engine/actions.lua).
   self:register("opponent_discard", {
     apply = function(game, seat, amount)
       for _, other in ipairs(game:opponentsOf(seat)) do
-        local p = game.state.players[other]
-        p.pending.discard = (p.pending.discard or 0) + amount
+        local owed = game.state.players[other].owed
+        owed.discard = (owed.discard or 0) + amount
       end
     end,
     text = function(amount) return "Opponent discards " .. amount end,
   })
   self:register("scrap_hand", {
     apply = function(game, seat, amount)
-      local p = game.state.players[seat]
-      p.pending.scrap = (p.pending.scrap or 0) + amount
+      game:prompt(seat, { kind = "scrap", count = amount, optional = true, from = { "hand", "discard" } })
     end,
     text = function(amount) return "You may scrap up to " .. amount .. " from hand or discard" end,
+  })
+  self:register("scrap_row", {
+    apply = function(game, seat, amount)
+      game:prompt(seat, { kind = "scrap_row", count = amount, optional = true })
+    end,
+    text = function(amount) return "You may scrap " .. amount .. " from the market row" end,
+  })
+  self:register("destroy_base", {
+    apply = function(game, seat, amount)
+      game:prompt(seat, { kind = "destroy_base", count = amount, optional = true })
+    end,
+    text = function(amount) return "You may destroy " .. amount .. " base" .. (amount > 1 and "s" or "") end,
+  })
+  self:register("draw_discard", {
+    apply = function(game, seat, amount)
+      game:draw(seat, amount)
+      game:prompt(seat, { kind = "discard", count = amount, optional = false })
+    end,
+    text = function(amount) return "Draw " .. amount .. ", then discard " .. amount end,
+  })
+  self:register("reminder", {
+    apply = function(game, seat, _, ctx)
+      local card = ctx.card
+      game:prompt(seat, {
+        kind = "reminder", optional = true, count = 1,
+        text = (card and card.name .. ": " or "") .. (card and card.text ~= "" and card.text or "resolve this card by hand"),
+      })
+    end,
+    text = function() return "See card text" end,
+  })
+  self:register("choice", {
+    apply = function(game, seat, _, ctx, effect)
+      game:prompt(seat, { kind = "choice", count = 1, optional = false, options = effect.options, uid = ctx.uid })
+    end,
   })
 
   for name, def in pairs(rules.customEffects or {}) do
@@ -87,7 +121,7 @@ function Effects:apply(game, seat, list, ctx)
     else
       local handler = self.handlers[effect.key]
       if not handler then error("no effect keyword '" .. effect.key .. "'", 0) end
-      handler.apply(game, seat, effect.amount, ctx or {})
+      handler.apply(game, seat, effect.amount, ctx or {}, effect)
     end
   end
 end
@@ -98,9 +132,16 @@ function Effects:describe(list, fallback)
     if effect.key == "custom" then
       local def = self.custom[effect.fn]
       parts[#parts + 1] = (def and def.text) or fallback or effect.fn
+    elseif effect.key == "choice" then
+      local options = {}
+      for _, option in ipairs(effect.options) do options[#options + 1] = self:describe({ option }, fallback) end
+      parts[#parts + 1] = table.concat(options, " or ")
     else
       local handler = self.handlers[effect.key]
-      parts[#parts + 1] = handler and handler.text(effect.amount) or (effect.key .. " " .. effect.amount)
+      parts[#parts + 1] = handler and handler.text and handler.text(effect.amount) or (effect.key .. " " .. effect.amount)
+    end
+    if effect.ally then
+      parts[#parts] = "(" .. Util.titleCase(effect.ally) .. ") " .. parts[#parts]
     end
   end
   return table.concat(parts, ", ")
@@ -111,7 +152,15 @@ function Effects:validate(cards)
   local problems = {}
   for _, card in ipairs(cards.list) do
     for _, list in ipairs({ card.effects, card.allyEffects, card.scrapEffects }) do
+      local flat = {}
       for _, effect in ipairs(list) do
+        if effect.key == "choice" then
+          for _, option in ipairs(effect.options) do flat[#flat + 1] = option end
+        else
+          flat[#flat + 1] = effect
+        end
+      end
+      for _, effect in ipairs(flat) do
         if effect.key == "custom" then
           if not self.custom[effect.fn] then
             problems[#problems + 1] = "card '" .. card.id .. "' uses custom:" .. effect.fn .. " but rules.customEffects has no " .. effect.fn

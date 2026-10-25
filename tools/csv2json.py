@@ -19,7 +19,10 @@ COLUMNS = ["id", "name", "deck", "faction", "type", "cost", "copies",
            "effects", "ally_effects", "scrap_effects", "defense", "text"]
 REQUIRED = ["id", "name", "cost", "copies", "effects"]
 DECKS = {"starter", "market", "fixed"}
-EFFECT = re.compile(r"^[\w]+\s*:\s*[\w-]+$")
+# One effect: keyword:amount, custom:name or a bare keyword like reminder,
+# optionally prefixed by a faction (blob=combat:2, ally effects only).
+SINGLE = re.compile(r"^(?:[\w]+\s*:\s*-?\d+|custom\s*:\s*[\w-]+|reminder)$")
+FACTION_PREFIX = re.compile(r"^[\w]+\s*=\s*")
 ID = re.compile(r"^[a-z0-9_]+$")
 
 
@@ -37,10 +40,11 @@ def parse_int(value, field, card_id, errors, allow_blank=False):
 def check_effects(value, field, card_id, errors):
     value = (value or "").strip()
     for part in filter(None, (p.strip() for p in value.split(";"))):
-        if not EFFECT.match(part):
-            errors.append(f"card '{card_id}': {field} entry '{part}' should look like keyword:amount")
-        elif not part.startswith("custom") and not re.search(r":\s*-?\d+$", part):
-            errors.append(f"card '{card_id}': {field} entry '{part}' needs a number after ':'")
+        body = FACTION_PREFIX.sub("", part)
+        for option in (o.strip() for o in body.split("|")):
+            if not SINGLE.match(option):
+                errors.append(f"card '{card_id}': {field} entry '{part}' should look like keyword:amount")
+                break
     return value
 
 

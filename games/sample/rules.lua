@@ -42,6 +42,7 @@ local rules = {
   cardTypes = {
     unit = { persistent = false },
     building = { persistent = true },
+    wall = { persistent = true, guard = true }, -- must be destroyed before anything else
   },
 
   mechanics = {
@@ -67,8 +68,7 @@ local rules = {
     freeRecruit = {
       text = "Take a card costing 4 or less from the market row for free",
       apply = function(game, seat, ctx)
-        local p = game.state.players[seat]
-        p.pending.freeRecruit = { maxCost = 4 }
+        game:prompt(seat, { kind = "free_buy", maxCost = 4, optional = true })
       end,
     },
   },

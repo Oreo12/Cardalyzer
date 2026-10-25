@@ -18,6 +18,11 @@ local function newObject(kind, extra)
   obj.hasTag = function(t) return obj.tags[t] == true end
   obj.setValue = function(v) obj.value = v end
   obj.getValue = function() return obj.value end
+  obj.buttons = {}
+  obj.createButton = function(b) obj.buttons[#obj.buttons + 1] = b end
+  obj.getGMNotes = function() return obj.data and obj.data.GMNotes or "" end
+  obj.zones = {}
+  obj.getZones = function() return obj.zones end
   tts.objects[guid] = obj
   tts.order[#tts.order + 1] = guid
   return obj
@@ -45,6 +50,7 @@ function spawnObjectData(params)
   local data = params.data
   local obj = newObject(data.Name, { data = data, position = params.position, rotation = params.rotation })
   for _, t in ipairs(data.Tags or {}) do obj.tags[t] = true end
+  if params.callback_function then params.callback_function(obj) end
   return obj
 end
 
@@ -60,6 +66,7 @@ UI = {
   setValue = function(id, v) tts.ui.values[id] = v end,
 }
 Wait = { frames = function(fn) fn() end }
+Global = { name = "Global" }
 JSON = { encode = json.encode, decode = json.decode }
 
 return tts

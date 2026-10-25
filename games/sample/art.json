@@ -4,8 +4,8 @@
     {
       "file": "art/sheet_1.jpg",
       "numWidth": 10,
-      "numHeight": 2,
-      "count": 19
+      "numHeight": 3,
+      "count": 23
     }
   ],
   "cards": {
@@ -84,6 +84,22 @@
     "night_queen": {
       "sheet": 1,
       "index": 18
+    },
+    "stone_wall": {
+      "sheet": 1,
+      "index": 19
+    },
+    "storm_caller": {
+      "sheet": 1,
+      "index": 20
+    },
+    "wild_shrine": {
+      "sheet": 1,
+      "index": 21
+    },
+    "oracle": {
+      "sheet": 1,
+      "index": 22
     }
   }
 }

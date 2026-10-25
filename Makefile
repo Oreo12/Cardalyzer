@@ -13,5 +13,6 @@ build:
 
 test: build
 	lua tests/run.lua
+	lua tests/fuzz.lua
 
 all: art test

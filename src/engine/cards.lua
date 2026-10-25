@@ -8,29 +8,63 @@ Cards.__index = Cards
 
 Cards.DECKS = { starter = true, market = true, fixed = true }
 
+-- Effects with no amount. Everything else needs "keyword:amount".
+Cards.BARE = { reminder = true }
+
+local function parseOne(part)
+  local key, value = part:match("^([%w_]+)%s*:%s*([%w_%-]+)$")
+  if not key then
+    if Cards.BARE[part] then return { key = part, amount = 1 } end
+    error("bad effect '" .. part .. "' (expected keyword:amount)", 0)
+  end
+  if key == "custom" then return { key = "custom", fn = value } end
+  local amount = tonumber(value)
+  if not amount then error("effect '" .. part .. "' needs a number after ':'", 0) end
+  return { key = key, amount = amount }
+end
+
 -- "trade:2; draw:1; custom:myFn" -> { {key="trade", amount=2}, {key="draw", amount=1}, {key="custom", fn="myFn"} }
+-- "trade:2 | combat:2"           -> { {key="choice", options={ {key="trade",...}, {key="combat",...} }} }
+-- "blob=combat:2"                -> { {key="combat", amount=2, ally="blob"} } (ally effects only)
 function Cards.parseEffects(str)
   local list = {}
   if str == nil or str == "" then return list end
   for _, part in ipairs(Util.split(str, ";")) do
     part = Util.trim(part)
     if part ~= "" then
-      local key, value = part:match("^([%w_]+)%s*:%s*([%w_%-]+)$")
-      if not key then
-        error("bad effect '" .. part .. "' (expected keyword:amount)", 0)
-      end
-      if key == "custom" then
-        list[#list + 1] = { key = "custom", fn = value }
-      else
-        local amount = tonumber(value)
-        if not amount then
-          error("effect '" .. part .. "' needs a number after ':'", 0)
+      local faction, rest = part:match("^([%w_]+)%s*=%s*(.+)$")
+      if faction then part = Util.trim(rest) end
+      local effect
+      if part:find("|", 1, true) then
+        effect = { key = "choice", options = {} }
+        for _, option in ipairs(Util.split(part, "|")) do
+          effect.options[#effect.options + 1] = parseOne(Util.trim(option))
         end
-        list[#list + 1] = { key = key, amount = amount }
+      else
+        effect = parseOne(part)
       end
+      effect.ally = faction
+      list[#list + 1] = effect
     end
   end
   return list
+end
+
+-- Ally effects grouped by the faction they need. A group with faction nil
+-- fires for any of the card's own factions. Each group fires once a turn.
+function Cards.allyGroups(effects)
+  local groups, byFaction = {}, {}
+  for _, effect in ipairs(effects) do
+    local key = effect.ally or ""
+    local group = byFaction[key]
+    if not group then
+      group = { faction = effect.ally, effects = {} }
+      byFaction[key] = group
+      groups[#groups + 1] = group
+    end
+    group.effects[#group.effects + 1] = effect
+  end
+  return groups
 end
 
 local function blank(v)
@@ -52,12 +86,19 @@ local function parseRow(row, index)
   local okScrap, scrap = pcall(Cards.parseEffects, row.scrap_effects)
   if not okScrap then fail(scrap) end
 
+  local factions = {}
+  for _, f in ipairs(Util.split(blank(row.faction) and "none" or row.faction, "/")) do
+    factions[#factions + 1] = Util.trim(f)
+  end
+
   return {
     id = id,
     index = index,
     name = blank(row.name) and id or row.name,
     deck = deck,
-    faction = blank(row.faction) and "none" or row.faction,
+    faction = factions[1],
+    factions = factions, -- "blob/machine_cult" is in both; "any" counts as every faction
+    allyGroups = Cards.allyGroups(ally),
     type = blank(row.type) and "unit" or row.type,
     cost = tonumber(row.cost) or 0,
     copies = tonumber(row.copies) or 1,
