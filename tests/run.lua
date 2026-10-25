@@ -90,6 +90,10 @@ test("layout mirrors the two seats across the table", function()
     assert(math.abs(a[name].position[3] + b[name].position[3]) < 1e-9, name .. " z mirrored")
   end
   assert(a.hand.position[3] < a.play.position[3], "seat 1 hand is behind its play area")
+  -- Hand zones face their seat (yaw 0 for seat 1); a card-yaw hand shows cards upside down.
+  eq(a.hand.rotation[2], 0, "seat 1 hand zone yaw")
+  eq(b.hand.rotation[2], 180, "seat 2 hand zone yaw")
+  eq(a.play.rotation[2], 180, "seat 1 table cards keep the card yaw")
   eq(#game.layout.market.row, 5, "market slots")
 end)
 

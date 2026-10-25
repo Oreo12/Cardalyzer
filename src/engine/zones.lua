@@ -62,7 +62,9 @@ function Zones.layout(rules, fixedIds)
       bases = spot(f, y, gap * 4.5, 2, yaw, { gap * 2.5, 3, 4 }),
       deck = spot(f, y, -gap * 2, -3, yaw, { 2.6, 3, 3.6 }),
       discard = spot(f, y, gap * 2, -3, yaw, { 2.6, 3, 3.6 }),
-      hand = spot(f, y + 2, 0, -9, yaw, { gap * 7, 5, 4 }),
+      -- TTS turns cards in a hand to match the hand zone, and a hand zone
+      -- reads upright for its seat at the seat's own yaw, not the card yaw.
+      hand = spot(f, y + 2, 0, -9, 0, { gap * 7, 5, 4 }),
     }
   end
 
