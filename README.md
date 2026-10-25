@@ -18,6 +18,7 @@ Guilds**, a small original sample game with placeholder art:
 ## Contents
 
 - [What works today](#what-works-today)
+- [Limits and compatibility](#limits-and-compatibility)
 - [Install](#install)
 - [Try the sample game](#try-the-sample-game)
 - [Tutorial: make your own game](#tutorial-make-your-own-game)
@@ -51,6 +52,62 @@ So today you can play a full two-player game:
 - answer choices like "2 Gold or 2 Might" and "scrap a card" from an action panel,
 - attack your opponent and their buildings, with guard buildings that must fall first,
 - win, and save and reload at any point, including mid-choice.
+
+## Limits and compatibility
+
+Cardalyzer is built for one kind of card game, and it's best to know that
+before you start.
+
+**What it's made for.** Games where, on your turn, you play cards from your
+hand, the cards give you resources or effects, you spend those resources, and
+then you clean up and draw. That covers deck-builders like Star Realms, Hero
+Realms, Ascension, Dominion, and the card play in Clank-style games.
+
+**What it handles:**
+
+- Resources that reset each turn (for buying, attacking, or anything you name)
+  and stats that last, like health or points.
+- Keyword effects written in the spreadsheet: gain, draw, make an opponent
+  discard, scrap from hand or the market, destroy a base, and "choose one".
+- Faction ally bonuses, cards that stay in play (bases), and guard cards that
+  must be destroyed first.
+- A market row with any number of slots (0 removes it), piles that are always
+  for sale, and bought cards going to your discard pile or the top of your deck.
+- Turning whole mechanics on or off (allies, bases, scrapping).
+- Lua for the occasional card that does something no keyword covers.
+
+**What it doesn't handle yet:**
+
+- **Acting on another player's turn.** There is no stack and no responses, so
+  there are no instants, counter-spells or interrupts. Effects happen when a
+  card is played, on its owner's turn.
+- **Triggered or always-on abilities** beyond ally bonuses and bases, such as
+  "whenever an opponent draws" or "your other cards cost 1 less".
+- **Combat between cards.** Attacks go at a player or at their bases. There's
+  no blocking and no damage to individual creatures.
+- **Coloured or typed costs.** A card costs one number of one buy resource.
+- **Targeting** beyond the built-in choices (a card to scrap or discard, a
+  base to destroy).
+- **Different market behaviour.** You can resize or remove the row, but not
+  change how it works: a shop that refreshes each round, a draft, or bidding
+  would need new engine code. With the row removed, its empty zones still sit
+  on the table.
+- **Boards, tokens and maps.** Only cards are tracked.
+- **Hidden roles, trick-taking, bidding, or real-time play.**
+- **More than two players.** The layout is built for more, but only two-player
+  games have been tested. Support for 2 to 4 players is the next milestone.
+- **Cards moved by hand.** Cardalyzer tracks the game in its script, not by
+  where cards sit. If you drag a card somewhere it doesn't read, use Tidy table
+  to put everything back.
+
+**Magic: The Gathering and similar games** aren't a good fit. They rely on the
+stack, instants, triggered and static abilities, coloured mana, blocking and
+targeting, none of which Cardalyzer has. Only a small share of simple cards
+would map to the current keywords; the rest would all be custom Lua.
+
+**Other games** can work if their turn looks like "play cards, gain things,
+spend them". Each mechanic lives in its own module that a game turns on or
+off, so the engine can grow to cover more kinds of game over time.
 
 ## Install
 
