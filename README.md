@@ -147,7 +147,7 @@ To play:
    ```
    - **Play a card** by dragging it from your hand into your play area (the
      row in front of you), or press **Play all**. Its effects apply at once,
-     and the status panel shows your new totals.
+     and the info panel shows your new totals.
    - **Buy** with the **Buy** button on a market card or the Hireling pile.
      It goes to your discard pile, and the empty slot refills.
    - **Answer prompts.** When a card needs a choice, such as picking an option,
@@ -160,6 +160,11 @@ To play:
      the discard pile is shuffled into it automatically.
 6. If cards end up somewhere odd after a drag, press **Tidy table**. It redraws
    every pile from the game state.
+7. New to the table? Press **Tutorial** in the info panel. It opens a short
+   guide in the middle of your screen, only for you, covering what Cardalyzer
+   does, where the info panel, action panel and messages are, and how the table
+   is laid out. **Hide button** removes the Tutorial button for you (it stays
+   hidden after a reload); type `!tutorial` in chat to get it back.
 
 ## Tutorial: make your own game
 
@@ -374,6 +379,7 @@ These are the fields in `games/<yours>/rules.lua`:
 | `win` | `{type="stat_depleted", stat="health", atOrBelow=0}` | Attacks lower this stat; the last player above it wins |
 | `art.baseUrl` | `"https://…/games/sample/"` | Where the card images are hosted |
 | `layout` | `{seatDistance=10, cardSpacing=2.8}` | Table spacing; adjust if piles overlap your table's edge |
+| `tutorial` | `false` | Leave out to show the Tutorial button; `false` removes it for everyone |
 | `customEffects` | see below | Lua for unusual cards |
 
 ## Custom effects
@@ -508,6 +514,7 @@ src/
     zones.lua        table layout maths + spawning scripting/hand zones
     board.lua        renders state as TTS objects
     ui.lua           XML info panel, messages and the active player's action panel
+    tutorial.lua     the in-game Tutorial pages and its hide/show option
     game.lua         facade that wires the modules together
 games/sample/
   cards.csv          the card spreadsheet (edit this)

@@ -7,6 +7,7 @@
 local Util = require("engine.util")
 local State = require("engine.state")
 local Actions = require("engine.actions")
+local Tutorial = require("engine.tutorial")
 
 local UI_ = {}
 
@@ -124,9 +125,13 @@ function UI_.infoPanel(game)
   for i, msg in ipairs(game.notices and game.notices.all or {}) do
     row(text("cz_notice_" .. i, msg, 13, 'color="' .. ACCENT .. '" fontStyle="Italic"'), 18)
   end
+  local buttons = button("cz-new", "New Game") .. button("cz-tidy", "Tidy table")
+  local who = Tutorial.visibility(game)
+  if who ~= "" then
+    buttons = buttons .. button("cz-tutorial", "Tutorial"):gsub("<Button ", '<Button visibility="' .. who .. '" ')
+  end
   row('<HorizontalLayout spacing="8" preferredHeight="28" childForceExpandWidth="false" childAlignment="MiddleCenter">'
-    .. (button("cz-new", "New Game") .. button("cz-tidy", "Tidy table")):gsub("<Button ", '<Button preferredWidth="150" ')
-    .. '</HorizontalLayout>', 28)
+    .. buttons:gsub("<Button ", '<Button preferredWidth="150" ') .. '</HorizontalLayout>', 28)
 
   return '<Panel id="cz_panel" width="620" height="' .. height .. '" rectAlignment="UpperCenter" offsetXY="0 -50"'
     .. PANEL .. '><VerticalLayout spacing="4" childForceExpandHeight="false">' .. table.concat(rows)
@@ -148,6 +153,29 @@ function UI_.xml(game)
       .. ' rectAlignment="UpperCenter" offsetXY="0 ' .. -(50 + infoHeight + 6) .. '"' .. PANEL .. '>'
       .. text("cz_notice_text_" .. color, byColor[color], 14, 'alignment="MiddleCenter" color="' .. ACCENT .. '"')
       .. '</Panel>'
+  end
+
+  -- The tutorial, in the middle of the screen, for each player reading it.
+  local open = game.tutorialOpen or {}
+  local readers = {}
+  for color in pairs(open) do readers[#readers + 1] = color end
+  table.sort(readers)
+  if #readers > 0 then
+    local pages = Tutorial.pages(game)
+    for _, color in ipairs(readers) do
+      local n = open[color]
+      local page = pages[n]
+      local nav = (n > 1 and button("cz-tutback", "Back") or "")
+        .. (n < #pages and button("cz-tutnext", "Next") or "")
+        .. button("cz-tutclose", "Close") .. button("cz-tuthide", "Hide button")
+      parts[#parts + 1] = '<Panel id="cz_tutorial_' .. color .. '" visibility="' .. color .. '" width="680" height="400"'
+        .. ' rectAlignment="MiddleCenter"' .. PANEL .. '><VerticalLayout spacing="8" childForceExpandHeight="false">'
+        .. text("cz_tut_title_" .. color, page[1], 22, 'fontStyle="Bold" color="' .. ACCENT .. '" preferredHeight="34"')
+        .. text("cz_tut_body_" .. color, page[2], 16, 'alignment="UpperLeft" preferredHeight="270"')
+        .. text("cz_tut_page_" .. color, "Page " .. n .. " of " .. #pages, 12, 'alignment="MiddleRight" color="#9AA4AE" preferredHeight="16"')
+        .. '<HorizontalLayout spacing="8" preferredHeight="30" childForceExpandWidth="false" childAlignment="MiddleCenter">'
+        .. nav:gsub("<Button ", '<Button preferredWidth="140" ') .. '</HorizontalLayout></VerticalLayout></Panel>'
+    end
   end
 
   if state.started and not state.winner then

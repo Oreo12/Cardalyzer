@@ -71,6 +71,7 @@ function Cardalyzer_onUI(player, _, id)
   if action == "new" then return Cardalyzer_onStartGame(player) end
   if action == "tidy" then return run(player.color, game.tidy) end
   if action == "end" then return Cardalyzer_onEndTurn(player) end
+  if action:sub(1, 3) == "tut" then return game:tutorial(player.color, action) end
 
   local seat = game:seatOfColor(player.color)
   if not seat then return tell(player.color, "Take a seat to play.") end
@@ -88,6 +89,13 @@ function Cardalyzer_onUI(player, _, id)
   elseif action == "done" then
     run(player.color, game.done, seat)
   end
+end
+
+-- Typing !tutorial in chat shows the Tutorial button again and opens it.
+function onChat(message, player)
+  if not game or message:lower() ~= "!tutorial" then return true end
+  game:tutorial(player.color, "tutorial")
+  return false
 end
 
 -- Buy buttons on market cards and fixed piles.

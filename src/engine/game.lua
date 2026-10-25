@@ -9,6 +9,7 @@ local Actions = require("engine.actions")
 local Zones = require("engine.zones")
 local Board = require("engine.board")
 local UI_ = require("engine.ui")
+local Tutorial = require("engine.tutorial")
 
 local Game = {}
 Game.__index = Game
@@ -113,6 +114,27 @@ function Game:notify(msg, color)
     printToAll(msg, { 1, 0.8, 0.4 })
   end
   self:refreshUI()
+end
+
+-- Tutorial buttons: "tutorial" opens it (and unhides the button), then
+-- "tutnext", "tutback", "tutclose" and "tuthide" (closes it and hides the button).
+function Game:tutorial(color, action)
+  if action == "tutorial" then
+    Tutorial.setHidden(self, color, false)
+    Tutorial.open(self, color, 1)
+  elseif action == "tutnext" then
+    Tutorial.turn(self, color, 1)
+  elseif action == "tutback" then
+    Tutorial.turn(self, color, -1)
+  elseif action == "tutclose" then
+    Tutorial.close(self, color)
+  elseif action == "tuthide" then
+    Tutorial.close(self, color)
+    Tutorial.setHidden(self, color, true)
+    return self:notify("Tutorial button hidden. Type !tutorial in chat to bring it back.", color)
+  end
+  self:refreshUI()
+  return true
 end
 
 -- Clears a colour's private message once that player does something that works.

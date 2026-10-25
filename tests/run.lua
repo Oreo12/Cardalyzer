@@ -194,6 +194,50 @@ test("cards dealt into a hand are turned 180 from the hand zone", function()
   end
 end)
 
+test("the tutorial opens, pages, closes and its button can be hidden", function()
+  local game = boot()
+  assert(tts.ui.xml:find('visibility="White|Brown|Red', 1, true), "Tutorial button for everyone")
+  Cardalyzer_onUI(HOST, "-1", "cz-tutorial")
+  local xml = tts.ui.xml
+  assert(xml:find('id="cz_tutorial_White" visibility="White"', 1, true), "tutorial only for its reader")
+  assert(xml:find('rectAlignment="MiddleCenter"', 1, true), "middle of the screen")
+  assert(xml:find("Welcome to Ember Guilds", 1, true), "page 1")
+  assert(not xml:find("cz-tutback", 1, true), "no Back on page 1")
+  Cardalyzer_onUI(HOST, "-1", "cz-tutnext")
+  assert(tts.ui.xml:find("The info panel (top centre)", 1, true), "page 2")
+  for _ = 1, 10 do Cardalyzer_onUI(HOST, "-1", "cz-tutnext") end
+  assert(tts.ui.xml:find("Page 5 of 5", 1, true), "stops at the last page")
+  assert(not tts.ui.xml:find("cz-tutnext", 1, true), "no Next on the last page")
+  Cardalyzer_onUI(HOST, "-1", "cz-tutback")
+  assert(tts.ui.xml:find("Page 4 of 5", 1, true), "back a page")
+  Cardalyzer_onUI(HOST, "-1", "cz-tutclose")
+  assert(not tts.ui.xml:find("cz_tutorial_White", 1, true), "closed")
+
+  Cardalyzer_onUI(HOST, "-1", "cz-tutorial")
+  Cardalyzer_onUI(HOST, "-1", "cz-tuthide")
+  xml = tts.ui.xml
+  assert(not xml:find("cz_tutorial_White", 1, true), "hide also closes")
+  assert(not xml:find('visibility="White|', 1, true), "button hidden for White")
+  assert(xml:find('visibility="Brown|Red', 1, true), "still shown to others")
+  assert(xml:find("!tutorial", 1, true), "told how to bring it back")
+
+  local restored = boot(game:save())
+  assert(not tts.ui.xml:find('visibility="White|', 1, true), "stays hidden after reload")
+  eq(onChat("!tutorial", HOST), false, "chat command swallowed")
+  assert(tts.ui.xml:find('visibility="White|', 1, true), "button back")
+  assert(tts.ui.xml:find("cz_tutorial_White", 1, true), "and the tutorial opens")
+  eq(onChat("hello", HOST), true, "other chat passes through")
+  assert(restored)
+end)
+
+test("a game can turn the Tutorial button off", function()
+  local game = boot()
+  game.rules.tutorial = false
+  game:refreshUI()
+  assert(not tts.ui.xml:find("cz-tutorial", 1, true), "no Tutorial button")
+  game.rules.tutorial = nil
+end)
+
 test("End Turn discards, draws a new hand and passes play", function()
   local game = boot()
   Cardalyzer_onStartGame(HOST)
