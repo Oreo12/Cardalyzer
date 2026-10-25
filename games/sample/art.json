@@ -1,0 +1,89 @@
+{
+  "back": "art/back.jpg",
+  "sheets": [
+    {
+      "file": "art/sheet_1.jpg",
+      "numWidth": 10,
+      "numHeight": 2,
+      "count": 19
+    }
+  ],
+  "cards": {
+    "apprentice": {
+      "sheet": 1,
+      "index": 0
+    },
+    "squire": {
+      "sheet": 1,
+      "index": 1
+    },
+    "hireling": {
+      "sheet": 1,
+      "index": 2
+    },
+    "ember_smith": {
+      "sheet": 1,
+      "index": 3
+    },
+    "bellows_crew": {
+      "sheet": 1,
+      "index": 4
+    },
+    "war_anvil": {
+      "sheet": 1,
+      "index": 5
+    },
+    "flame_captain": {
+      "sheet": 1,
+      "index": 6
+    },
+    "grove_tender": {
+      "sheet": 1,
+      "index": 7
+    },
+    "seed_vault": {
+      "sheet": 1,
+      "index": 8
+    },
+    "herbalist": {
+      "sheet": 1,
+      "index": 9
+    },
+    "old_oak": {
+      "sheet": 1,
+      "index": 10
+    },
+    "tide_runner": {
+      "sheet": 1,
+      "index": 11
+    },
+    "harbor_broker": {
+      "sheet": 1,
+      "index": 12
+    },
+    "lighthouse": {
+      "sheet": 1,
+      "index": 13
+    },
+    "fleet_admiral": {
+      "sheet": 1,
+      "index": 14
+    },
+    "veil_cutpurse": {
+      "sheet": 1,
+      "index": 15
+    },
+    "shade_scout": {
+      "sheet": 1,
+      "index": 16
+    },
+    "hidden_den": {
+      "sheet": 1,
+      "index": 17
+    },
+    "night_queen": {
+      "sheet": 1,
+      "index": 18
+    }
+  }
+}
