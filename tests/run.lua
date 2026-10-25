@@ -94,6 +94,8 @@ test("layout mirrors the two seats across the table", function()
   eq(a.hand.rotation[2], 0, "seat 1 hand zone yaw")
   eq(b.hand.rotation[2], 180, "seat 2 hand zone yaw")
   eq(a.play.rotation[2], 180, "seat 1 table cards keep the card yaw")
+  eq(a.hand.cardRotation[2], 180, "seat 1 hand cards use the card yaw")
+  eq(b.hand.cardRotation[2], 0, "seat 2 hand cards use the card yaw")
   eq(#game.layout.market.row, 5, "market slots")
 end)
 
@@ -175,6 +177,21 @@ test("the info panel stands alone at the top centre and holds messages", functio
 
   Cardalyzer_onEndTurn(HOST)
   assert(tts.ui.xml:find('id="cz_notice_' .. GUEST.color .. '"', 1, true), "guest notice stays until the guest acts")
+end)
+
+test("cards dealt into a hand are turned 180 from the hand zone", function()
+  local game = boot()
+  Cardalyzer_onStartGame(HOST)
+  for seat = 1, 2 do
+    local hand = getObjectFromGUID(game.state.view.hands[game.state.players[seat].color])
+    local guids = game.state.view.piles[seat .. ".hand"]
+    assert(guids and #guids > 0, "hand cards spawned")
+    for _, guid in ipairs(guids) do
+      local card = getObjectFromGUID(guid)
+      eq((card.rotation[2] - hand.rotation[2]) % 360, 180, "seat " .. seat .. " card yaw relative to hand")
+      eq(card.rotation[3], 0, "face up")
+    end
+  end
 end)
 
 test("End Turn discards, draws a new hand and passes play", function()

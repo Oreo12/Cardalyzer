@@ -62,10 +62,12 @@ function Zones.layout(rules, fixedIds)
       bases = spot(f, y, gap * 4.5, 2, yaw, { gap * 2.5, 3, 4 }),
       deck = spot(f, y, -gap * 2, -3, yaw, { 2.6, 3, 3.6 }),
       discard = spot(f, y, gap * 2, -3, yaw, { 2.6, 3, 3.6 }),
-      -- TTS turns cards in a hand to match the hand zone, and a hand zone
-      -- reads upright for its seat at the seat's own yaw, not the card yaw.
+      -- A hand zone faces its seat at the seat's own yaw. TTS keeps a card's
+      -- yaw relative to the hand zone, so cards dealt into it still use the
+      -- card yaw (as in a stock TTS table: hand zone 0, held cards 180).
       hand = spot(f, y + 2, 0, -9, 0, { gap * 7, 5, 4 }),
     }
+    result.seats[seat].hand.cardRotation = { 0, (yaw + f.yaw) % 360, 0 }
   end
 
   -- The market runs along the x axis through the table centre, read by seat 1.

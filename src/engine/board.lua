@@ -148,8 +148,11 @@ end
 -- TTS side
 ---------------------------------------------------------------------------
 
+-- Cards use the spot's own yaw, except in a hand, whose zone faces the seat
+-- but whose cards still need the card yaw (see Zones.layout).
 local function rotation(spot, faceUp)
-  return { 0, spot.rotation[2], faceUp and 0 or FACE_DOWN }
+  local yaw = (spot.cardRotation or spot.rotation)[2]
+  return { 0, yaw, faceUp and 0 or FACE_DOWN }
 end
 
 -- Buy button on a market card or fixed pile; clicks go to Cardalyzer_onBuy in main.lua.
