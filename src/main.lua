@@ -5,8 +5,8 @@ local Game = require("engine.game")
 local game
 
 local function report(err)
-  broadcastToAll("[Deck Builder] " .. tostring(err), { 1, 0.4, 0.4 })
-  print("[Deck Builder] " .. tostring(err))
+  broadcastToAll("[Cardalyzer] " .. tostring(err), { 1, 0.4, 0.4 })
+  print("[Cardalyzer] " .. tostring(err))
 end
 
 function onLoad(saved)
@@ -17,8 +17,8 @@ function onLoad(saved)
   })
   if not ok then return report(result) end
   game = result
-  -- Handy from the in-game Lua console: DBE.game.state, DBE.require("engine.turn").
-  DBE = { game = game, require = require }
+  -- Handy from the in-game Lua console: Cardalyzer.game.state, Cardalyzer.require("engine.turn").
+  Cardalyzer = { game = game, require = require }
   local booted, err = pcall(game.boot, game, saved)
   if not booted then report(err) end
 end
@@ -28,7 +28,7 @@ function onSave()
   return game:save()
 end
 
-function DBE_onStartGame(player)
+function Cardalyzer_onStartGame(player)
   if not game then return end
   if not player.host and not player.promoted then
     return broadcastToColor("Only the host can start a new game.", player.color, { 1, 0.8, 0.4 })
@@ -37,7 +37,7 @@ function DBE_onStartGame(player)
   if not ok then report(err) end
 end
 
-function DBE_onEndTurn(player)
+function Cardalyzer_onEndTurn(player)
   if not game then return end
   local ok, done, why = pcall(game.endTurn, game, player.color)
   if not ok then return report(done) end

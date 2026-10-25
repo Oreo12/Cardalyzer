@@ -1,6 +1,6 @@
 -- XML UI: a status panel with each seat's resource pools and stats, plus the
 -- Start Game and End Turn buttons. The XML is built here so the whole mod is
--- one Global script; button clicks call the DBE_on* globals in main.lua.
+-- one Global script; button clicks call the Cardalyzer_on* globals in main.lua.
 local Util = require("engine.util")
 
 local UI_ = {}
@@ -13,19 +13,19 @@ function UI_.xml(game)
   local rows = {}
   for seat = 1, #game.state.players do
     rows[#rows + 1] = string.format(
-      '<Text id="dbe_seat_%d" alignment="MiddleLeft" fontSize="16" color="#FFFFFF"></Text>', seat)
+      '<Text id="cz_seat_%d" alignment="MiddleLeft" fontSize="16" color="#FFFFFF"></Text>', seat)
   end
   return table.concat({
-    '<Panel id="dbe_panel" width="460" height="' .. (110 + 28 * #rows) .. '"',
+    '<Panel id="cz_panel" width="460" height="' .. (110 + 28 * #rows) .. '"',
     ' rectAlignment="UpperLeft" offsetXY="10 -60" color="#000000B0" padding="10 10 10 10">',
     '<VerticalLayout spacing="4" childForceExpandHeight="false">',
-    '<Text id="dbe_title" fontSize="18" fontStyle="Bold" color="#FFFFFF" alignment="MiddleLeft">',
-    escape(game.rules.name or "Deck Builder"), '</Text>',
-    '<Text id="dbe_turn" fontSize="14" color="#DDDDDD" alignment="MiddleLeft"></Text>',
+    '<Text id="cz_title" fontSize="18" fontStyle="Bold" color="#FFFFFF" alignment="MiddleLeft">',
+    escape(game.rules.name or "Cardalyzer"), '</Text>',
+    '<Text id="cz_turn" fontSize="14" color="#DDDDDD" alignment="MiddleLeft"></Text>',
     table.concat(rows),
     '<HorizontalLayout spacing="8" preferredHeight="32">',
-    '<Button id="dbe_start" onClick="DBE_onStartGame">New Game</Button>',
-    '<Button id="dbe_end" onClick="DBE_onEndTurn">End Turn</Button>',
+    '<Button id="cz_start" onClick="Cardalyzer_onStartGame">New Game</Button>',
+    '<Button id="cz_end" onClick="Cardalyzer_onEndTurn">End Turn</Button>',
     '</HorizontalLayout>',
     '</VerticalLayout></Panel>',
   })
@@ -62,9 +62,9 @@ function UI_.build(game)
 end
 
 function UI_.refresh(game)
-  UI.setValue("dbe_turn", UI_.turnLine(game))
+  UI.setValue("cz_turn", UI_.turnLine(game))
   for seat = 1, #game.state.players do
-    UI.setValue("dbe_seat_" .. seat, UI_.seatLine(game, seat))
+    UI.setValue("cz_seat_" .. seat, UI_.seatLine(game, seat))
   end
 end
 

@@ -128,8 +128,8 @@ function Zones.build(game, layout)
         rotation = entry.spot.rotation,
         scale = entry.spot.size,
       })
-      obj.setName("dbe:" .. entry.key)
-      obj.addTag("dbe_zone")
+      obj.setName("cz:" .. entry.key)
+      obj.addTag("cz_zone")
       view.zones[entry.key] = obj.getGUID()
     end
   end

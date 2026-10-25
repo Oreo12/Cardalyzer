@@ -72,7 +72,7 @@ function Board.cardData(game, uid)
     Nickname = card.name,
     Description = Board.describe(game, card),
     GMNotes = uid,
-    Tags = { "dbe_card" },
+    Tags = { "cz_card" },
     CardID = where.sheet * 100 + where.index,
     CustomDeck = { [where.sheet] = customDeck(game, where.sheet) },
     Transform = transform(scale),
@@ -85,7 +85,7 @@ function Board.stackData(game, uids)
   if #uids == 1 then return Board.cardData(game, uids[1]) end
   local deck = {
     Name = "Deck",
-    Tags = { "dbe_card" },
+    Tags = { "cz_card" },
     DeckIDs = {},
     CustomDeck = {},
     ContainedObjects = {},
@@ -197,7 +197,7 @@ end
 -- Destroys every card the engine ever spawned, including strays that were
 -- merged into other decks by physics and lost their tracked GUID.
 function Board.sweep(game)
-  for _, obj in ipairs(getObjectsWithTag("dbe_card")) do obj.destruct() end
+  for _, obj in ipairs(getObjectsWithTag("cz_card")) do obj.destruct() end
   game.state.view.piles = {}
 end
 

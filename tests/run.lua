@@ -28,8 +28,8 @@ local function boot(saved)
   math.randomseed(7)
   dofile("build/Global.lua")
   onLoad(saved or "")
-  if not DBE then error("onLoad failed: " .. table.concat(tts.broadcasts, "; ")) end
-  return DBE.game
+  if not Cardalyzer then error("onLoad failed: " .. table.concat(tts.broadcasts, "; ")) end
+  return Cardalyzer.game
 end
 
 local function count(filter) return #tts.live(filter) end
@@ -60,7 +60,7 @@ end
 
 test("effect strings parse", function()
   boot()
-  local Cards = DBE.require("engine.cards")
+  local Cards = Cardalyzer.require("engine.cards")
   local list = Cards.parseEffects("gold:2; draw:1;custom:freeRecruit")
   eq(#list, 3, "effects")
   eq(list[1].key, "gold"); eq(list[1].amount, 2)
@@ -74,9 +74,9 @@ test("boot builds zones, hands and the UI", function()
   boot()
   eq(count(ofType("ScriptingTrigger")), 9, "scripting zones (4 per seat + market)")
   eq(count(ofType("HandTrigger")), 2, "hand zones")
-  eq(count(function(o) return o.tags.dbe_card end), 0, "no cards before New Game")
-  assert(tts.ui.xml:find("DBE_onEndTurn"), "End Turn button in XML")
-  assert(tts.ui.values.dbe_turn:find("New Game"), "prompt to start")
+  eq(count(function(o) return o.tags.cz_card end), 0, "no cards before New Game")
+  assert(tts.ui.xml:find("Cardalyzer_onEndTurn"), "End Turn button in XML")
+  assert(tts.ui.values.cz_turn:find("New Game"), "prompt to start")
 end)
 
 test("layout mirrors the two seats across the table", function()
@@ -92,13 +92,13 @@ end)
 
 test("only the host can start a game", function()
   local game = boot()
-  DBE_onStartGame(GUEST)
+  Cardalyzer_onStartGame(GUEST)
   eq(game.state.started, false, "started")
 end)
 
 test("New Game deals starter decks and fills the market", function()
   local game = boot()
-  DBE_onStartGame(HOST)
+  Cardalyzer_onStartGame(HOST)
   local s = game.state
   eq(s.started, true, "started")
   eq(#s.players[1].hand, 3, "first player opening hand")
@@ -114,7 +114,7 @@ end)
 
 test("New Game spawns the right physical objects", function()
   local game = boot()
-  DBE_onStartGame(HOST)
+  Cardalyzer_onStartGame(HOST)
   local decks = tts.live(ofType("Deck"))
   -- 2 player decks, market deck, hireling pile
   eq(#decks, 4, "deck objects")
@@ -132,7 +132,7 @@ end)
 
 test("the market deck's top card is the deck object's first card", function()
   local game = boot()
-  DBE_onStartGame(HOST)
+  Cardalyzer_onStartGame(HOST)
   local top = game.state.market.deck[#game.state.market.deck]
   local guid = game.state.view.piles["market.deck"][1]
   eq(getObjectFromGUID(guid).data.ContainedObjects[1].GMNotes, top, "top card")
@@ -140,17 +140,17 @@ end)
 
 test("End Turn is refused for the wrong player", function()
   local game = boot()
-  DBE_onStartGame(HOST)
-  DBE_onEndTurn(GUEST)
+  Cardalyzer_onStartGame(HOST)
+  Cardalyzer_onEndTurn(GUEST)
   eq(game.state.turn.active, 1, "still seat 1")
   assert(tts.broadcasts[#tts.broadcasts]:find("turn"), "told why")
 end)
 
 test("End Turn discards, draws a new hand and passes play", function()
   local game = boot()
-  DBE_onStartGame(HOST)
+  Cardalyzer_onStartGame(HOST)
   game.state.players[1].resources.gold = 4
-  DBE_onEndTurn(HOST)
+  Cardalyzer_onEndTurn(HOST)
   local p = game.state.players[1]
   eq(#p.hand, 5, "new hand")
   eq(#p.discard, 3, "old hand discarded")
@@ -164,9 +164,9 @@ end)
 
 test("drawing reshuffles the discard pile when the deck runs out", function()
   local game = boot()
-  DBE_onStartGame(HOST)
-  DBE_onEndTurn(HOST) -- seat 1: deck 2, discard 3
-  DBE_onEndTurn(GUEST)
+  Cardalyzer_onStartGame(HOST)
+  Cardalyzer_onEndTurn(HOST) -- seat 1: deck 2, discard 3
+  Cardalyzer_onEndTurn(GUEST)
   local p = game.state.players[1]
   local drawn = game:draw(1, 4)
   eq(#drawn, 4, "drew through the reshuffle")
@@ -180,8 +180,8 @@ end)
 
 test("keyword and custom effects change state", function()
   local game = boot()
-  DBE_onStartGame(HOST)
-  local Cards = DBE.require("engine.cards")
+  Cardalyzer_onStartGame(HOST)
+  local Cards = Cardalyzer.require("engine.cards")
   local p1, p2 = game.state.players[1], game.state.players[2]
   local handBefore = #p1.hand
   game.effects:apply(game, 1, Cards.parseEffects("gold:2;might:3;health:4;draw:1;opponent_discard:1;custom:freeRecruit"))
@@ -195,11 +195,11 @@ test("keyword and custom effects change state", function()
 end)
 
 test("card data with an unknown keyword is reported", function()
-  local Game = DBE.require("engine.game")
-  local rules = DBE.require("game.rules")
+  local Game = Cardalyzer.require("engine.game")
+  local rules = Cardalyzer.require("game.rules")
   local ok, err = pcall(Game.new, {
     rules = rules,
-    art = DBE.require("game.art"),
+    art = Cardalyzer.require("game.art"),
     cards = { { id = "bad", name = "Bad", cost = 1, copies = 1, effects = "teleport:2" } },
   })
   eq(ok, false, "rejected")
@@ -208,8 +208,8 @@ end)
 
 test("save and reload restores the game without respawning zones", function()
   local game = boot()
-  DBE_onStartGame(HOST)
-  DBE_onEndTurn(HOST)
+  Cardalyzer_onStartGame(HOST)
+  Cardalyzer_onEndTurn(HOST)
   local saved = onSave()
   local zonesBefore = game.state.view.zones["1.play"]
   local hand = table.concat(game.state.players[1].hand, ",")
@@ -220,7 +220,7 @@ test("save and reload restores the game without respawning zones", function()
   tts.objects, tts.order = objects, order
   local before = count(ofType("ScriptingTrigger"))
   onLoad(saved)
-  local restored = DBE.game
+  local restored = Cardalyzer.game
   eq(count(ofType("ScriptingTrigger")), before, "no new zones")
   eq(restored.state.view.zones["1.play"], zonesBefore, "zone guid kept")
   eq(table.concat(restored.state.players[1].hand, ","), hand, "hand restored")

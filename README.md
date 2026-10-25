@@ -1,11 +1,16 @@
-# TTS Deck-Builder Engine
+# Cardalyzer
 
-A data-driven deck-builder engine for Tabletop Simulator. You supply a card
-spreadsheet and a small rules file; the engine sets up the table and runs the
-starter decks, market row, drawing, turn cleanup and reshuffling.
+Cardalyzer reads your card data and turns each card's effects into gameplay
+in Tabletop Simulator. Write a card's effects in a spreadsheet
+(`gold:2; draw:1`) and Cardalyzer parses them, checks them against your game's
+rules, and runs them on the table, along with the turn structure around them.
+
+It isn't limited to one genre. The first rules it ships with cover a
+deck-builder: starter decks, a market row, drawing, turn cleanup and
+reshuffling. Other card games plug in the same way, through a rules module.
 
 It ships with **Ember Guilds**, a small original sample game with placeholder
-art, so the template carries no one else's names or artwork.
+art, so the repo contains none of anyone else's names or artwork.
 
 ## Status
 
