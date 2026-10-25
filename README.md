@@ -107,7 +107,8 @@ download from:
    Steam Cloud gives every file its own address, so for those you put the full
    URLs in `games/sample/art.json` instead: replace `"art/sheet_1.jpg"` and
    `"art/back.jpg"` with the two URLs. Any value starting with `http` is used
-   as-is.
+   as-is. Re-running `make_sheets.py` resets these, so paste the URLs in again
+   after you regenerate the art.
 3. Run `python tools/bundle.py games/sample` again.
 
 To play:
