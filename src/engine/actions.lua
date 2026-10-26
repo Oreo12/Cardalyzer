@@ -55,8 +55,9 @@ function Actions.fillMarket(game)
     local again = false
     for _, slot in ipairs(Turn.fillMarket(state)) do
       local uid = state.market.row[slot]
-      local c = game:cardOf(uid)
-      if Actions.typeDef(game, c).event then
+      -- (an earlier event in this pass may have emptied the slot, e.g. "scrap the row")
+      local c = uid ~= State.EMPTY and game:cardOf(uid)
+      if c and Actions.typeDef(game, c).event then
         state.market.row[slot] = State.EMPTY
         state.market.scrap[#state.market.scrap + 1] = uid
         if game.notify then game:notify("Event: " .. c.name .. ". " .. game.effects:describe(c.effects, c.text)) end

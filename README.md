@@ -481,7 +481,7 @@ These are the fields in `games/<yours>/rules.lua`:
 | `sets` | `{ {key="base", label="Base Game", always=true}, {key="exp1", label="Expansion", default=true} }` | Sets of cards (named in the `set` column) the host switches in or out in the New Game menu. `always` sets can't be switched off; `default` ones start on. Cards with no `set` are always in |
 | `market.faceActive` | `false` | Leave out to turn the market's cards to face the player whose turn it is; `false` keeps them facing seat 1 |
 | `factions` | `forge = {label="Forge", color="#C8502D"}` | Faction labels and frame colours |
-| `cardTypes` | `wall = {persistent=true, guard=true}` | Types. Persistent ones stay in play and apply their effects again each turn; guard ones must be destroyed before their owner or other buildings can be attacked |
+| `cardTypes` | `wall = {persistent=true, guard=true}` | Types. Persistent ones stay in play and apply their effects again each turn; guard ones must be destroyed before their owner or other buildings can be attacked. `replay = false`: a persistent card doesn't apply its effects again each turn. `target = false`: it can't be attacked or destroyed (a hero that stays until you scrap it). `event = true`: revealed into the market row, it resolves at once for the player whose turn it is, then goes to the scrap pile and the slot refills |
 | `mechanics` | `{allies=true, persistent=true, scrap=true}` | Turn whole mechanics on or off |
 | `win` | `{type="stat_depleted", stat="health", atOrBelow=0}` | Attacks lower this stat. A player who drops to it is out (no more turns, can't be attacked); the last player left wins |
 | `art.baseUrl` | `"https://…/games/sample/"` | Where the card images are hosted (see [Using card art you already have](#using-card-art-you-already-have)) |
@@ -613,6 +613,12 @@ More hooks a custom effect can have:
   hand is drawn ("docking").
 - `atTurnEnd = function(game, seat, job)`: runs for jobs queued with
   `game:atTurnEnd({ custom = "<name>", ... })` this turn.
+
+`game:grantAllies(seat, faction)` makes every ally ability of that faction
+count as met for the rest of the turn ("you may use all your Blob ally
+abilities"). A prompt can be queued for any player, not just the one whose
+turn it is (an event asking everyone); it shows on that player's screen.
+`pick` prompts also take `scope = "hand"` or `"deck"`.
 
 `game.state.turn.scrapped` counts the active player's cards scrapped this
 turn (`total`, and `handOrDiscard`). `game:addFaction(seat, uid, faction)`

@@ -1865,6 +1865,31 @@ test("events resolve when revealed in the market row; set aside during setup", f
   oracle.type = "unit"
 end)
 
+test("an event that empties the market row while it fills doesn't trip the refill", function()
+  local game, _, putRow, putDeck = blank()
+  game.rules.cardTypes.event = { event = true }
+  game.effects:registerCustom("wipeRow", {
+    apply = function(g)
+      local m = g.state.market
+      for i, uid in ipairs(m.row) do
+        if uid ~= "" then m.scrap[#m.scrap + 1] = uid; m.row[i] = "" end
+      end
+    end })
+  local oracle = game.cards:get("oracle")
+  oracle.type, oracle.effects = "event", { { key = "custom", fn = "wipeRow" } }
+  putDeck("tide_runner")
+  putDeck("squire")
+  putDeck("oracle") -- revealed into slot 1, with Squire going to slot 2 in the same fill
+  game.state.players[1].resources.gold = 5
+  local ok = game:buy(1, putRow(3, "ember_smith"))
+  eq(ok, true, "no error")
+  local tracked = 0
+  for _, guids in pairs(game.state.view.piles) do tracked = tracked + #guids end
+  eq(count(function(o) return o.tags.cz_card end), tracked, "table consistent")
+  game.rules.cardTypes.event = nil
+  oracle.type = "unit"
+end)
+
 test("any player's waiting choice shows on their own screen", function()
   local game = blank()
   game:prompt(2, { kind = "choice", options = { { key = "gold", amount = 1 }, { key = "might", amount = 1 } } })
