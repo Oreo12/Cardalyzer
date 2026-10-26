@@ -107,7 +107,7 @@ function UI_.actions(game)
   end
 
   for _, uid in ipairs(Actions.inPlay(p)) do
-    local c = game.cards:get(State.cardId(state, uid))
+    local c = game:cardOf(uid) -- a card copying another this turn shows that card's scrap ability
     if #c.scrapEffects > 0 then
       add("cz-scrap-" .. uid, "Scrap " .. c.name .. ": " .. game.effects:describe(c.scrapEffects, c.text))
     end

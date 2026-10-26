@@ -514,9 +514,34 @@ panel. These kinds are built in:
 With more than one opponent left, `opponent_discard` uses that last prompt,
 so the player chooses who discards.
 
+Prompts take a few extra fields:
+
+- `free_buy`: `maxCost` (leave out for any cost), `cardType = "ship"` (only
+  that type), `includeFixed = true` (fixed piles too) and `toTop = true`
+  (onto the deck instead of the discard pile).
+- `scrap` and `discard`: `drawPerPick = 1` draws that many cards for each
+  card picked, once the prompt ends ("scrap up to two cards, then draw a card
+  for each").
+- `pick`: choose a card you have in play (`cardType` and `exclude = uid`
+  narrow it), then the custom effect named by `custom` runs its `onPick`.
+
 Setting `game.state.players[seat].flags.buyToTop = true` puts the next card
-that player buys on top of their deck, as in "put the next ship you acquire
-on top of your deck". Flags clear at the end of the turn.
+that player buys on top of their deck. Set it to a card type, such as
+`"ship"`, to wait for the next card of that type, as in "put the next ship you
+acquire on top of your deck". Flags clear at the end of the turn.
+
+Besides `apply`, a custom effect can have:
+
+- `whenYouPlay = function(game, seat, ctx, played)`: runs each time the
+  card's owner plays another card while this one is in play. `played` is
+  `{ uid, card }`. Use it for "whenever you play a ship, gain 1 Combat".
+- `onPick = function(game, seat, uid, prompt)`: answers a `pick` prompt.
+
+`game.state.turn.played` lists the cards played this turn, in order.
+`game:copyCard(seat, uid, id)` makes card `uid` act as card `id` until the
+end of the turn, with both cards' factions, and applies the copied card's
+effects ("copy another ship you've played this turn").
+`game:cardOf(uid)` returns what a card acts as right now, copy included.
 
 ```lua
 customEffects = {

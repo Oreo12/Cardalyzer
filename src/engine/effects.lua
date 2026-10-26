@@ -110,7 +110,13 @@ function Effects:register(key, handler)
   self.handlers[key] = handler
 end
 
--- def is a function(game, seat, ctx) or { apply = fn, text = "rules text" }.
+-- def is a function(game, seat, ctx) or a table with any of:
+--   apply = fn(game, seat, ctx)          runs when the card's effects apply
+--   text = "rules text"                  shown in descriptions and prompts
+--   whenYouPlay = fn(game, seat, ctx, played)
+--                                        while the card is in play, runs each time
+--                                        its owner plays another card ({uid, card})
+--   onPick = fn(game, seat, uid, prompt) answers a { kind = "pick", custom = name } prompt
 function Effects:registerCustom(name, def)
   if type(def) == "function" then def = { apply = def } end
   self.custom[name] = def
@@ -121,7 +127,7 @@ function Effects:apply(game, seat, list, ctx)
     if effect.key == "custom" then
       local def = self.custom[effect.fn]
       if not def then error("no custom effect named '" .. effect.fn .. "'", 0) end
-      def.apply(game, seat, ctx or {})
+      if def.apply then def.apply(game, seat, ctx or {}) end
     else
       local handler = self.handlers[effect.key]
       if not handler then error("no effect keyword '" .. effect.key .. "'", 0) end

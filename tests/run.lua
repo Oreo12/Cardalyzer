@@ -875,5 +875,119 @@ test("art.json problems are reported when the game loads", function()
   assert(tostring(err):find("art.json", 1, true), "says why")
 end)
 
+---------------------------------------------------------------------------
+-- Hooks for unusual cards: triggers, copies, prompt options
+---------------------------------------------------------------------------
+
+test("a card in play can react to its owner playing another card", function()
+  local game, put = blank()
+  local seen = {}
+  game.effects:registerCustom("watcher", {
+    whenYouPlay = function(g, seat, ctx, played)
+      seen[#seen + 1] = played.card.id
+      local pools = g.state.players[seat].resources
+      pools.might = pools.might + 1
+    end,
+  })
+  local vault = game.cards:get("seed_vault")
+  vault.effects[#vault.effects + 1] = { key = "custom", fn = "watcher" }
+  local a1, b, a2 = put(1, "hand", "apprentice"), put(1, "hand", "seed_vault"), put(1, "hand", "apprentice")
+  game:play(1, a1) -- before the watcher is in play
+  game:play(1, b)
+  game:play(1, a2)
+  eq(#seen, 1, "fires only for cards played while it's in play, not for itself")
+  eq(seen[1], "apprentice", "told which card")
+  eq(game.state.players[1].resources.might, 1, "trigger applied")
+  eq(table.concat(game.state.turn.played, ","), a1 .. "," .. b .. "," .. a2, "turn.played lists this turn's plays in order")
+  for _ = 1, 5 do put(1, "deck", "apprentice") end
+  click(WHITE, "cz-end")
+  eq(#game.state.turn.played, 0, "cleared for the next turn")
+end)
+
+test("drawPerPick draws for each card picked once the prompt ends", function()
+  local game, put = blank()
+  local p = game.state.players[1]
+  local s1, s2 = put(1, "hand", "squire"), put(1, "hand", "squire")
+  put(1, "hand", "squire")
+  for _ = 1, 3 do put(1, "deck", "apprentice") end
+  game:prompt(1, { kind = "scrap", count = 2, optional = true, from = { "hand" }, drawPerPick = 1 })
+  click(WHITE, "cz-pick-" .. s1)
+  eq(#p.hand, 2, "no draw until the prompt ends")
+  click(WHITE, "cz-pick-" .. s2)
+  eq(#p.hand, 3, "drew one for each card scrapped")
+  game:prompt(1, { kind = "discard", count = 2, optional = true, drawPerPick = 1 })
+  click(WHITE, "cz-pick-" .. p.hand[1])
+  click(WHITE, "cz-done")
+  eq(#p.hand, 3, "stopping early draws for what was picked")
+  eq(#p.deck, 0, "deck used")
+end)
+
+test("free buys can be limited to a card type, include fixed piles and go on top", function()
+  local game, _, putRow = blank()
+  local Actions = Cardalyzer.require("engine.actions")
+  local admiral = putRow(1, "fleet_admiral")
+  local oak = putRow(2, "old_oak")
+  game:prompt(1, { kind = "free_buy", cardType = "unit", includeFixed = true, toTop = true, optional = true })
+  game:refreshUI()
+  local offered = {}
+  for _, t in ipairs(Actions.targets(game, 1, game.state.players[1].prompts[1])) do offered[t.value] = true end
+  assert(offered[admiral], "any cost when maxCost is left out")
+  assert(not offered[oak], "other card types left out")
+  local hirelings = game.state.market.fixed.hireling
+  assert(offered[hirelings[#hirelings]], "top of a fixed pile offered")
+  assert(tts.ui.xml:find("Take a unit from the market for free, onto your deck", 1, true), "prompt text")
+  click(WHITE, "cz-pick-" .. admiral)
+  local p = game.state.players[1]
+  eq(p.deck[#p.deck], admiral, "on top of the deck")
+  eq(p.resources.gold, 0, "nothing spent")
+end)
+
+test("flags.buyToTop can name a card type and waits for one", function()
+  local game, _, putRow = blank()
+  local vault, runner = putRow(1, "seed_vault"), putRow(2, "tide_runner")
+  local p = game.state.players[1]
+  p.resources.gold = 10
+  p.flags.buyToTop = "unit"
+  game:buy(1, vault)
+  eq(p.discard[#p.discard], vault, "a building still goes to the discard pile")
+  eq(p.flags.buyToTop, "unit", "flag kept for the next unit")
+  game:buy(1, runner)
+  eq(p.deck[#p.deck], runner, "the unit goes on top")
+  eq(p.flags.buyToTop, nil, "flag used up")
+end)
+
+test("a card can copy another in play for the turn, with both cards' factions", function()
+  local game, put = blank()
+  local State = Cardalyzer.require("engine.state")
+  game.effects:registerCustom("mimic", {
+    apply = function(g, seat, ctx)
+      g:prompt(seat, { kind = "pick", custom = "mimic", exclude = ctx.uid, cardType = "unit", text = "Copy a unit" })
+    end,
+    onPick = function(g, seat, uid, prompt)
+      g:copyCard(seat, prompt.exclude, State.cardId(g.state, uid))
+    end,
+  })
+  game.cards:get("veil_cutpurse").effects = { { key = "custom", fn = "mimic" } }
+  local smith = put(1, "hand", "ember_smith")
+  local mimic = put(1, "hand", "veil_cutpurse")
+  game:play(1, smith)
+  game:play(1, mimic)
+  game:refreshUI()
+  assert(tts.ui.xml:find("Copy a unit", 1, true), "asks what to copy")
+  assert(tts.ui.xml:find("cz-pick-" .. smith, 1, true), "offers the other unit")
+  assert(not tts.ui.xml:find("cz-pick-" .. mimic, 1, true), "not itself")
+  click(WHITE, "cz-pick-" .. smith)
+  local c = game:cardOf(mimic)
+  eq(c.name, "Veil Cutpurse", "keeps its own name")
+  eq(c.id, "ember_smith", "acts as the copied card")
+  local factions = table.concat(c.factions, "/")
+  assert(factions:find("veil", 1, true) and factions:find("forge", 1, true), "both factions: " .. factions)
+  -- Smith 2 + copy 2, and both forge allies fire (each sees the other): 2 + 2.
+  eq(game.state.players[1].resources.might, 8, "copied effects and allies")
+  for _ = 1, 5 do put(1, "deck", "apprentice") end
+  click(WHITE, "cz-end")
+  eq(game:cardOf(mimic).id, "veil_cutpurse", "back to itself next turn")
+end)
+
 print(string.format("\n%d passed, %d failed", passed, failed))
 if failed > 0 then os.exit(1) end

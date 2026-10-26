@@ -76,6 +76,33 @@ function Game:draw(seat, n)
   return Turn.draw(self.state, seat, n, self.random)
 end
 
+-- The card a uid acts as right now: its own card, or, while it copies
+-- another card this turn (see Game:copyCard), that card's effects, allies
+-- and scrap ability, with both cards' factions and its own name.
+function Game:cardOf(uid)
+  local own = self.cards:get(State.cardId(self.state, uid))
+  local copied = self.state.turn.copies and self.state.turn.copies[uid]
+  if not copied then return own end
+  local merged = setmetatable({ name = own.name, factions = {} }, { __index = self.cards:get(copied) })
+  for _, list in ipairs({ own.factions, self.cards:get(copied).factions }) do
+    for _, f in ipairs(list) do
+      if f ~= "none" then merged.factions[#merged.factions + 1] = f end
+    end
+  end
+  merged.faction = merged.factions[1] or "none"
+  return merged
+end
+
+-- Makes `uid` act as card `id` until the end of the turn ("copy another
+-- ship you've played"), applies that card's effects, then checks allies.
+function Game:copyCard(seat, uid, id)
+  self.state.turn.copies = self.state.turn.copies or {}
+  self.state.turn.copies[uid] = id
+  local c = self:cardOf(uid)
+  self.effects:apply(self, seat, c.effects, { uid = uid, card = c })
+  Actions.checkAllies(self, seat)
+end
+
 -- Queues a choice for a player; custom effects use this too, e.g.
 -- game:prompt(seat, { kind = "free_buy", maxCost = 4 }). See engine/actions.lua.
 function Game:prompt(seat, prompt)
