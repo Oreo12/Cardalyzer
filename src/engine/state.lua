@@ -28,6 +28,7 @@ function State.new(rules, count)
       color = def.color,
       name = def.name or def.color,
       deck = {}, hand = {}, discard = {}, play = {}, bases = {},
+      objectives = {}, completed = {}, -- secret goals still to do, and done (see Actions.completeObjective)
       resources = {}, stats = {},
       prompts = {}, -- choices waiting on this player, answered in order (engine/actions.lua)
       owed = {},    -- things owed at the start of their next turn, e.g. { discard = 1 }

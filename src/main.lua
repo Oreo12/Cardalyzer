@@ -120,6 +120,8 @@ function Cardalyzer_onUI(player, _, id)
     run(player.color, game.scrapFromPlay, seat, arg)
   elseif action == "pick" then
     run(player.color, game.pick, seat, arg)
+  elseif action == "goal" then
+    run(player.color, game.completeObjective, seat, arg)
   elseif action == "done" then
     run(player.color, game.done, seat)
   end

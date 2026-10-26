@@ -86,7 +86,16 @@ function UI_.actions(game)
     end
   end
 
+  local goalLabel = game.rules.objectives and game.rules.objectives.label or "goal"
+  for _, uid in ipairs(Actions.completable(game, seat)) do
+    add(out.buttons, "cz-goal-" .. uid, "Complete " .. game:cardOf(uid).name)
+  end
   add(out.buttons, "cz-end", "End Turn")
+  if #p.objectives > 0 then
+    local names = {}
+    for _, uid in ipairs(p.objectives) do names[#names + 1] = game:cardOf(uid).name end
+    out.goals = "Your " .. goalLabel:lower() .. ": " .. table.concat(names, ", ")
+  end
   -- Everything in one list, for callers that don't care where it's shown.
   out.all = {}
   for _, b in ipairs(out.choices) do out.all[#out.all + 1] = b end
@@ -252,7 +261,9 @@ local function seatRow(game, seat)
         or text("cz_stat_" .. seat .. "_" .. st.key, (st.label or Util.titleCase(st.key)) .. " " .. value, 14, FX))
     end
   end
-  local piles = text("cz_seat_" .. seat .. "_piles", "Deck " .. #p.deck .. " · Discard " .. #p.discard, 11,
+  local goals = rules.objectives and (" · " .. (rules.objectives.label or "Goals") .. " " .. #p.completed
+    .. "/" .. (rules.objectives.toWin or #p.completed + #p.objectives)) or ""
+  local piles = text("cz_seat_" .. seat .. "_piles", "Deck " .. #p.deck .. " · Discard " .. #p.discard .. goals, 11,
     'color="#C8CED6" alignment="MiddleRight" preferredHeight="14"' .. FX)
   return '<HorizontalLayout spacing="4" preferredHeight="34" childForceExpandWidth="false" childAlignment="MiddleRight">'
     .. xml .. '</HorizontalLayout>' .. piles, 34 + 14 + 4
@@ -591,6 +602,10 @@ function UI_.xml(game)
       end
     end
     local bar, barHeight = buttonRows(acts.buttons, 12, 1100, { ["cz-playall"] = 17, ["cz-end"] = 17 })
+    if acts.goals then -- the active player's secret goals, on their bar only
+      bar = text("cz_goals", acts.goals, 12, 'alignment="MiddleCenter" color="#C8CED6" preferredHeight="18"' .. FX) .. bar
+      barHeight = barHeight + 22
+    end
     local barY = UI_.barY(game, color)
     parts[#parts + 1] = sized('<Panel id="cz_actions" visibility="' .. color .. '" width="1120" height="'
       .. barHeight .. '" rectAlignment="LowerCenter" offsetXY="0 ' .. barY .. '"' .. PANEL
