@@ -282,10 +282,21 @@ function UI_.scaleOf(game, color)
   return game.state.view.uiScale and game.state.view.uiScale[color] or 1
 end
 
--- Scale attributes for a panel, growing from `pivot` (its anchored corner).
-local function scaleAttr(scale, pivot)
-  if scale == 1 then return "" end
-  return string.format(' scale="%s %s" pivot="%s"', scale, scale, pivot)
+-- A panel's XML at UI size k: every font size, width, height, spacing and
+-- padding multiplied by k. Panels are drawn at their real size rather than
+-- with TTS's scale attribute, which lost button backgrounds and panels in TTS.
+local SIZED = { fontSize = true, preferredWidth = true, preferredHeight = true, width = true, height = true,
+  spacing = true, padding = true }
+local function sized(xml, k)
+  if not k or k == 1 then return xml end
+  return (xml:gsub('( (%a+)="([%d%. %-]+)")', function(whole, attr, value)
+    if not SIZED[attr] then return whole end
+    local nums = {}
+    for n in value:gmatch("%-?[%d%.]+") do
+      nums[#nums + 1] = string.format("%d", math.floor(tonumber(n) * k + 0.5))
+    end
+    return " " .. attr .. '="' .. table.concat(nums, " ") .. '"'
+  end))
 end
 
 -- Every TTS colour (except those in `skip`) grouped by UI size, normal size
@@ -314,12 +325,12 @@ function UI_.scaleGroups(game, skip)
   return groups
 end
 
--- The visibility and scale attributes for group i, and the id suffix that
--- keeps copies apart (none for the first).
-local function groupAttrs(groups, i, pivot)
+-- The visibility attribute for group i, and the id suffix that keeps copies
+-- apart (none for the first).
+local function groupAttrs(groups, i)
   local g = groups[i]
   local vis = groups.single and "" or (' visibility="' .. table.concat(g.colors, "|") .. '"')
-  return vis .. scaleAttr(g.scale, pivot), i == 1 and "" or ("_" .. i)
+  return vis, i == 1 and "" or ("_" .. i)
 end
 
 ---------------------------------------------------------------------------
@@ -365,9 +376,9 @@ local function centrePanel(id, visibility, title, titleColor, titleSize, extra, 
   if extra then row(extra[1], extra[2]) end
   local bx, bh = buttonRows(buttons, 13, 620)
   row(bx, bh)
-  return '<Panel id="' .. id .. '" visibility="' .. visibility .. '"' .. scaleAttr(scale or 1, "0.5 0.5") .. ' width="660" height="'
+  return sized('<Panel id="' .. id .. '" visibility="' .. visibility .. '" width="660" height="'
     .. height .. '" rectAlignment="MiddleCenter"' .. PANEL .. '><VerticalLayout spacing="8" childForceExpandHeight="false">'
-    .. table.concat(rows) .. '</VerticalLayout></Panel>'
+    .. table.concat(rows) .. '</VerticalLayout></Panel>', scale)
 end
 
 -- Player-count buttons (cz-players-<n>) for games that seat more than one
@@ -428,13 +439,13 @@ function UI_.xml(game)
   local groups = UI_.scaleGroups(game)
   local infoTop = {}
   for i, g in ipairs(groups) do
-    local tidyAttrs, suffix = groupAttrs(groups, i, "1 0")
+    local vis, suffix = groupAttrs(groups, i)
     local infoBottom = TIDY_Y + math.ceil(42 * g.scale)
-    local info, h = UI_.infoPanel(game, suffix, tidyAttrs, infoBottom)
-    parts[#parts + 1] = info
-    parts[#parts + 1] = '<Panel id="cz_tidy' .. suffix .. '"' .. tidyAttrs .. ' width="120" height="30" rectAlignment="LowerRight" offsetXY="-12 '
+    local info, h = UI_.infoPanel(game, suffix, vis, infoBottom)
+    parts[#parts + 1] = sized(info, g.scale)
+    parts[#parts + 1] = sized('<Panel id="cz_tidy' .. suffix .. '"' .. vis .. ' width="120" height="30" rectAlignment="LowerRight" offsetXY="-12 '
       .. TIDY_Y .. '"' .. PANEL .. '><HorizontalLayout childForceExpandWidth="false" childAlignment="MiddleRight">'
-      .. smallButton("cz-tidy", "Tidy table", 12) .. '</HorizontalLayout></Panel>'
+      .. smallButton("cz-tidy", "Tidy table", 12) .. '</HorizontalLayout></Panel>', g.scale)
     for _, color in ipairs(g.colors) do infoTop[color] = infoBottom + math.ceil(h * g.scale) end
   end
 
@@ -445,11 +456,11 @@ function UI_.xml(game)
   table.sort(colors)
   for _, color in ipairs(colors) do
     local h = wrappedHeight(byColor[color], 13) + 6
-    parts[#parts + 1] = '<Panel id="cz_notice_' .. color .. '" visibility="' .. color .. '"' .. scaleAttr(UI_.scaleOf(game, color), "1 0")
+    parts[#parts + 1] = sized('<Panel id="cz_notice_' .. color .. '" visibility="' .. color .. '"'
       .. ' width="' .. UI_.INFO_WIDTH .. '" height="' .. h .. '" rectAlignment="LowerRight" offsetXY="-12 '
       .. ((infoTop[color] or INFO_BOTTOM) + 6) .. '"' .. PANEL .. '>'
       .. text("cz_notice_text_" .. color, byColor[color], 13, 'alignment="MiddleRight" color="' .. ACCENT .. '"' .. FX)
-      .. '</Panel>'
+      .. '</Panel>', UI_.scaleOf(game, color))
   end
 
   -- The setup and settings menus, for each player who opened one.
@@ -491,12 +502,12 @@ function UI_.xml(game)
       nav[#nav + 1] = { id = "cz-tutclose", label = "Close" }
       nav[#nav + 1] = { id = "cz-tuthide", label = "Hide button" }
       local navXml = buttonRows(nav, 13, 640)
-      parts[#parts + 1] = '<Panel id="cz_tutorial_' .. color .. '" visibility="' .. color .. '"' .. scaleAttr(UI_.scaleOf(game, color), "0.5 0.5")
+      parts[#parts + 1] = sized('<Panel id="cz_tutorial_' .. color .. '" visibility="' .. color .. '"'
         .. ' width="680" height="400" rectAlignment="MiddleCenter" color="#0E1620E6" padding="16 16 12 12"><VerticalLayout spacing="8" childForceExpandHeight="false">'
         .. text("cz_tut_title_" .. color, page[1], 22, 'fontStyle="Bold" color="' .. ACCENT .. '" preferredHeight="34"')
         .. text("cz_tut_body_" .. color, page[2], 16, 'alignment="UpperLeft" preferredHeight="270"')
         .. text("cz_tut_page_" .. color, "Page " .. n .. " of " .. #pages, 12, 'alignment="MiddleRight" color="#9AA4AE" preferredHeight="16"')
-        .. navXml .. '</VerticalLayout></Panel>'
+        .. navXml .. '</VerticalLayout></Panel>', UI_.scaleOf(game, color))
     end
   end
 
@@ -514,16 +525,16 @@ function UI_.xml(game)
     end
     local bar, barHeight = buttonRows(acts.buttons, 12, 1100, { ["cz-playall"] = 17, ["cz-end"] = 17 })
     local barY = UI_.barY(game, color)
-    parts[#parts + 1] = '<Panel id="cz_actions" visibility="' .. color .. '"' .. scaleAttr(scale, "0.5 0") .. ' width="1120" height="'
+    parts[#parts + 1] = sized('<Panel id="cz_actions" visibility="' .. color .. '" width="1120" height="'
       .. barHeight .. '" rectAlignment="LowerCenter" offsetXY="0 ' .. barY .. '"' .. PANEL
-      .. '><VerticalLayout spacing="4" childForceExpandHeight="false">' .. bar .. '</VerticalLayout></Panel>'
+      .. '><VerticalLayout spacing="4" childForceExpandHeight="false">' .. bar .. '</VerticalLayout></Panel>', scale)
     for _, p in ipairs(state.players) do
       local counters = turnCounters(game, p.color)
       if counters then
         local s = UI_.scaleOf(game, p.color)
         local y = UI_.barY(game, p.color) + (p.color == color and math.ceil(barHeight * s) or 0) + 8
-        parts[#parts + 1] = '<Panel id="cz_counters_' .. p.color .. '" visibility="' .. p.color .. '"' .. scaleAttr(s, "0.5 0")
-          .. ' width="400" height="52" rectAlignment="LowerCenter" offsetXY="0 ' .. y .. '"' .. PANEL .. '>' .. counters .. '</Panel>'
+        parts[#parts + 1] = sized('<Panel id="cz_counters_' .. p.color .. '" visibility="' .. p.color .. '"'
+          .. ' width="400" height="52" rectAlignment="LowerCenter" offsetXY="0 ' .. y .. '"' .. PANEL .. '>' .. counters .. '</Panel>', s)
       end
     end
   end

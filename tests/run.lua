@@ -1505,10 +1505,14 @@ test("Settings: each player sets their own UI size and action bar height", funct
   click(GUEST, "cz-uibigger")
   xml = tts.ui.xml
   assert(xml:find('id="cz_set_ui_Red_value"[^>]*>125%%<'), "two steps up: 125%")
-  assert(xml:find('id="cz_panel_2" visibility="Red" scale="1.25 1.25" pivot="1 0"', 1, true), "Red's info panel, scaled from its corner")
+  assert(xml:find('id="cz_panel_2" visibility="Red" width="375"', 1, true), "Red's own info panel, drawn 25% bigger")
+  assert(not xml:find(' scale="', 1, true), "drawn at real size, not with TTS's scale attribute")
+  local from = xml:find('id="cz_panel_2"', 1, true)
+  assert(xml:find('id="cz%-setup"[^>]*fontSize="18"', from), "its buttons' text 25% bigger too (14 -> 18)")
+  assert(xml:find('id="cz%-setup"[^>]*colors="#D6DEE8', from), "buttons keep their look")
   assert(xml:find('id="cz_panel" visibility="White|Brown|Orange', 1, true), "everyone else keeps the normal one")
-  assert(xml:find('id="cz_tidy_2" visibility="Red" scale="1.25 1.25"', 1, true), "and Tidy table")
-  assert(xml:find('id="cz_settings_Red" visibility="Red" scale="1.25 1.25"', 1, true), "menus too")
+  assert(xml:find('id="cz_tidy_2" visibility="Red" width="150"', 1, true), "and Tidy table")
+  assert(xml:find('id="cz_settings_Red" visibility="Red" width="825"', 1, true), "menus too")
   local normalBottom = tonumber(xml:match('id="cz_panel"[^>]*offsetXY="%-12 (%d+)"'))
   local redBottom = tonumber(xml:match('id="cz_panel_2"[^>]*offsetXY="%-12 (%d+)"'))
   assert(redBottom > normalBottom, "Red's info panel sits higher, above the bigger Tidy button")
@@ -1524,7 +1528,7 @@ test("Settings: each player sets their own UI size and action bar height", funct
   click(HOST, "cz-barreset")
   eq(Cardalyzer.require("engine.ui").barY(game, "White"), before, "Reset")
   click(HOST, "cz-uismaller")
-  assert(tts.ui.xml:find('id="cz_actions" visibility="White" scale="0.9 0.9" pivot="0.5 0"', 1, true), "White's bar scales from its bottom")
+  assert(tts.ui.xml:find('id="cz_actions" visibility="White" width="1008"', 1, true), "White's bar drawn at 90%")
 
   -- Kept after a reload; menus closed.
   local restored = boot(game:save())
