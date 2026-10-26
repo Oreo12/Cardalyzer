@@ -72,8 +72,9 @@ function UI_.actions(game)
       for _, uid in ipairs(victim.bases) do
         local c = game.cards:get(State.cardId(state, uid))
         local open = #guards == 0 or Util.indexOf(guards, uid)
-        if open and pool >= (c.defense or 0) and Actions.typeDef(game, c).target ~= false then
-          add(out.buttons, "cz-hit-" .. other .. "-" .. uid, "Destroy " .. c.name .. " (" .. (c.defense or 0) .. ")")
+        local defense = Actions.defenseOf(game, other, uid)
+        if open and pool >= defense and Actions.typeDef(game, c).target ~= false then
+          add(out.buttons, "cz-hit-" .. other .. "-" .. uid, "Destroy " .. c.name .. " (" .. defense .. ")")
         end
       end
     end
@@ -86,6 +87,9 @@ function UI_.actions(game)
     end
   end
 
+  for _, a in ipairs(Actions.activatable(game, seat)) do
+    add(out.buttons, "cz-use-" .. a.uid, "Use " .. game:cardOf(a.uid).name .. (a.def.text and (": " .. a.def.text) or ""))
+  end
   local goalLabel = game.rules.objectives and game.rules.objectives.label or "goal"
   for _, uid in ipairs(Actions.completable(game, seat)) do
     add(out.buttons, "cz-goal-" .. uid, "Complete " .. game:cardOf(uid).name)
@@ -252,7 +256,7 @@ local function seatRow(game, seat)
   if not p.out then
     for i, uid in ipairs(p.bases) do
       local c = game.cards:get(State.cardId(state, uid))
-      if c.defense then xml = xml .. counter("cz_base_" .. seat .. "_" .. i, "shield", c.defense, 30) end
+      if c.defense then xml = xml .. counter("cz_base_" .. seat .. "_" .. i, "shield", Actions.defenseOf(game, seat, uid), 30) end
     end
     for _, st in ipairs(rules.stats or {}) do
       local icon = UI_.iconFor(rules, st, "stat")
@@ -261,7 +265,8 @@ local function seatRow(game, seat)
         or text("cz_stat_" .. seat .. "_" .. st.key, (st.label or Util.titleCase(st.key)) .. " " .. value, 14, FX))
     end
   end
-  local goals = rules.objectives and (" · " .. (rules.objectives.label or "Goals") .. " " .. #p.completed
+  -- only in a game that dealt objectives (their set may be switched off)
+  local goals = rules.objectives and #p.completed + #p.objectives > 0 and (" · " .. (rules.objectives.label or "Goals") .. " " .. #p.completed
     .. "/" .. (rules.objectives.toWin or #p.completed + #p.objectives)) or ""
   local piles = text("cz_seat_" .. seat .. "_piles", "Deck " .. #p.deck .. " · Discard " .. #p.discard .. goals, 11,
     'color="#C8CED6" alignment="MiddleRight" preferredHeight="14"' .. FX)
@@ -473,6 +478,13 @@ function UI_.setupPanel(game, color)
   end
   add(UI_.playersRow(game))
   add(UI_.openingRow(game))
+  if game.rules.kits and #game.rules.kits > 0 then
+    local mode = game:setupChoice("kits") or "off"
+    add(UI_.optionRow("cz_kits", game.rules.kitLabel or "Starting decks", {
+      { id = "cz-kits-off", label = "Standard", on = mode ~= "random" },
+      { id = "cz-kits-random", label = "Random " .. (game.rules.kitName or "kit"), on = mode == "random" },
+    }))
+  end
   for _, r in ipairs(UI_.setRows(game)) do add(r) end
   local extra = #rows > 0 and { '<VerticalLayout spacing="8" preferredHeight="' .. height .. '" childForceExpandHeight="false">'
     .. table.concat(rows) .. '</VerticalLayout>', height } or nil

@@ -153,7 +153,7 @@ function Game:setupState()
   self.state = State.new(self.rules, count)
   self.state.view = view -- keep zone GUIDs so zones aren't respawned
   Turn.setup(self.state, self.rules, self.cards, self.random, Turn.openingRule(self.rules, self:setupChoice("opening")),
-    self:setsInPlay())
+    self:setsInPlay(), self:kitsFor(count))
   Actions.setAsideEvents(self)
   Actions.startTurn(self, self.state.turn.active)
 end
@@ -183,6 +183,31 @@ function Game:setsInPlay()
     if on then out[set.key] = true end
   end
   return out
+end
+
+-- Kits for the next game, { [seat] = kit }: with the setup menu's kit
+-- choice on "random", each player gets a different kit from rules.kits.
+function Game:kitsFor(count)
+  local kits = self.rules.kits
+  if not kits or #kits == 0 or self:setupChoice("kits") ~= "random" then return nil end
+  local order = {}
+  for i = 1, #kits do order[i] = i end
+  for i = #order, 2, -1 do
+    local j = math.floor(self.random() * i) + 1
+    order[i], order[j] = order[j], order[i]
+  end
+  local out = {}
+  for seat = 1, count do out[seat] = kits[order[(seat - 1) % #kits + 1]] end
+  return out
+end
+
+-- Turns kits on ("random") or off for the next New Game (host only).
+function Game:setKits(mode)
+  if mode ~= "random" and mode ~= "off" then return false, "Kits are random or off." end
+  self.state.view.setup = self.state.view.setup or {}
+  self.state.view.setup.kits = mode
+  self:refreshUI()
+  return true
 end
 
 -- Switches set `key` in or out of the next New Game (host only). Sets marked
@@ -414,6 +439,7 @@ function Game:pick(seat, value) return self:act(Actions.pick, seat, value) end
 function Game:done(seat) return self:act(Actions.done, seat) end
 function Game:endTurn(seat) return self:act(Actions.endTurn, seat) end
 function Game:completeObjective(seat, uid) return self:act(Actions.completeObjective, seat, uid) end
+function Game:activate(seat, uid) return self:act(Actions.activate, seat, uid) end
 
 -- A Buy button was clicked on a market card or a fixed pile's deck object.
 function Game:buyObject(seat, guid, uid)

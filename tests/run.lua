@@ -1964,6 +1964,130 @@ test("turn records: what was gained, and which factions' allies fired", function
   eq(turn.allyFactions.grove, nil, "no Grove")
 end)
 
+test("kits: each player gets their own starters, dealt cards, stats and hand size", function()
+  local game = boot()
+  -- Two kits made from sample cards.
+  for _, id in ipairs({ "tide_runner", "harbor_broker" }) do local c = game.cards:get(id); c.deck, c.set = "starter", "kitA" end
+  for _, id in ipairs({ "veil_cutpurse", "shade_scout" }) do local c = game.cards:get(id); c.deck, c.set = "starter", "kitB" end
+  local leader = game.cards:get("lighthouse"); leader.deck, leader.set = "dealt", "kitA"
+  local bonus = game.cards:get("fleet_admiral"); bonus.set = "kitA" -- kitA's market card
+  game.rules.kits = {
+    { key = "a", label = "Kit A", set = "kitA", stats = { health = 60 }, handSize = 6 },
+    { key = "b", label = "Kit B", set = "kitB", stats = { health = 30 }, handSize = 4 },
+  }
+  Cardalyzer_onStartGame(HOST)
+  eq(game.state.players[1].kit, nil, "standard decks by default")
+  click(HOST, "cz-setup")
+  assert(tts.ui.xml:find('id="cz-kits-random"', 1, true), "a Starting decks option")
+  click(GUEST, "cz-kits-random")
+  eq(game:setupChoice("kits"), nil, "host only")
+  click(HOST, "cz-kits-random")
+  Cardalyzer_onStartGame(HOST)
+  local seen = {}
+  for _, p in ipairs(game.state.players) do
+    local kit = p.kit
+    assert(kit == "a" or kit == "b", "a kit each")
+    assert(not seen[kit], "different kits")
+    seen[kit] = true
+    local ids = {}
+    for _, list in ipairs({ p.deck, p.hand }) do for _, uid in ipairs(list) do ids[game.state.cards[uid]] = true end end
+    assert(not ids.apprentice, "no standard starters")
+    if kit == "a" then
+      assert(ids.tide_runner, "kit A starters")
+      eq(p.stats.health, 60, "kit A health")
+      eq(p.handSize, 6, "kit A hand size")
+      eq(game.state.cards[p.bases[1]], "lighthouse", "kit A's dealt card in play")
+    else
+      assert(ids.veil_cutpurse, "kit B starters")
+      eq(p.stats.health, 30, "kit B health")
+    end
+  end
+  local inMarket = false
+  for _, uid in ipairs(game.state.market.deck) do if game.state.cards[uid] == "fleet_admiral" then inMarket = true end end
+  for _, uid in ipairs(game.state.market.row) do if uid ~= "" and game.state.cards[uid] == "fleet_admiral" then inMarket = true end end
+  assert(inMarket, "kit A's market card is in the market")
+  -- the kit hand size applies when drawing a new hand
+  local a = game.state.players[1].kit == "a" and 1 or 2
+  game.state.turn.active = a
+  for _ = 1, 10 do game.state.players[a].deck[#game.state.players[a].deck + 1] = Cardalyzer.require("engine.state").newCard(game.state, "squire") end
+  game:endTurn(a)
+  eq(#game.state.players[a].hand, 6, "draws 6")
+  game.rules.kits = nil
+end)
+
+test("activated abilities, discounts, buyToDeck, whenYouGain and same-name allies", function()
+  local game, put, putRow = blank()
+  local p = game.state.players[1]
+  game.effects:registerCustom("tap", { text = "+1 Gold", activate = function(g, seat) g.state.players[seat].resources.gold = g.state.players[seat].resources.gold + 1 end })
+  game.cards:get("seed_vault").effects = { { key = "custom", fn = "tap" } }
+  local vault = put(1, "bases", "seed_vault")
+  game:refreshUI()
+  assert(tts.ui.xml:find("cz-use-" .. vault, 1, true), "a Use button")
+  click(WHITE, "cz-use-" .. vault)
+  eq(p.resources.gold, 1, "used")
+  assert(not tts.ui.xml:find("cz-use-" .. vault, 1, true), "once a turn")
+  -- discount: the next Forge card costs 1 less
+  p.resources.gold = 2
+  p.flags.discount = { faction = "forge", amount = 1 }
+  local crew = putRow(1, "bellows_crew") -- Forge, cost 3
+  eq(game:buy(1, crew), true, "bought for 2")
+  eq(p.resources.gold, 0, "paid 2")
+  eq(p.flags.discount, nil, "used up")
+  -- buyToDeck: shuffled into the deck
+  p.resources.gold = 5
+  p.flags.buyToDeck = true
+  local runner = putRow(2, "tide_runner")
+  game:buy(1, runner)
+  assert(has(p.deck, runner), "into the deck")
+  -- whenYouGain: first gain of a key this turn
+  local firsts = 0
+  game.effects:registerCustom("onGain", { whenYouGain = function(g, seat, ctx, gain) if gain.key == "health" and gain.first then firsts = firsts + 1 end end })
+  game.cards:get("hidden_den").effects = { { key = "custom", fn = "onGain" } }
+  put(1, "bases", "hidden_den")
+  game.effects:apply(game, 1, { { key = "health", amount = 2 } })
+  game.effects:apply(game, 1, { { key = "health", amount = 2 } })
+  eq(firsts, 1, "only the first gain counts as first")
+  -- same-name ally: fires with another copy of the card
+  local smith = game.cards:get("ember_smith")
+  smith.allyGroups = { { faction = "samename", effects = { { key = "gold", amount = 5 } } } }
+  local gold = p.resources.gold
+  game:play(1, put(1, "hand", "ember_smith"))
+  eq(p.resources.gold, gold, "alone: nothing")
+  game:play(1, put(1, "hand", "ember_smith"))
+  eq(p.resources.gold, gold + 10, "two of them: both fire")
+end)
+
+test("granting all allies, whenYouUseAlly, defense modifiers and hidden helpers", function()
+  local game, put = blank()
+  local p = game.state.players[1]
+  -- whenYouUseAlly: told which ally group fired
+  local used = {}
+  game.effects:registerCustom("watchAllies", { text = "", whenYouUseAlly = function(g, seat, ctx, u) used[#used + 1] = u.card.id end })
+  game.cards:get("seed_vault").effects = { { key = "custom", fn = "watchAllies" } }
+  put(1, "bases", "seed_vault")
+  game:play(1, put(1, "hand", "ember_smith"))
+  eq(#used, 0, "no ally yet")
+  game:grantAllies(1, "all")
+  eq(p.resources.might, 4, "granting all: the Smith's ally fires")
+  eq(used[1], "ember_smith", "and whenYouUseAlly heard it")
+  eq(game.effects:describe(game:cardOf(p.bases[1]).effects), "", "a helper with text \"\" isn't described")
+  -- defenseMod: +1 to the holder's bases, -1 to everyone else's
+  game.effects:registerCustom("walls", { defenseMod = function(g, seat, ctx, base) return base.owner == seat and 1 or -1 end })
+  game.cards:get("hidden_den").effects = { { key = "custom", fn = "walls" } }
+  put(1, "bases", "hidden_den")
+  local Actions = Cardalyzer.require("engine.actions")
+  local State = Cardalyzer.require("engine.state")
+  local mine = put(1, "bases", "seed_vault")
+  local theirs = State.newCard(game.state, "seed_vault")
+  game.state.players[2].bases[1] = theirs
+  local printed = game.cards:get("seed_vault").defense
+  eq(Actions.defenseOf(game, 1, mine), printed + 1, "my base")
+  eq(Actions.defenseOf(game, 2, theirs), printed - 1, "their base")
+  p.resources.might = 10
+  game:refreshUI()
+  assert(tts.ui.xml:find("Destroy Seed Vault (" .. (printed - 1) .. ")", 1, true), "the attack button shows the new defense")
+end)
+
 test("any player's waiting choice shows on their own screen", function()
   local game = blank()
   game:prompt(2, { kind = "choice", options = { { key = "gold", amount = 1 }, { key = "might", amount = 1 } } })

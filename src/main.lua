@@ -99,6 +99,12 @@ function Cardalyzer_onUI(player, _, id)
     end
     return run(player.color, game.toggleSet, arg)
   end
+  if action == "kits" then
+    if not player.host and not player.promoted then
+      return tell(player.color, "Only the host can choose the starting decks.")
+    end
+    return run(player.color, game.setKits, arg)
+  end
   if action == "opening" then
     if not player.host and not player.promoted then
       return tell(player.color, "Only the host can change how many cards are dealt.")
@@ -120,6 +126,8 @@ function Cardalyzer_onUI(player, _, id)
     run(player.color, game.scrapFromPlay, seat, arg)
   elseif action == "pick" then
     run(player.color, game.pick, seat, arg)
+  elseif action == "use" then
+    run(player.color, game.activate, seat, arg)
   elseif action == "goal" then
     run(player.color, game.completeObjective, seat, arg)
   elseif action == "done" then
