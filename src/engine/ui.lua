@@ -34,6 +34,21 @@ function UI_.turnLine(game)
   return "Turn " .. state.turn.number .. " · " .. active.name .. " to play"
 end
 
+-- A seat's first waiting choice: its text and its option buttons (nil if none).
+-- Any player can have one: events ask every player.
+function UI_.promptFor(game, seat)
+  local p = game.state.players[seat]
+  local prompt = p.prompts[1]
+  local choices = {}
+  if not prompt then return nil, choices end
+  local more = #p.prompts > 1 and (" (+" .. (#p.prompts - 1) .. " more)") or ""
+  for _, t in ipairs(Actions.targets(game, seat, prompt)) do
+    choices[#choices + 1] = { id = "cz-pick-" .. t.value, label = t.label }
+  end
+  if prompt.optional then choices[#choices + 1] = { id = "cz-done", label = prompt.kind == "reminder" and "Done" or "Skip / done" } end
+  return Actions.promptText(game, prompt) .. more, choices
+end
+
 -- The active player's options. `prompt` is the first choice waiting (with
 -- `choices`, its buttons), and `buttons` everything else they can do now.
 function UI_.actions(game)
@@ -43,13 +58,7 @@ function UI_.actions(game)
   local out = { prompt = nil, choices = {}, buttons = {} }
   local function add(list, id, label) list[#list + 1] = { id = id, label = label } end
 
-  local prompt = p.prompts[1]
-  if prompt then
-    local more = #p.prompts > 1 and (" (+" .. (#p.prompts - 1) .. " more)") or ""
-    out.prompt = Actions.promptText(game, prompt) .. more
-    for _, t in ipairs(Actions.targets(game, seat, prompt)) do add(out.choices, "cz-pick-" .. t.value, t.label) end
-    if prompt.optional then add(out.choices, "cz-done", prompt.kind == "reminder" and "Done" or "Skip / done") end
-  end
+  out.prompt, out.choices = UI_.promptFor(game, seat)
 
   if #p.hand > 0 and not Actions.handBlocked(game, seat) then add(out.buttons, "cz-playall", "Play all (" .. #p.hand .. ")") end
 
@@ -63,7 +72,7 @@ function UI_.actions(game)
       for _, uid in ipairs(victim.bases) do
         local c = game.cards:get(State.cardId(state, uid))
         local open = #guards == 0 or Util.indexOf(guards, uid)
-        if open and pool >= (c.defense or 0) then
+        if open and pool >= (c.defense or 0) and Actions.typeDef(game, c).target ~= false then
           add(out.buttons, "cz-hit-" .. other .. "-" .. uid, "Destroy " .. c.name .. " (" .. (c.defense or 0) .. ")")
         end
       end
@@ -571,6 +580,15 @@ function UI_.xml(game)
     local scale = UI_.scaleOf(game, color)
     if acts.prompt then
       parts[#parts + 1] = centrePanel("cz_choice", color, acts.prompt, ACCENT, 18, nil, acts.choices, scale)
+    end
+    -- Other players' waiting choices (from events), each on their own screen.
+    for seat, p in ipairs(state.players) do
+      if seat ~= state.turn.active then
+        local text, choices = UI_.promptFor(game, seat)
+        if text then
+          parts[#parts + 1] = centrePanel("cz_choice_" .. p.color, p.color, text, ACCENT, 18, nil, choices, UI_.scaleOf(game, p.color))
+        end
+      end
     end
     local bar, barHeight = buttonRows(acts.buttons, 12, 1100, { ["cz-playall"] = 17, ["cz-end"] = 17 })
     local barY = UI_.barY(game, color)
