@@ -26,19 +26,18 @@ function Zones.defaultCount(rules)
   return math.min(players.default or players.min or #rules.seats, #rules.seats)
 end
 
--- Seats sit on the two long sides of the table, facing the centre, so a
--- rectangular table fits four. Seat 1 is at the bottom (-z) left, and play
--- goes along the bottom from left to right, then back along the top, so each
--- player's neighbours are next in turn order. Two seats face each other
--- across the centre.
-local function seatFrame(seat, count, distance, spread, shift)
+-- Seats sit on the two long sides of the table, facing the market in the
+-- centre, so a rectangular table fits four. Seat 1 is at the bottom (-z)
+-- left, and play goes along the bottom from left to right, then back along
+-- the top, so each player's neighbours are next in turn order. Two seats on
+-- a side sit the same distance either side of the market; a seat alone on
+-- its side is in line with it.
+local function seatFrame(seat, count, distance, spread)
   local bottom = math.ceil(count / 2)
   local top = seat > bottom
   local n = top and count - bottom or bottom
   local i = top and seat - bottom or seat
-  -- A seat's piles reach further to its right (bases) than its left, so a
-  -- shared side is shifted to keep the pair centred on the table.
-  local along = (i - (n + 1) / 2) * spread - (n > 1 and shift or 0)
+  local along = (i - (n + 1) / 2) * spread
   local s = top and -1 or 1
   return {
     origin = { x = s * along, z = -s * distance },
@@ -76,7 +75,7 @@ function Zones.layout(rules, fixedIds, count)
 
   local result = { seats = {}, market = { row = {}, fixed = {} } }
   for seat = 1, count do
-    local f = seatFrame(seat, count, distance, spread, gap * 1.125)
+    local f = seatFrame(seat, count, distance, spread)
     result.seats[seat] = {
       play = spot(f, y, 0, 2, yaw, { gap * 6, 3, 4 }),
       bases = spot(f, y, gap * 4.5, 2, yaw, { gap * 2.5, 3, 4 }),
@@ -91,7 +90,7 @@ function Zones.layout(rules, fixedIds, count)
   end
 
   -- The market runs along the x axis through the table centre, read by seat 1.
-  local centre = seatFrame(1, 1, 0, 0, 0)
+  local centre = seatFrame(1, 1, 0, 0)
   local n = rules.market.rowSize
   local first = -(n - 1) / 2 * gap
   for i = 1, n do
@@ -138,8 +137,8 @@ local function place(obj, s)
 end
 
 -- Spawns any scripting zone that is missing, reuses the ones whose GUIDs are
--- saved in state.view.zones, removes those of seats no longer playing, and
--- moves each seat's hand zone into place.
+-- saved in state.view.zones, moves each seat's hand zone into place, and
+-- removes the zones and hand zones of seats no longer playing.
 function Zones.build(game, layout)
   local view = game.state.view
   local wanted = {}
@@ -183,6 +182,15 @@ function Zones.build(game, layout)
       hand.setValue(color)
     end
     view.hands[color] = hand.getGUID()
+  end
+
+  -- Hand zones of seats in the rules that aren't playing are removed, so
+  -- they can't overlap the hands of a smaller table.
+  for i = #layout.seats + 1, #game.rules.seats do
+    local color = game.rules.seats[i].color
+    local hand = view.hands[color] and getObjectFromGUID(view.hands[color]) or findHand(color)
+    if hand then hand.destruct() end
+    view.hands[color] = nil
   end
 end
 

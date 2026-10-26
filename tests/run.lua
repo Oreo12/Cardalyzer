@@ -717,10 +717,21 @@ test("3 and 4 seats sit on the two long sides without overlapping", function()
       end
     end
   end
+  -- Seats are spaced evenly around the market at the centre: a pair sits the
+  -- same distance either side of it, and a seat alone on its side is in line with it.
+  local function x(seat, n) return Zones.layout(game.rules, game.fixedIds, n).seats[seat].play.position[1] end
+  local market = Zones.layout(game.rules, game.fixedIds, 3).market.area.position[1]
+  eq(market, 0, "market at the centre")
+  eq(x(3, 3), 0, "3 seats: the lone seat is in line with the market")
+  eq(x(1, 3) + x(2, 3), 0, "3 seats: the pair is centred on the market")
+  assert(x(1, 3) < 0 and x(2, 3) > 0, "3 seats: one either side")
+  eq(x(1, 4) + x(2, 4), 0, "4 seats: bottom pair centred")
+  eq(x(3, 4) + x(4, 4), 0, "4 seats: top pair centred")
+  eq(x(2, 4), x(3, 4), "4 seats: seats 2 and 3 face each other")
+  eq(x(1, 4), x(4, 4), "4 seats: seats 1 and 4 face each other")
   -- Turn order runs along the bottom, then back along the top.
   local four = Zones.layout(game.rules, game.fixedIds, 4).seats
   assert(four[1].play.position[1] < four[2].play.position[1], "seat 2 is right of seat 1")
-  assert(four[3].play.position[1] > 0 and four[4].play.position[1] < 0, "seat 3 is across from seat 2, seat 4 from seat 1")
   -- Like two seats, the four sit point-symmetrically: seat 3 is seat 1 turned 180 degrees about the centre.
   for _, name in ipairs({ "play", "bases", "deck", "discard", "hand" }) do
     assert(math.abs(four[1][name].position[1] + four[3][name].position[1]) < 1e-9, name .. " x")
@@ -739,6 +750,8 @@ test("the host picks 2 to 4 players and the table is laid out for them", functio
   eq(count(ofType("HandTrigger")), 4, "hand zones")
   click(HOST, "cz-players-3")
   eq(count(ofType("ScriptingTrigger")), 13, "the fourth seat's zones are removed")
+  eq(count(ofType("HandTrigger")), 3, "and its hand zone")
+  eq(game.state.view.hands.Green, nil, "Green's hand is forgotten")
   click(HOST, "cz-players-5")
   eq(#game.state.players, 3, "out of range refused")
 

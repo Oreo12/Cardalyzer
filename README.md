@@ -100,7 +100,7 @@ Realms, Ascension, Dominion, and the card play in Clank-style games.
 - **More than four players, or teams.** Up to four seats fit on the two long
   sides of a rectangular table, and every game is a free-for-all: the last
   player left wins. Three- and four-player games pass the automated tests but
-  haven't been played in TTS yet. Four seats need a table about 55 units wide;
+  haven't been played in TTS yet. Four seats need a table about 60 units wide;
   on a smaller one, lower `layout.seatSpread`.
 - **Cards moved by hand.** Cardalyzer tracks the game in its script, not by
   where cards sit. If you drag a card somewhere it doesn't read, use Tidy table
