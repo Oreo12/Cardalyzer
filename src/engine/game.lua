@@ -116,8 +116,24 @@ function Game:setupState()
   local count = self.state.nextPlayers or #self.state.players
   self.state = State.new(self.rules, count)
   self.state.view = view -- keep zone GUIDs so zones aren't respawned
-  Turn.setup(self.state, self.rules, self.cards, self.random)
+  Turn.setup(self.state, self.rules, self.cards, self.random, Turn.openingRule(self.rules, self:setupChoice("opening")))
   Actions.startTurn(self, self.state.turn.active)
+end
+
+-- A choice made in the setup menu (kept in state.view, so it lasts from game
+-- to game and through a reload). nil means the first option.
+function Game:setupChoice(key)
+  return self.state.view.setup and self.state.view.setup[key]
+end
+
+-- Picks option i of rules.openingHands for the next New Game (host only).
+function Game:setOpening(i)
+  local options = self.rules.openingHands or {}
+  if not options[i] then return false, "That isn't one of the opening-hand options." end
+  self.state.view.setup = self.state.view.setup or {}
+  self.state.view.setup.opening = i
+  self:refreshUI()
+  return true
 end
 
 function Game:save()

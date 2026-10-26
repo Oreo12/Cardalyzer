@@ -5,15 +5,33 @@ local State = require("engine.state")
 
 local Turn = {}
 
-local function openingHandSize(rules, order)
-  local opening = rules.openingHand or rules.handSize
-  if type(opening) == "table" then
-    return opening[order] or opening[#opening]
+-- How many cards the player `order`-th in turn order draws first, out of
+-- `count` players. An opening-hand rule is one of:
+--   5                                   everyone draws 5
+--   { 3, 5 }                            by turn order; the last number repeats
+--   { players = { [2] = { 3, 5 } }, otherwise = { 3, 4, 5 } }
+--                                       by player count, then turn order
+function Turn.openingHandSize(spec, order, count, handSize)
+  if type(spec) == "table" and spec.players then
+    spec = spec.players[count] or spec.otherwise or handSize
   end
-  return opening
+  if type(spec) == "table" then return spec[order] or spec[#spec] end
+  return spec or handSize
 end
 
-function Turn.setup(state, rules, cards, random)
+-- The opening-hand rule in use: rules.openingHands[choice].hands when the
+-- game offers a choice (picked in the setup menu), else rules.openingHand.
+function Turn.openingRule(rules, choice)
+  local options = rules.openingHands
+  if options and #options > 0 then
+    local picked = options[choice or 1] or options[1]
+    return picked.hands
+  end
+  return rules.openingHand
+end
+
+-- `opening` is the opening-hand rule (see Turn.openingRule); default rules.openingHand.
+function Turn.setup(state, rules, cards, random, opening)
   for _, player in ipairs(state.players) do
     for _, card in ipairs(cards:inDeck("starter")) do
       for _ = 1, card.copies do
@@ -42,7 +60,7 @@ function Turn.setup(state, rules, cards, random)
   local first = math.min(rules.firstSeat or 1, count)
   for order = 1, count do
     local seat = (first + order - 2) % count + 1
-    Turn.draw(state, seat, openingHandSize(rules, order))
+    Turn.draw(state, seat, Turn.openingHandSize(opening or rules.openingHand, order, count, rules.handSize))
   end
 
   state.turn.active = first

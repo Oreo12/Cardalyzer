@@ -65,6 +65,12 @@ function Effects.new(rules)
     end,
     text = function(amount) return "You may scrap up to " .. amount .. " from hand or discard" end,
   })
+  self:register("scrap_required", {
+    apply = function(game, seat, amount)
+      game:prompt(seat, { kind = "scrap", count = amount, optional = false, from = { "hand", "discard" } })
+    end,
+    text = function(amount) return "Scrap " .. amount .. " from hand or discard" end,
+  })
   self:register("scrap_row", {
     apply = function(game, seat, amount)
       game:prompt(seat, { kind = "scrap_row", count = amount, optional = true })

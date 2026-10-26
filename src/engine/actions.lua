@@ -10,6 +10,19 @@ local Actions = {}
 
 local function fail(msg) return false, msg end
 
+-- Sends a scrapped card to the scrap pile. With rules.market.returnScrapped,
+-- a card from a fixed pile (Star Realms' Explorers) goes back to its pile instead.
+function Actions.toScrap(game, uid)
+  local market = game.state.market
+  local id = State.cardId(game.state, uid)
+  local pile = game.rules.market.returnScrapped and market.fixed[id]
+  if pile then
+    pile[#pile + 1] = uid
+  else
+    market.scrap[#market.scrap + 1] = uid
+  end
+end
+
 -- What a uid acts as, including a copy made this turn (Game:cardOf).
 local function card(game, uid)
   return game:cardOf(uid)
@@ -220,7 +233,7 @@ function Actions.scrapFromPlay(game, seat, uid)
   if not (Util.removeValue(player.play, uid) or Util.removeValue(player.bases, uid)) then
     return fail("That card isn't in play.")
   end
-  game.state.market.scrap[#game.state.market.scrap + 1] = uid
+  Actions.toScrap(game, uid)
   game.effects:apply(game, seat, c.scrapEffects, { uid = uid, card = c })
   return true
 end
@@ -235,7 +248,7 @@ function Actions.scrapFromRow(game, seat, uid)
   local slot = Util.indexOf(market.row, uid)
   if not slot then return fail("That card isn't in the market row.") end
   market.row[slot] = State.EMPTY
-  market.scrap[#market.scrap + 1] = uid
+  Actions.toScrap(game, uid)
   Turn.fillMarket(game.state)
   return true
 end
@@ -465,13 +478,13 @@ function Actions.pick(game, seat, value)
     return true
   elseif kind == "scrap" then
     if not Util.removeValue(player.hand, value) then Util.removeValue(player.discard, value) end
-    state.market.scrap[#state.market.scrap + 1] = value
+    Actions.toScrap(game, value)
   elseif kind == "discard" then
     Util.removeValue(player.hand, value)
     player.discard[#player.discard + 1] = value
   elseif kind == "scrap_row" then
     state.market.row[Util.indexOf(state.market.row, value)] = State.EMPTY
-    state.market.scrap[#state.market.scrap + 1] = value
+    Actions.toScrap(game, value)
     Turn.fillMarket(state)
   elseif kind == "free_buy" then
     Actions.buy(game, seat, value, true, prompt.toTop)
