@@ -57,7 +57,7 @@ for seed = 1, 200 do
   -- conservation
   local seen, total = {}, 0
   local function visit(l) for _, u in ipairs(l) do if u ~= "" then assert(not seen[u], "dup "..u); seen[u]=true; total=total+1 end end end
-  for _, p in ipairs(g.state.players) do visit(p.deck); visit(p.hand); visit(p.discard); visit(p.play); visit(p.bases) end
+  for _, p in ipairs(g.state.players) do visit(p.deck); visit(p.hand); visit(p.discard); visit(p.play); visit(p.bases); visit(p.objectives or {}); visit(p.completed or {}) end
   local m = g.state.market; visit(m.deck); visit(m.row); visit(m.scrap); for _, pl in pairs(m.fixed) do visit(pl) end
   local n = 0; for _ in pairs(g.state.cards) do n = n + 1 end
   assert(n == total, "lost cards seed "..seed)

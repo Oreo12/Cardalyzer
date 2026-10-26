@@ -51,7 +51,7 @@ local function assertConserved(game)
     end
   end
   for _, p in ipairs(game.state.players) do
-    visit(p.deck); visit(p.hand); visit(p.discard); visit(p.play); visit(p.bases)
+    visit(p.deck); visit(p.hand); visit(p.discard); visit(p.play); visit(p.bases); visit(p.objectives or {}); visit(p.completed or {})
   end
   local m = game.state.market
   visit(m.deck); visit(m.row); visit(m.scrap)
