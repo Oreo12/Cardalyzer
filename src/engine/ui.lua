@@ -12,6 +12,7 @@ local State = require("engine.state")
 local Actions = require("engine.actions")
 local Tutorial = require("engine.tutorial")
 local Theme = require("engine.theme")
+local Kits = require("engine.kits")
 
 local UI_ = {}
 
@@ -183,6 +184,46 @@ local function counter(id, icon, value, size)
     .. '</Panel>'
 end
 
+-- What each button does, shown when the mouse is over it. rules.ui.tooltips
+-- adds or replaces any of them ({ [id] = text }; false for none). A button
+-- given its own tooltip (an option's `about`) uses that instead.
+local function kitName() return current.kitName or "kit" end
+local TIPS = {
+  ["cz-setup"] = function() return "Set up and deal a new game (host only)." end,
+  ["cz-settings"] = function() return "Your own UI size and action bar height." end,
+  ["cz-new"] = function() return "Deal a new game with these choices." end,
+  ["cz-tutorial"] = function() return "A short guide to playing here." end,
+  ["cz-setupclose"] = function() return "Close this menu. Your choices are kept." end,
+  ["cz-tidy"] = function() return "Put every card back where the game has it, if any got knocked around." end,
+  ["cz-rulebooks"] = function() return "Put the rulebooks on the table beside the game, or put them away." end,
+  ["cz-playall"] = function() return "Play every card in your hand." end,
+  ["cz-end"] = function() return "End your turn: discard your cards in play and your hand, then draw a new hand." end,
+  ["cz-again"] = function() return "Set up the next game." end,
+  ["cz-settingsclose"] = function() return "Close Settings." end,
+  ["cz-uismaller"] = function() return "Make all of the UI smaller, just for you." end,
+  ["cz-uibigger"] = function() return "Make all of the UI bigger, just for you." end,
+  ["cz-barup"] = function() return "Move your action bar up." end,
+  ["cz-bardown"] = function() return "Move your action bar down." end,
+  ["cz-barreset"] = function() return "Put your action bar back where it started." end,
+  ["cz-kits-off"] = function() return "Everyone starts with the same starting deck." end,
+  ["cz-kits-on"] = function()
+    return "Each player picks their own " .. kitName() .. ": a premade one, a random one, or a custom mix."
+  end,
+  ["cz-kitmenu"] = function() return "Pick your own " .. kitName() .. " for the next game." end,
+  ["cz-kitsave"] = function() return "Keep this choice and go back." end,
+  ["cz-kitcancel"] = function() return "Go back without changing your choice." end,
+  ["cz-kitmode-premade"] = function() return "Pick one of the premade " .. kitName() .. "s." end,
+  ["cz-kitmode-random"] = function()
+    return "Get a random premade " .. kitName() .. " (one nobody else picked) when the game starts."
+  end,
+  ["cz-kitmode-custom"] = function() return "Build your own from the parts of the premade " .. kitName() .. "s." end,
+}
+local function tipFor(id)
+  local own = current.ui and current.ui.tooltips and current.ui.tooltips[id]
+  if own ~= nil then return own or nil end
+  return TIPS[id] and TIPS[id]() or nil
+end
+
 -- A standalone button, as wide as its label needs. Its look comes from the
 -- theme: primary for the main actions (the theme's primary ids), `kind` if
 -- given ("selected" for a chosen option), else secondary. Returns XML and width.
@@ -191,6 +232,7 @@ local function smallButton(id, label, size, kind, width, tooltip)
   kind = kind or (Theme.isPrimary(current, id) and "primary" or "secondary")
   local colors, textColor = Theme.button(current, kind)
   width = width or math.max(60, math.floor(#label * size * 0.6) + 24)
+  tooltip = tooltip or tipFor(id)
   local tip = tooltip and (' tooltip="' .. escape(tooltip) .. '" tooltipPosition="Above" tooltipWidth="320"') or ""
   return string.format('<Button id="%s" onClick="Cardalyzer_onUI" preferredHeight="%d" preferredWidth="%d" fontSize="%d"'
     .. ' fontStyle="Bold" colors="%s" textColor="%s"%s>%s</Button>',
@@ -399,6 +441,10 @@ function UI_.infoPanel(game, suffix, attrs, bottom)
     row(text("cz_notice_" .. i, msg, 12, 'color="' .. accent() .. '" fontStyle="Italic" alignment="MiddleRight" preferredHeight="'
       .. h .. '"' .. FX), h)
   end
+  if game.rules.kits and game:kitsOn() then
+    row('<HorizontalLayout preferredHeight="28" childForceExpandWidth="false" childAlignment="MiddleRight">'
+      .. smallButton("cz-kitmenu", "Your " .. (game.rules.kitName or "kit"), 14) .. '</HorizontalLayout>', 28)
+  end
   row('<HorizontalLayout spacing="6" preferredHeight="28" childForceExpandWidth="false" childAlignment="MiddleRight">'
     .. smallButton("cz-settings", "Settings", 14) .. smallButton("cz-setup", "New Game", 14) .. '</HorizontalLayout>', 28)
 
@@ -457,7 +503,9 @@ function UI_.playersRow(game)
   local state = game.state
   local chosen = state.nextPlayers or #state.players
   local list = {}
-  for n = range.min, range.max do list[#list + 1] = { id = "cz-players-" .. n, label = tostring(n), on = n == chosen } end
+  for n = range.min, range.max do
+    list[#list + 1] = { id = "cz-players-" .. n, label = tostring(n), on = n == chosen, tooltip = "Deal the next game for " .. n .. " players." }
+  end
   return UI_.optionRow("cz_players", "Players", list)
 end
 
@@ -472,10 +520,28 @@ local function cellWidth(n)
   local g = Theme.of(current).grid
   return n * g.cell + (n - 1) * 6
 end
--- The grid's full width: the label column and every cell.
-function UI_.gridWidth()
+-- The grid's full width: the label column and every cell (`columns`
+-- cells, default the theme's).
+function UI_.gridWidth(columns)
   local g = Theme.of(current).grid
-  return g.label + 6 + cellWidth(g.columns)
+  return g.label + 6 + cellWidth(columns or g.columns)
+end
+
+-- Options laid out on the grid over as many rows as they need, `label` on
+-- the first. Returns a list of rows.
+function UI_.optionRows(id, label, options, columns)
+  columns = columns or Theme.of(current).grid.columns
+  local rows, row, used = {}, {}, 0
+  for _, o in ipairs(options) do
+    local n = math.min(cellsFor(o.label), columns)
+    if used > 0 and used + n > columns then rows[#rows + 1] = row; row = {}; used = 0 end
+    row[#row + 1] = o
+    used = used + n
+  end
+  if #row > 0 then rows[#rows + 1] = row end
+  local out = {}
+  for i, r in ipairs(rows) do out[i] = UI_.optionRow(id .. "_" .. i, i == 1 and label or "", r) end
+  return out
 end
 
 -- The setup menu, in the middle of the screen for the player who pressed New
@@ -516,18 +582,12 @@ function UI_.setRows(game)
   local sets = game.rules.sets or {}
   if #sets < 2 then return {} end
   local inPlay = game:setsInPlay()
-  local columns = Theme.of(current).grid.columns
-  local rows, row, used = {}, {}, 0
+  local list = {}
   for _, set in ipairs(sets) do
-    local n = cellsFor(set.label)
-    if used > 0 and used + n > columns then rows[#rows + 1] = row; row = {}; used = 0 end
-    row[#row + 1] = { id = "cz-set-" .. set.key, label = set.label, on = inPlay[set.key] == true }
-    used = used + n
+    local tip = set.about or ((set.always and "Always in: " or "Shuffle in ") .. "the " .. set.label .. " cards.")
+    list[#list + 1] = { id = "cz-set-" .. set.key, label = set.label, on = inPlay[set.key] == true, tooltip = tip }
   end
-  if #row > 0 then rows[#rows + 1] = row end
-  local out = {}
-  for i, r in ipairs(rows) do out[i] = UI_.optionRow("cz_sets_" .. i, i == 1 and "Sets" or "", r) end
-  return out
+  return UI_.optionRows("cz_sets", "Sets", list)
 end
 
 function UI_.setupPanel(game, color)
@@ -544,11 +604,12 @@ function UI_.setupPanel(game, color)
   add(UI_.playersRow(game))
   add(UI_.openingRow(game))
   if game.rules.kits and #game.rules.kits > 0 then
-    local mode = game:setupChoice("kits") or "off"
+    local on = game:kitsOn()
     add(UI_.optionRow("cz_kits", game.rules.kitLabel or "Starting decks", {
-      { id = "cz-kits-off", label = "Standard", on = mode ~= "random" },
-      { id = "cz-kits-random", label = "Random " .. (game.rules.kitName or "kit"), on = mode == "random" },
+      { id = "cz-kits-off", label = "Standard", on = not on },
+      { id = "cz-kits-on", label = game.rules.kitName or "Kit", on = on },
     }))
+    if on then add(UI_.kitSummaryRow(game)) end
   end
   for _, r in ipairs(UI_.setRows(game)) do add(r) end
   -- rules.ui.setupMenu(game, color, menu, UI) may change the menu (its
@@ -572,6 +633,96 @@ function UI_.setupPanel(game, color)
   local inset = math.floor((width - UI_.gridWidth()) / 2)
   if extra then extra[1] = extra[1]:gsub('^<VerticalLayout ', '<VerticalLayout padding="' .. inset .. ' 0 0 0" ', 1) end
   return centrePanel("cz_setup_" .. color, color, menu.title, accent(), 22, extra, {}, UI_.scaleOf(game, color), "menu", width)
+end
+
+-- Who's playing which kit next game: "White: The Union · Red: Random".
+function UI_.kitSummaryRow(game)
+  use(game)
+  local count = game.state.nextPlayers or #game.state.players
+  local parts = {}
+  for seat = 1, count do
+    local color = game.rules.seats[seat].color
+    parts[#parts + 1] = color .. ": " .. Kits.summary(game, Kits.choiceOf(game, color))
+  end
+  local g = Theme.of(current).grid
+  return '<HorizontalLayout spacing="6" preferredHeight="30" childForceExpandWidth="false" childAlignment="MiddleLeft">'
+    .. text("cz_kits_who_label", "", 13, 'preferredWidth="' .. g.label .. '"')
+    .. text("cz_kits_who", table.concat(parts, "  ·  "), 13, 'color="#C8CED6" preferredWidth="' .. cellWidth(g.columns) .. '"' .. FX)
+    .. '</HorizontalLayout>'
+end
+
+-- Rough height of `words` wrapped to `width` pixels at font `size`.
+local function textHeight(words, width, size)
+  local lines = 0
+  for line in (words .. "\n"):gmatch("([^\n]*)\n") do
+    lines = lines + math.max(1, math.ceil(#line * size * 0.5 / width))
+  end
+  return lines * (size + 5)
+end
+
+-- A player's kit menu (rules.kitName, e.g. "Command Deck"): premade, random
+-- or custom, then the kits or the custom parts to pick from, then Save and
+-- go back. Drawn on the menu grid, six cells wide.
+UI_.KIT_COLUMNS = 6
+function UI_.kitPanel(game, color)
+  use(game)
+  local rules = game.rules
+  local draft = Kits.draft(game, color)
+  local columns = UI_.KIT_COLUMNS
+  local gridWidth = UI_.gridWidth(columns)
+  local rows, height = {}, 0
+  local function add(xml, h)
+    rows[#rows + 1] = xml
+    height = height + (h or 30) + (#rows > 1 and 8 or 0)
+  end
+  local function addRows(list) for _, r in ipairs(list) do add(r) end end
+  local function note(id, words)
+    local w = cellWidth(columns)
+    local h = textHeight(words, w, 13)
+    local g = Theme.of(current).grid
+    add('<HorizontalLayout spacing="6" preferredHeight="' .. h .. '" childForceExpandWidth="false" childAlignment="UpperLeft">'
+      .. text(id .. "_label", "", 13, 'preferredWidth="' .. g.label .. '"')
+      .. text(id, words, 13, 'alignment="UpperLeft" color="#C8CED6" preferredWidth="' .. w .. '" preferredHeight="' .. h .. '"' .. FX)
+      .. '</HorizontalLayout>', h)
+  end
+
+  local modes = { { id = "cz-kitmode-premade", label = "Premade", on = draft.mode == "premade" },
+    { id = "cz-kitmode-random", label = "Random", on = draft.mode == "random" } }
+  if rules.kitParts then modes[#modes + 1] = { id = "cz-kitmode-custom", label = "Custom", on = draft.mode == "custom" } end
+  addRows(UI_.optionRows("cz_kitmode", "Choose", modes, columns))
+
+  if draft.mode == "premade" then
+    local list = {}
+    for _, kit in ipairs(rules.kits) do
+      list[#list + 1] = { id = "cz-kitpick-" .. kit.key, label = kit.label, on = draft.kit == kit.key, tooltip = Kits.describe(game, kit) }
+    end
+    addRows(UI_.optionRows("cz_kitpick", rules.kitName or "Kit", list, columns))
+    local kit = Kits.byKey(rules, draft.kit)
+    if kit then note("cz_kit_about", kit.label .. ". " .. Kits.describe(game, kit)) end
+  elseif draft.mode == "random" then
+    note("cz_kit_about", "When the game starts you get a random premade " .. kitName()
+      .. ", one nobody else picked while there are any left.")
+  else
+    for i, part in ipairs(rules.kitParts) do
+      local chosen = draft.parts[part.key]
+      local list = {}
+      for _, o in ipairs(Kits.partOptions(game, part)) do
+        local on = part.by == "kit" and chosen == o.value or (type(chosen) == "table" and Util.indexOf(chosen, o.value) ~= nil)
+        list[#list + 1] = { id = "cz-kitpart-" .. i .. "-" .. o.value, label = o.label, on = on and true or false, tooltip = o.tooltip }
+      end
+      local label = part.label .. ((part.count or 1) > 1 and (" (" .. part.count .. ")") or "")
+      addRows(UI_.optionRows("cz_kitpart_" .. i, label, list, columns))
+    end
+    note("cz_kit_about", "Hover over a choice to see what it is. Anything you leave unpicked is picked at random when the game starts.")
+  end
+  addRows({ UI_.optionRow("cz_kit_buttons_" .. color, "", {
+    { id = "cz-kitsave", label = "Save and go back" }, { id = "cz-kitcancel", label = "Cancel" } }) })
+
+  local width = gridWidth + 20
+  local inset = math.floor((width - gridWidth) / 2)
+  local extra = { '<VerticalLayout padding="' .. inset .. ' 0 0 0" spacing="8" preferredHeight="' .. height
+    .. '" childForceExpandHeight="false">' .. table.concat(rows) .. '</VerticalLayout>', height }
+  return centrePanel("cz_kitmenu_" .. color, color, rules.kitName or "Kit", accent(), 22, extra, {}, UI_.scaleOf(game, color), "menu", width)
 end
 
 -- The settings menu, just for the player who opened it: their UI size and
@@ -629,8 +780,14 @@ function UI_.xml(game)
       .. '</Panel>', UI_.scaleOf(game, color))
   end
 
-  -- The setup and settings menus, for each player who opened one.
-  for _, which in ipairs({ { game.setupOpen, UI_.setupPanel }, { game.settingsOpen, UI_.settingsPanel } }) do
+  -- The setup, kit and settings menus, for each player who opened one. A
+  -- player's kit menu covers their setup menu until they go back.
+  local kitOpen = game.kitMenuOpen or {}
+  local setupOpen = {}
+  for color in pairs(game.setupOpen or {}) do
+    if not kitOpen[color] then setupOpen[color] = true end
+  end
+  for _, which in ipairs({ { setupOpen, UI_.setupPanel }, { kitOpen, UI_.kitPanel }, { game.settingsOpen, UI_.settingsPanel } }) do
     local open = {}
     for color in pairs(which[1] or {}) do open[#open + 1] = color end
     table.sort(open)

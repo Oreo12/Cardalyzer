@@ -1984,10 +1984,12 @@ test("kits: each player gets their own starters, dealt cards, stats and hand siz
   Cardalyzer_onStartGame(HOST)
   eq(game.state.players[1].kit, nil, "standard decks by default")
   click(HOST, "cz-setup")
-  assert(tts.ui.xml:find('id="cz-kits-random"', 1, true), "a Starting decks option")
-  click(GUEST, "cz-kits-random")
+  assert(tts.ui.xml:find('id="cz-kits-on"', 1, true), "a Starting decks option")
+  click(GUEST, "cz-kits-on")
   eq(game:setupChoice("kits"), nil, "host only")
-  click(HOST, "cz-kits-random")
+  click(HOST, "cz-kits-on")
+  assert(tts.ui.xml:find('id="cz_kitmenu_White"', 1, true), "turning kits on opens the host's own kit menu")
+  click(HOST, "cz-kitcancel")
   Cardalyzer_onStartGame(HOST)
   local seen = {}
   for _, p in ipairs(game.state.players) do
@@ -2019,6 +2021,81 @@ test("kits: each player gets their own starters, dealt cards, stats and hand siz
   game:endTurn(a)
   eq(#game.state.players[a].hand, 6, "draws 6")
   game.rules.kits = nil
+end)
+
+test("kit menu: each player picks premade, random or a custom mix; required sets switch on", function()
+  local game = boot()
+  for _, id in ipairs({ "tide_runner", "harbor_broker" }) do local c = game.cards:get(id); c.deck, c.set = "starter", "kitA" end
+  for _, id in ipairs({ "veil_cutpurse", "shade_scout" }) do local c = game.cards:get(id); c.deck, c.set = "starter", "kitB" end
+  local leaderA = game.cards:get("lighthouse"); leaderA.deck, leaderA.set, leaderA.type = "dealt", "kitA", "leader"
+  local leaderB = game.cards:get("seed_vault"); leaderB.deck, leaderB.set, leaderB.type = "dealt", "kitB", "leader"
+  local trickA = game.cards:get("hidden_den"); trickA.deck, trickA.set = "dealt", "kitA"
+  local trickB = game.cards:get("ember_smith"); trickB.deck, trickB.set = "dealt", "kitB"
+  game.cards:get("fleet_admiral").set = "kitA"
+  game.cards:get("night_queen").set = "kitB"
+  game.rules.kitName = "Warband"
+  game.rules.sets = { { key = "base", label = "Base Game", always = true }, { key = "exp", label = "Expansion" } }
+  game.rules.kits = {
+    { key = "a", label = "Kit A", set = "kitA", stats = { health = 60 }, handSize = 6, requires = { "exp" } },
+    { key = "b", label = "Kit B", set = "kitB", stats = { health = 30 }, handSize = 4 },
+  }
+  game.rules.kitParts = {
+    { key = "leader", label = "Leader", deck = "dealt", type = "leader", by = "kit", stats = true },
+    { key = "tricks", label = "Tricks", deck = "dealt", type = trickA.type, count = 1 },
+    { key = "starters", label = "Starting cards", deck = "starter", by = "kit" },
+    { key = "big", label = "Big card", deck = "market", count = 1 },
+  }
+  click(HOST, "cz-setup")
+  assert(tts.ui.xml:find('id="cz%-kits%-on"[^>]*>Warband<'), "the option is named after the kit")
+  click(HOST, "cz-kits-on")
+  local xml = tts.ui.xml
+  assert(xml:find('id="cz-kitmode-premade"', 1, true) and xml:find('id="cz-kitmode-custom"', 1, true), "premade, random, custom")
+  assert(not xml:find('id="cz_setup_White"', 1, true), "the kit menu covers the New Game menu")
+  -- White: premade Kit A (it needs the "exp" set)
+  click(HOST, "cz-kitmode-premade")
+  click(HOST, "cz-kitpick-a")
+  assert(tts.ui.xml:find('id="cz%-kitpick%-a"[^>]*tooltip="Hand size 6', 1, false), "a premade kit's tooltip describes it")
+  eq(game:setsInPlay().exp, nil, "the expansion is off until saved")
+  click(HOST, "cz-kitsave")
+  eq(game:setsInPlay().exp, true, "saving Kit A switched its set on")
+  assert(tts.ui.xml:find('id="cz_setup_White"', 1, true), "Save and go back: the New Game menu again")
+  assert(tts.ui.xml:find("White: Kit A", 1, true), "who's playing what")
+  -- Red (not the host) opens their own menu from the info panel and builds a custom one
+  assert(tts.ui.xml:find('id="cz%-kitmenu"[^>]*>Your Warband<'), "a button for everyone")
+  click(GUEST, "cz-kitmenu")
+  click(GUEST, "cz-kitmode-custom")
+  click(GUEST, "cz-kitpart-1-b")        -- Kit B's leader (and its stats)
+  click(GUEST, "cz-kitpart-3-a")        -- Kit A's starters
+  click(GUEST, "cz-kitpart-4-fleet_admiral")
+  click(GUEST, "cz-kitpart-4-night_queen") -- one big card: replaces the first pick
+  click(GUEST, "cz-kitsave")
+  eq(game:setupChoice("kitChoice").Red.parts.big[1], "night_queen", "a full part drops its oldest pick")
+  Cardalyzer_onStartGame(HOST)
+  local white, red = game.state.players[1], game.state.players[2]
+  eq(white.kit, "a", "White's premade")
+  eq(white.stats.health, 60, "Kit A health")
+  eq(red.kit, "custom", "Red's custom kit")
+  eq(red.stats.health, 30, "the leader's kit's stats")
+  eq(red.handSize, 4, "and hand size")
+  local ids = {}
+  for _, list in ipairs({ red.deck, red.hand }) do for _, uid in ipairs(list) do ids[game.state.cards[uid]] = true end end
+  assert(ids.tide_runner and not ids.veil_cutpurse, "Kit A's starters")
+  local inPlay = {}
+  for _, uid in ipairs(red.bases) do inPlay[game.state.cards[uid]] = true end
+  assert(inPlay.seed_vault, "Kit B's leader in play")
+  assert(inPlay.hidden_den or inPlay.ember_smith, "an unpicked trick, picked at random")
+  local market = {}
+  for _, list in ipairs({ game.state.market.deck, game.state.market.row }) do
+    for _, uid in ipairs(list) do if uid ~= "" then market[game.state.cards[uid]] = true end end
+  end
+  assert(market.night_queen and market.fleet_admiral, "both picked big cards (White's Kit A brings its own)")
+  -- tooltips everywhere
+  click(HOST, "cz-setup")
+  xml = tts.ui.xml
+  assert(xml:find('id="cz%-new"[^>]*tooltip="Deal a new game', 1, false), "Play Game explains itself")
+  assert(xml:find('id="cz%-players%-3"[^>]*tooltip="Deal the next game for 3 players."'), "and the player counts")
+  assert(xml:find('id="cz%-set%-exp"[^>]*tooltip="', 1, false), "and the sets")
+  game.rules.kits, game.rules.kitParts, game.rules.kitName, game.rules.sets = nil, nil, nil, nil
 end)
 
 test("activated abilities, discounts, buyToDeck, whenYouGain and same-name allies", function()

@@ -41,14 +41,22 @@ function Turn.setup(state, rules, cards, random, opening, sets, kits)
   kits = kits or {}
   local kitSets = {}
   for _, kit in ipairs(rules.kits or {}) do kitSets[kit.set] = true end
-  local inKit = {}
-  for _, kit in pairs(kits) do inKit[kit.set] = true end
+  -- the kit market cards in play: listed by a kit (kit.market), or all of a
+  -- kit set's market cards for a kit given only by its set
+  local inKit, kitMarket = {}, {}
+  for _, kit in pairs(kits) do
+    if kit.market then
+      for _, id in ipairs(kit.market) do kitMarket[id] = true end
+    elseif kit.set then
+      inKit[kit.set] = true
+    end
+  end
   local function inDeck(deck)
     local out = {}
     for _, card in ipairs(cards:inDeck(deck)) do
       local ok
       if card.set and kitSets[card.set] then
-        ok = deck == "market" and inKit[card.set] -- a kit's trade cards, when the kit is played
+        ok = deck == "market" and (inKit[card.set] or kitMarket[card.id]) -- a kit's trade cards, when the kit is played
       else
         ok = not sets or not card.set or sets[card.set]
       end
@@ -60,14 +68,22 @@ function Turn.setup(state, rules, cards, random, opening, sets, kits)
     local kit = kits[seat]
     local starters = inDeck("starter")
     if kit then
-      starters = {}
-      for _, card in ipairs(cards:inDeck("starter")) do
-        if card.set == kit.set then starters[#starters + 1] = card end
-      end
-      for _, card in ipairs(cards:inDeck("dealt")) do
-        if card.set == kit.set then
-          for _ = 1, card.copies do player.bases[#player.bases + 1] = State.newCard(state, card.id) end
+      -- a kit lists its cards (kit.starters, kit.dealt: card ids), or names
+      -- its set, whose starter and dealt cards it then uses
+      local function kitCards(deck, ids)
+        local out = {}
+        if ids then
+          for _, id in ipairs(ids) do out[#out + 1] = cards:get(id) end
+        else
+          for _, card in ipairs(cards:inDeck(deck)) do
+            if card.set == kit.set then out[#out + 1] = card end
+          end
         end
+        return out
+      end
+      starters = kitCards("starter", kit.starters)
+      for _, card in ipairs(kitCards("dealt", kit.dealt)) do
+        for _ = 1, card.copies do player.bases[#player.bases + 1] = State.newCard(state, card.id) end
       end
       for key, value in pairs(kit.stats or {}) do player.stats[key] = value end
       player.handSize = kit.handSize

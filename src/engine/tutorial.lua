@@ -80,8 +80,11 @@ function Tutorial.setupPage(game)
       .. "After that, everyone draws a full hand.\n" .. table.concat(about, "\n")
   end
   if rules.kits and #rules.kits > 0 then
+    local name = rules.kitName or "kit"
     lines[#lines + 1] = "- " .. (rules.kitLabel or "Starting decks") .. ": Standard gives everyone the same starting "
-      .. "deck. Random gives each player a different " .. (rules.kitName or "kit") .. "."
+      .. "deck. " .. name .. " lets each player pick their own: a premade one, a random one"
+      .. (rules.kitParts and ", or a custom mix" or "") .. ". Everyone picks with the Your " .. name
+      .. " button on the right, then presses Save and go back."
   end
   if rules.sets and #rules.sets > 1 then
     lines[#lines + 1] = "- Sets: which card sets are shuffled in. Blue ones are in."

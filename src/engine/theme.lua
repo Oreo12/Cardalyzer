@@ -31,7 +31,8 @@ Theme.DEFAULT = {
   -- cells). The menu's own buttons (Play Game, Close ...) are one cell wide.
   grid = { label = 110, cell = 140, columns = 4, size = 14 },
   -- Button ids drawn with the primary look.
-  primary = { ["cz-playall"] = true, ["cz-end"] = true, ["cz-new"] = true, ["cz-again"] = true, ["cz-setup"] = true },
+  primary = { ["cz-playall"] = true, ["cz-end"] = true, ["cz-new"] = true, ["cz-again"] = true, ["cz-setup"] = true,
+    ["cz-kitsave"] = true },
 }
 
 -- Copies `over` onto a copy of `base`, table by table. A false in `over`
