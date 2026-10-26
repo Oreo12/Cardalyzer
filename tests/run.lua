@@ -1789,6 +1789,117 @@ test("sets: toggled in the setup menu, only their cards are dealt", function()
   game.rules.sets = nil
 end)
 
+---------------------------------------------------------------------------
+-- More card types: heroes (granted allies, untargetable, no replay), events
+---------------------------------------------------------------------------
+
+test("grantAllies makes every ally ability of a faction count this turn", function()
+  local game, put = blank()
+  local p = game.state.players[1]
+  game:play(1, put(1, "hand", "ember_smith")) -- Forge, ally might:2, no other Forge card
+  eq(p.resources.might, 2, "no ally yet")
+  game:grantAllies(1, "forge")
+  eq(p.resources.might, 4, "granted: the Smith's ally fires")
+  game:play(1, put(1, "hand", "ember_smith"))
+  eq(p.resources.might, 4 + 2 + 2, "and for Forge cards played later this turn")
+  for _ = 1, 5 do put(1, "deck", "apprentice") end
+  click(WHITE, "cz-end")
+  eq(game.state.turn.granted.forge, nil, "gone next turn")
+end)
+
+test("card types can stay in play without replaying or being attacked", function()
+  local game, put = blank()
+  game.rules.cardTypes.hero = { persistent = true, replay = false, target = false }
+  game.cards:get("seed_vault").type = "hero"
+  local hero = put(1, "hand", "seed_vault")
+  game:play(1, hero)
+  local p = game.state.players[1]
+  assert(has(p.bases, hero), "stays in play")
+  local health = p.stats.health
+  for _ = 1, 10 do put(1, "deck", "apprentice"); put(2, "deck", "apprentice") end
+  click(WHITE, "cz-end")
+  click(RED, "cz-end")
+  eq(p.stats.health, health, "its effect isn't applied again")
+  -- Red can't attack it or destroy it with an effect.
+  click(WHITE, "cz-end")
+  game.state.players[2].resources.might = 10
+  game:refreshUI()
+  assert(not tts.ui.xml:find("cz-hit-1-" .. hero, 1, true), "no Destroy button")
+  eq(game:attack(2, 1, hero), false, "attack refused")
+  local Cards = Cardalyzer.require("engine.cards")
+  game.effects:apply(game, 2, Cards.parseEffects("destroy_base:1"))
+  local Actions = Cardalyzer.require("engine.actions")
+  eq(#Actions.targets(game, 2, game.state.players[2].prompts[1]), 0, "nothing it can destroy")
+  game.rules.cardTypes.hero = nil
+  game.cards:get("seed_vault").type = "building"
+end)
+
+test("events resolve when revealed in the market row; set aside during setup", function()
+  local game, put, putRow, putDeck = blank()
+  game.rules.cardTypes.event = { event = true }
+  game.effects:registerCustom("everyoneHeals", {
+    apply = function(g, seat, ctx)
+      for _, p in ipairs(g.state.players) do p.stats.health = p.stats.health + 3 end
+      assert(ctx.event, "ctx.event set")
+    end })
+  local oracle = game.cards:get("oracle")
+  oracle.type, oracle.effects = "event", { { key = "custom", fn = "everyoneHeals" } }
+  local normal = putDeck("tide_runner")
+  local event = putDeck("oracle") -- on top: revealed first
+  local bought = putRow(1, "squire")
+  game.state.players[1].resources.gold = 5
+  local h1, h2 = game.state.players[1].stats.health, game.state.players[2].stats.health
+  game:buy(1, bought)
+  eq(game.state.players[1].stats.health, h1 + 3, "resolved for everyone")
+  eq(game.state.players[2].stats.health, h2 + 3, "including the other player")
+  assert(has(game.state.market.scrap, event), "then scrapped")
+  assert(has(game.state.market.row, normal), "and the row refilled with the next card")
+  assert(not has(game.state.market.row, event), "the event isn't left in the row")
+  assert(tts.ui.xml:find("Event: Oracle", 1, true), "announced")
+  -- At setup, events go back under the market deck instead.
+  Cardalyzer_onStartGame(HOST)
+  for _, uid in ipairs(game.state.market.row) do
+    eq(game.cards:get(game.state.cards[uid]).type ~= "event", true, "no event in the starting row")
+  end
+  game.rules.cardTypes.event = nil
+  oracle.type = "unit"
+end)
+
+test("an event that empties the market row while it fills doesn't trip the refill", function()
+  local game, _, putRow, putDeck = blank()
+  game.rules.cardTypes.event = { event = true }
+  game.effects:registerCustom("wipeRow", {
+    apply = function(g)
+      local m = g.state.market
+      for i, uid in ipairs(m.row) do
+        if uid ~= "" then m.scrap[#m.scrap + 1] = uid; m.row[i] = "" end
+      end
+    end })
+  local oracle = game.cards:get("oracle")
+  oracle.type, oracle.effects = "event", { { key = "custom", fn = "wipeRow" } }
+  putDeck("tide_runner")
+  putDeck("squire")
+  putDeck("oracle") -- revealed into slot 1, with Squire going to slot 2 in the same fill
+  game.state.players[1].resources.gold = 5
+  local ok = game:buy(1, putRow(3, "ember_smith"))
+  eq(ok, true, "no error")
+  local tracked = 0
+  for _, guids in pairs(game.state.view.piles) do tracked = tracked + #guids end
+  eq(count(function(o) return o.tags.cz_card end), tracked, "table consistent")
+  game.rules.cardTypes.event = nil
+  oracle.type = "unit"
+end)
+
+test("any player's waiting choice shows on their own screen", function()
+  local game = blank()
+  game:prompt(2, { kind = "choice", options = { { key = "gold", amount = 1 }, { key = "might", amount = 1 } } })
+  game:refreshUI()
+  assert(tts.ui.xml:find('id="cz_choice_Red" visibility="Red"', 1, true), "Red's choice, on Red's screen, on White's turn")
+  click(RED, "cz-pick-2")
+  eq(game.state.players[2].resources.might, 1, "Red answered it")
+  assert(not tts.ui.xml:find("cz_choice_Red", 1, true), "gone")
+end)
+
 test("messages to an empty seat don't stop the game", function()
   local game = boot()
   Cardalyzer_onStartGame(HOST)

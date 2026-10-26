@@ -112,6 +112,15 @@ function Game:addFaction(seat, uid, faction)
   Actions.checkAllies(self, seat)
 end
 
+-- "Until the end of the turn, you may use all your <faction> ally
+-- abilities": every ally condition of that faction counts as met this turn.
+function Game:grantAllies(seat, faction)
+  local turn = self.state.turn
+  turn.granted = turn.granted or {}
+  turn.granted[faction] = true
+  Actions.checkAllies(self, seat)
+end
+
 -- Queues a job for the end of the current turn: { custom = name, ... }. The
 -- custom effect's atTurnEnd(game, seat, job) runs as the turn ends.
 function Game:atTurnEnd(job)
@@ -145,6 +154,7 @@ function Game:setupState()
   self.state.view = view -- keep zone GUIDs so zones aren't respawned
   Turn.setup(self.state, self.rules, self.cards, self.random, Turn.openingRule(self.rules, self:setupChoice("opening")),
     self:setsInPlay())
+  Actions.setAsideEvents(self)
   Actions.startTurn(self, self.state.turn.active)
 end
 

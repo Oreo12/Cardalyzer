@@ -36,6 +36,58 @@ function Actions.toScrap(game, uid, seat, from)
   end
 end
 
+-- A card's entry in rules.cardTypes (an empty table if none). Besides
+-- persistent and guard, a type can set:
+--   replay = false   a persistent card doesn't apply its effects again each turn
+--   target = false   it can't be attacked or destroyed (Star Realms' Heroes)
+--   event = true     revealed into the market row, it resolves and is scrapped
+function Actions.typeDef(game, c)
+  return game.rules.cardTypes and game.rules.cardTypes[c.type] or {}
+end
+
+-- Fills the market row from the market deck. An Event revealed this way is
+-- resolved at once for the player whose turn it is (its effects apply; custom
+-- effects see ctx.event), announced, sent to the scrap pile, and its slot
+-- refilled, which may reveal another.
+function Actions.fillMarket(game)
+  local state = game.state
+  for _ = 1, 100 do
+    local again = false
+    for _, slot in ipairs(Turn.fillMarket(state)) do
+      local uid = state.market.row[slot]
+      -- (an earlier event in this pass may have emptied the slot, e.g. "scrap the row")
+      local c = uid ~= State.EMPTY and game:cardOf(uid)
+      if c and Actions.typeDef(game, c).event then
+        state.market.row[slot] = State.EMPTY
+        state.market.scrap[#state.market.scrap + 1] = uid
+        if game.notify then game:notify("Event: " .. c.name .. ". " .. game.effects:describe(c.effects, c.text)) end
+        game.effects:apply(game, state.turn.active, c.effects, { uid = uid, card = c, event = true })
+        for seat = 1, #state.players do Actions.settle(game, seat) end -- drop choices with nothing to pick
+        again = true
+      end
+    end
+    if not again then return end
+  end
+end
+
+-- Events revealed while setting up the market row don't resolve: they go
+-- to the bottom of the market deck and the row fills again.
+function Actions.setAsideEvents(game)
+  local state = game.state
+  for _ = 1, #state.market.deck + #state.market.row do
+    local moved = false
+    for i, uid in ipairs(state.market.row) do
+      if uid ~= State.EMPTY and Actions.typeDef(game, game:cardOf(uid)).event then
+        table.insert(state.market.deck, 1, uid)
+        state.market.row[i] = State.EMPTY
+        moved = true
+      end
+    end
+    if not moved then return end
+    Turn.fillMarket(state)
+  end
+end
+
 -- Runs a hook (a function field of a custom effect, e.g. whenYouScrap) on
 -- every card the seat has in play, except `except`.
 function Actions.trigger(game, seat, hook, event, except)
@@ -91,9 +143,14 @@ end
 -- its own needs a card sharing any of the owner's factions.
 -- group.need other cards are needed (1, or 2 for a double ally). Counted per
 -- faction: a double ally needs two other cards of the same faction.
+-- Factions granted this turn (Game:grantAllies) always count as met.
 local function allyMet(game, uid, c, group, cardsInPlay)
   local need = group.need or 1
   local factions = group.faction and { group.faction } or c.factions
+  local granted = game.state.turn.granted or {}
+  for _, f in ipairs(factions) do
+    if granted[f] then return true end
+  end
   for _, f in ipairs(factions) do
     if f ~= "none" then
       local found = 0
@@ -260,7 +317,7 @@ function Actions.buy(game, seat, uid, free, toTop, toHand)
   if toHand or take("buyToHand") then
     player.hand[#player.hand + 1] = uid
   elseif take("buyToPlay") then
-    Turn.fillMarket(game.state)
+    Actions.fillMarket(game)
     Actions.enterPlay(game, seat, uid)
   elseif toTop or take("buyToTop") or game.rules.market.buyTo == "deck_top" then
     player.deck[#player.deck + 1] = uid
@@ -270,7 +327,7 @@ function Actions.buy(game, seat, uid, free, toTop, toHand)
       Actions.prompt(game, seat, { kind = "place_bought", uid = uid, optional = false })
     end
   end
-  Turn.fillMarket(game.state)
+  Actions.fillMarket(game)
   for _, effect in ipairs(c.effects) do
     local def = effect.key == "custom" and game.effects.custom[effect.fn]
     if def and def.onAcquire then def.onAcquire(game, seat, { uid = uid, card = c }) end
@@ -319,7 +376,7 @@ function Actions.scrapFromRow(game, seat, uid)
   if not slot then return fail("That card isn't in the market row.") end
   market.row[slot] = State.EMPTY
   Actions.toScrap(game, uid)
-  Turn.fillMarket(game.state)
+  Actions.fillMarket(game)
   return true
 end
 
@@ -379,6 +436,7 @@ function Actions.attack(game, seat, target, baseUid)
 
   if baseUid then
     if not Util.indexOf(victim.bases, baseUid) then return fail("That base isn't in play.") end
+    if Actions.typeDef(game, card(game, baseUid)).target == false then return fail(card(game, baseUid).name .. " can't be attacked.") end
     if #guards > 0 and not Util.indexOf(guards, baseUid) then return fail("Destroy their guard bases first.") end
     local c = card(game, baseUid)
     local defense = c.defense or 0
@@ -507,7 +565,7 @@ function Actions.targets(game, seat, prompt)
     end
   elseif kind == "pick" then
     -- scope: "play" (your cards in play, the default), "bases" (every base in
-    -- play), "discard" (your discard pile), "opponentDiscard"
+    -- play), "hand", "discard", "deck" (use `only` for the top few), "opponentDiscard"
     local scope = prompt.scope or "play"
     if scope == "play" then
       for _, uid in ipairs(Actions.inPlay(player)) do addIf(uid) end
@@ -515,8 +573,8 @@ function Actions.targets(game, seat, prompt)
       for s, p in ipairs(state.players) do
         for _, uid in ipairs(p.bases) do addIf(uid, s ~= seat and p.name or nil) end
       end
-    elseif scope == "discard" then
-      for _, uid in ipairs(player.discard) do addIf(uid) end
+    elseif scope == "discard" or scope == "hand" or scope == "deck" then
+      for _, uid in ipairs(player[scope]) do addIf(uid) end
     elseif scope == "opponentDiscard" then
       for _, other in ipairs(game:opponentsOf(seat)) do
         for _, uid in ipairs(state.players[other].discard) do addIf(uid, state.players[other].name) end
@@ -524,7 +582,9 @@ function Actions.targets(game, seat, prompt)
     end
   elseif kind == "destroy_base" then
     for _, other in ipairs(game:opponentsOf(seat)) do
-      for _, uid in ipairs(state.players[other].bases) do add(uid, state.players[other].name) end
+      for _, uid in ipairs(state.players[other].bases) do
+        if Actions.typeDef(game, card(game, uid)).target ~= false then add(uid, state.players[other].name) end
+      end
     end
   elseif kind == "opponent" then
     for _, other in ipairs(game:opponentsOf(seat)) do
@@ -607,14 +667,14 @@ function Actions.pick(game, seat, value)
       from = "row"
     end
     Actions.toScrap(game, value, seat, from)
-    if from == "row" then Turn.fillMarket(state) end
+    if from == "row" then Actions.fillMarket(game) end
   elseif kind == "discard" then
     Util.removeValue(player.hand, value)
     player.discard[#player.discard + 1] = value
   elseif kind == "scrap_row" then
     state.market.row[Util.indexOf(state.market.row, value)] = State.EMPTY
     Actions.toScrap(game, value, seat, "row")
-    Turn.fillMarket(state)
+    Actions.fillMarket(game)
   elseif kind == "free_buy" then
     Actions.buy(game, seat, value, true, prompt.toTop, prompt.toHand)
   elseif kind == "destroy_base" then
@@ -668,13 +728,16 @@ function Actions.startTurn(game, seat)
   local turn = game.state.turn
   turn.allyFired, turn.played, turn.copies = {}, {}, {}
   turn.factions, turn.atEnd, turn.scrapped = {}, {}, { total = 0, handOrDiscard = 0 }
+  turn.granted = {}
   if (player.owed.discard or 0) > 0 then
     Actions.prompt(game, seat, { kind = "discard", count = player.owed.discard, optional = false })
     player.owed.discard = 0
   end
   for _, uid in ipairs(player.bases) do
     local c = card(game, uid)
-    game.effects:apply(game, seat, c.effects, { uid = uid, card = c })
+    if Actions.typeDef(game, c).replay ~= false then
+      game.effects:apply(game, seat, c.effects, { uid = uid, card = c })
+    end
   end
   Actions.checkAllies(game, seat)
   Actions.settle(game, seat)
