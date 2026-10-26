@@ -1539,6 +1539,65 @@ test("Settings: each player sets their own UI size and action bar height", funct
   assert(not tts.ui.xml:find("cz_settings_Red", 1, true), "Close shuts it")
 end)
 
+test("opening hands: a game can offer rules to pick from in the setup menu", function()
+  local game = boot()
+  game.rules.openingHands = {
+    { label = "Rulebook", hands = { players = { [2] = { 3, 5 } }, otherwise = { 3, 4, 5 } } },
+    { label = "Everyone 5", hands = 5 },
+  }
+  local function dealt(n)
+    click(HOST, "cz-players-" .. n)
+    Cardalyzer_onStartGame(HOST)
+    local out = {}
+    for i, p in ipairs(game.state.players) do out[i] = #p.hand end
+    return table.concat(out, ",")
+  end
+  eq(dealt(2), "3,5", "rulebook, 2 players")
+  eq(dealt(3), "3,4,5", "rulebook, 3 players")
+  eq(dealt(4), "3,4,5,5", "rulebook, 4 players")
+  click(HOST, "cz-setup")
+  local xml = tts.ui.xml
+  assert(xml:find('id="cz%-opening%-1"[^>]*colors="#E8B84A'), "Rulebook chosen by default")
+  assert(xml:find('id="cz%-opening%-2"[^>]*>Everyone 5<'), "the other option")
+  click(GUEST, "cz-opening-2")
+  eq(game:setupChoice("opening"), nil, "only the host can change it")
+  click(HOST, "cz-opening-2")
+  eq(dealt(3), "5,5,5", "Everyone 5")
+  eq(dealt(2), "5,5", "kept for the next game")
+  local restored = boot(game:save())
+  eq(restored:setupChoice("opening"), 2, "and after a reload")
+  game.rules.openingHands = nil
+end)
+
+test("scrap_required makes the player scrap; returnScrapped sends fixed-pile cards home", function()
+  local game, put = blank()
+  local Cards = Cardalyzer.require("engine.cards")
+  local junk = put(1, "hand", "squire")
+  game.effects:apply(game, 1, Cards.parseEffects("scrap_required:1"))
+  local prompt = game.state.players[1].prompts[1]
+  eq(prompt.kind, "scrap", "a scrap prompt")
+  eq(prompt.optional, false, "that must be answered")
+  click(WHITE, "cz-pick-" .. junk)
+  assert(has(game.state.market.scrap, junk), "scrapped")
+
+  -- A fixed-pile card scrapped from play goes back to its pile with returnScrapped.
+  local m = game.state.market
+  game.rules.market.returnScrapped = true
+  local before = #m.fixed.hireling
+  local hireling = put(1, "hand", "hireling")
+  game:play(1, hireling)
+  click(WHITE, "cz-scrap-" .. hireling)
+  eq(#m.fixed.hireling, before + 1, "back on the Hireling pile")
+  eq(m.fixed.hireling[#m.fixed.hireling], hireling, "on top")
+  assert(not has(m.scrap, hireling), "not in the scrap pile")
+  -- Other cards still go to the scrap pile.
+  local herb = put(1, "hand", "squire")
+  game:prompt(1, { kind = "scrap", count = 1, optional = true, from = { "hand" } })
+  click(WHITE, "cz-pick-" .. herb)
+  assert(has(m.scrap, herb), "a market card is scrapped as usual")
+  game.rules.market.returnScrapped = nil
+end)
+
 test("messages to an empty seat don't stop the game", function()
   local game = boot()
   Cardalyzer_onStartGame(HOST)

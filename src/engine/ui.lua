@@ -401,13 +401,44 @@ end
 -- The setup menu, in the middle of the screen for the player who pressed New
 -- Game: the player count, Play Game (deals and closes the menu), Tutorial and
 -- Close. Choices made here are kept for next time.
+-- A row of the setup menu: a label, then one button per option, the chosen
+-- ones in gold. options = { {id, label, on}, ... }.
+function UI_.optionRow(id, label, options)
+  local xml = text(id, label, 15, 'preferredWidth="120" alignment="MiddleRight"' .. FX)
+  for _, o in ipairs(options) do
+    local b = smallButton(o.id, o.label, 14)
+    if o.on then b = b:gsub('colors="[^"]*" textColor="[^"]*"', 'colors="' .. STYLES.primary[1] .. '" textColor="' .. STYLES.primary[2] .. '"') end
+    xml = xml .. b
+  end
+  return '<HorizontalLayout spacing="6" preferredHeight="30" childForceExpandWidth="false" childAlignment="MiddleCenter">'
+    .. xml .. '</HorizontalLayout>'
+end
+
+-- The opening-hand choice (cz-opening-<i>), when the rules offer more than one.
+function UI_.openingRow(game)
+  local options = game.rules.openingHands or {}
+  if #options < 2 then return nil end
+  local chosen = game:setupChoice("opening") or 1
+  local list = {}
+  for i, o in ipairs(options) do list[#list + 1] = { id = "cz-opening-" .. i, label = o.label, on = i == chosen } end
+  return UI_.optionRow("cz_opening", "First hands", list)
+end
+
 function UI_.setupPanel(game, color)
   local buttons = { { id = "cz-new", label = "Play Game" } }
   if Tutorial.buttonShown(game, color) then buttons[#buttons + 1] = { id = "cz-tutorial", label = "Tutorial" } end
   buttons[#buttons + 1] = { id = "cz-setupclose", label = "Close" }
-  local players = UI_.playersRow(game)
-  return centrePanel("cz_setup_" .. color, color, "New Game", ACCENT, 22, players and { players, 30 }, buttons,
-    UI_.scaleOf(game, color))
+  local rows, height = {}, 0
+  local function add(r)
+    if not r then return end
+    rows[#rows + 1] = r
+    height = height + 30 + (#rows > 1 and 8 or 0)
+  end
+  add(UI_.playersRow(game))
+  add(UI_.openingRow(game))
+  local extra = #rows > 0 and { '<VerticalLayout spacing="8" preferredHeight="' .. height .. '" childForceExpandHeight="false">'
+    .. table.concat(rows) .. '</VerticalLayout>', height } or nil
+  return centrePanel("cz_setup_" .. color, color, "New Game", ACCENT, 22, extra, buttons, UI_.scaleOf(game, color))
 end
 
 -- The settings menu, just for the player who opened it: their UI size and

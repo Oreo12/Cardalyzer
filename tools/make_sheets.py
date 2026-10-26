@@ -66,6 +66,7 @@ WORDS = {
     "draw": "Draw {n}",
     "opponent_discard": "Opponent discards {n}",
     "scrap_hand": "Scrap up to {n} from hand or discard",
+    "scrap_required": "Scrap {n} from hand or discard",
     "scrap_row": "Scrap {n} from the market row",
     "destroy_base": "Destroy {n} base",
     "draw_discard": "Draw {n}, then discard {n}",

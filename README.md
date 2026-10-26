@@ -432,6 +432,7 @@ fine.
 | `draw:1` | Draw a card (reshuffling if needed) |
 | `opponent_discard:1` | Each opponent discards a card at the start of their next turn |
 | `scrap_hand:1` | You may scrap a card from your hand or discard pile |
+| `scrap_required:1` | You must scrap a card from your hand or discard pile (if you have one) |
 | `scrap_row:1` | You may scrap a card from the market row (it refills) |
 | `destroy_base:1` | You may destroy an opponent's building, ignoring guards |
 | `draw_discard:1` | Draw a card, then discard a card |
@@ -447,7 +448,7 @@ its factions. Each ally effect fires at most once per turn.
 
 Some keywords are always available:
 
-- `draw`, `opponent_discard`, `scrap_hand`, `scrap_row`, `destroy_base`,
+- `draw`, `opponent_discard`, `scrap_hand`, `scrap_required`, `scrap_row`, `destroy_base`,
   `draw_discard` and `reminder`.
 - `custom:<name>`.
 - One keyword per resource and stat in your rules, using its `key`.
@@ -464,10 +465,12 @@ These are the fields in `games/<yours>/rules.lua`:
 | `resources` | `{ {key="gold", label="Gold", spend="buy"} }` | Per-turn pools, reset at end of turn. `spend = "buy"` pays for cards, `spend = "attack"` powers attacks. Optional `icon` (see `ui.iconBaseUrl`) |
 | `stats` | `{ {key="health", label="Health", start=40} }` | Values that persist between turns. Optional `icon` |
 | `handSize` | `5` | Cards drawn at the end of each turn |
-| `openingHand` | `{3, 5}` or `5` | First hand per player in turn order; one number means everyone draws that many |
+| `openingHand` | `{3, 5}` or `5` | First hand per player in turn order (the last number repeats); one number means everyone draws that many. `{players = {[2] = {3, 5}}, otherwise = {3, 4, 5}}` depends on the number of players |
+| `openingHands` | `{ {label="Rulebook", hands={3, 5}}, {label="Everyone 5", hands=5} }` | Several opening-hand rules to choose from in the New Game menu (the first is the default; the choice is remembered). Each `hands` takes any `openingHand` form. Overrides `openingHand` |
 | `firstSeat` | `1` | Which seat goes first |
 | `market.rowSize` | `5` | Face-up market slots |
 | `market.buyTo` | `"discard"` or `"deck_top"` | Where bought cards go |
+| `market.returnScrapped` | `true` | A scrapped card from a fixed pile goes back to its pile instead of the scrap pile (Star Realms' Explorers) |
 | `market.faceActive` | `false` | Leave out to turn the market's cards to face the player whose turn it is; `false` keeps them facing seat 1 |
 | `factions` | `forge = {label="Forge", color="#C8502D"}` | Faction labels and frame colours |
 | `cardTypes` | `wall = {persistent=true, guard=true}` | Types. Persistent ones stay in play and apply their effects again each turn; guard ones must be destroyed before their owner or other buildings can be attacked |
