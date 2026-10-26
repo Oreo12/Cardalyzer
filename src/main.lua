@@ -86,6 +86,8 @@ function Cardalyzer_onUI(player, _, id)
   if action == "bardown" then return game:moveBar(player.color, -1) end
   if action == "barreset" then return game:moveBar(player.color, 0) end
   if action == "tidy" then return run(player.color, game.tidy) end
+  if action == "rulebooks" then return run(player.color, game.toggleRulebooks) end
+  if action == "button" then return run(player.color, game.pressButton, tonumber(arg), player.color) end
   if action == "end" then return Cardalyzer_onEndTurn(player) end
   if action == "players" then
     if not player.host and not player.promoted then

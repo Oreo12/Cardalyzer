@@ -24,6 +24,7 @@ Guilds**, a small original sample game with placeholder art:
 - [Tutorial: make your own game](#tutorial-make-your-own-game)
 - [Card spreadsheet reference](#card-spreadsheet-reference)
 - [Rules file reference](#rules-file-reference)
+- [Customising the UI](#customising-the-ui)
 - [Using card art you already have](#using-card-art-you-already-have)
 - [Custom effects](#custom-effects)
 - [When something is wrong](#when-something-is-wrong)
@@ -504,7 +505,91 @@ These are the fields in `games/<yours>/rules.lua`:
 | `animate` | `false` | Leave out to animate cards: each card flies to its new pile (dealt one after another; face down into a hand). `false` makes piles change instantly. Tidy table is always instant |
 | `ui.iconBaseUrl` | `"https://…/icons/"` | Where the counter symbols are: a folder with `coin.png`, `reticle.png`, `heart.png` and `shield.png` (draw them with `tools/make_icons.py`). Defaults to the ones in this repo. The buy resource shows as a coin, the attack resource as a reticle and the win stat as a heart; set `icon = "coin"` (or a full image URL) on any resource or stat to choose, and anything without one shows as text |
 | `outlines` | `false` | Leave out to outline every play area, deck, discard pile, the market row, market deck, fixed piles and scrap pile on the table (in seat colours and gold). Outlines are drawn at `layout.surfaceY`; set that to your table's surface height if they float. `false` turns them off |
+| `ui.theme` | see [Customising the UI](#customising-the-ui) | Colours, panel backgrounds and borders, the title, the menu grid |
+| `ui.setupMenu` | a function | Changes the New Game menu, or replaces it (see [Customising the UI](#customising-the-ui)) |
+| `ui.buttons` | `{ {label="Scores", onClick=function(game, color) end} }` | Your own buttons, in the bottom-right corner |
+| `rulebooks` | `{ {name="Rules", url="https://…/rules.pdf"} }` | PDFs a Rulebooks button spawns beside the play areas (and puts away when pressed again). Only `http(s)` links |
+| `layout.rulebooks` | `{x=40, z=0, spacing=9.5, scale=2, yaw=180, locked=false}` | Where the rulebooks go. Every field is optional; by default they stand in a line just past the furthest play area at the largest player count |
 | `customEffects` | see below | Lua for unusual cards |
+
+## Customising the UI
+
+Everything on screen takes its look from a theme. `rules.ui.theme` changes
+any part of it; whatever you leave out keeps the default.
+
+```lua
+ui = {
+  theme = {
+    accent = "#8FD4FF",       -- titles and messages
+    text = "#FFFFFF",         -- other text
+    buttons = {
+      primary = { color = "#C8202A", text = "#FFFFFF" },   -- Play Game, Play all, End Turn, New Game
+      secondary = { color = "#3A4A63", text = "#E6ECF2" }, -- every other button
+      selected = { color = "#2FA4E7", text = "#04111C" },  -- the chosen option in a menu row
+    },
+    panels = {
+      menu = { color = "#050A16", image = "https://…/menu.png", border = "#C8202A", borderSize = 3, padding = 16 },
+      choice = { color = "#050A16EE", borderSize = 0, padding = 12 },
+      title = { color = "#050A16", padding = 4 },
+      info = false,
+    },
+    title = { image = "https://…/logo.png", height = 74, width = 180 },
+    grid = { label = 110, cell = 140, columns = 4, size = 14 },
+    primary = { ["cz-playall"] = true, ["cz-end"] = true, ["cz-new"] = true, ["cz-again"] = true, ["cz-setup"] = true },
+  },
+},
+```
+
+- **Buttons:** give `color` and the hover and pressed shades are worked out
+  for you, or give TTS's full `colors = "normal|highlighted|pressed|disabled"`.
+  `primary` lists the button ids drawn in the primary look.
+- **Panels:** `menu` is the New Game menu, Settings, the tutorial and the
+  game-over screen. `choice` is a choice in the middle of the screen. `title`
+  is a box around the title at the top of the info panel. `info` is the whole
+  info panel. Each takes a background `color`, a background `image` (tinted by
+  `imageColor`), a `border` colour with `borderSize` in pixels (0 for none),
+  and `padding` inside. `false` draws no panel.
+- **Title:** the game's `name` as text (`size`), or a picture: `image`
+  drawn `height` pixels tall. `width` sizes its box; the box sits against the
+  panel's right edge, like the rows under it.
+- **Menu grid:** menus line their option buttons up on a grid: a `label`
+  column, then `columns` cells `cell` pixels wide. A label too long for one
+  cell takes two. The menu's own buttons (Play Game, Tutorial, Close) sit on
+  the grid too.
+
+Pictures are loaded for every player, so use web links (`https://`, such as
+Steam Cloud). A `file:///` picture only shows on the computer it's on.
+
+### Your own New Game menu
+
+`rules.ui.setupMenu(game, color, menu, UI)` runs each time the menu is drawn.
+Change `menu` to adjust the default one:
+
+- `menu.title`.
+- `menu.rows`: rows of XML, `menu.rowHeight` (30) pixels tall each. Build one
+  with `UI.optionRow(id, label, options)`, where options is
+  `{ {id, label, on}, ... }`.
+- `menu.buttons`: `{ {id, label}, ... }`.
+
+Or return a string of XML to draw instead. Give its panel `visibility` set
+to `color`, so only that player sees it. Buttons call the engine by their id:
+`cz-new` deals the game, `cz-setupclose` closes the menu, `cz-players-<n>`,
+`cz-opening-<i>`, `cz-kits-random`/`cz-kits-off` and `cz-set-<key>` choose
+options, and `cz-button-<i>` runs `rules.ui.buttons[i]`. `UI.button(id,
+label, size, kind, width)` draws a button in the theme's look, and
+`UI.framed(id, panelStyle, innerXml, width, height, attrs)` a themed panel.
+
+```lua
+setupMenu = function(game, color, menu, UI)
+  menu.title = "Prepare for battle"
+  menu.rows[#menu.rows + 1] = UI.optionRow("my_mode", "Mode", {
+    { id = "cz-button-1", label = "Quick game", on = game.state.view.quick == true },
+  })
+end,
+buttons = {
+  { label = "Quick game", onClick = function(game, color) game.state.view.quick = not game.state.view.quick end },
+},
+```
 
 ## Using card art you already have
 

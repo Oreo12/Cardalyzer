@@ -161,7 +161,7 @@ test("the UI: info panel on the right, action bar above the hand, Tidy table in 
   local game = boot()
   Cardalyzer_onStartGame(HOST)
   local xml = tts.ui.xml
-  assert(xml:find('id="cz_panel" width="300" height="%d+" rectAlignment="LowerRight"'), "info panel on the right")
+  assert(xml:find('id="cz_panel" rectAlignment="LowerRight"[^>]* width="300" height="%d+"'), "info panel on the right")
   assert(xml:find('id="cz_actions"[^>]*rectAlignment="LowerCenter" offsetXY="0 210"'), "action bar just above the hand")
   assert(xml:find('id="cz_tidy"[^>]*rectAlignment="LowerRight" offsetXY="%-12 70"'), "Tidy table above TTS's Notes button")
   assert(xml:find('id="cz_panel"[^>]*offsetXY="%-12 112"'), "info panel above it")
@@ -846,7 +846,7 @@ test("the host picks 2 to 4 players and the table is laid out for them", functio
   click(HOST, "cz-players-2")
   eq(#s.players, 3, "current game unchanged")
   click(HOST, "cz-setup")
-  assert(tts.ui.xml:find('id="cz%-players%-2"[^>]*colors="#E8B84A'), "the setup menu remembers the choice")
+  assert(tts.ui.xml:find('id="cz%-players%-2"[^>]*colors="#5AA9E6'), "the setup menu remembers the choice (selected look)")
   DBE_start()
   eq(#game.state.players, 2, "next game seats 2")
   eq(count(ofType("ScriptingTrigger")), 9, "back to two seats of zones")
@@ -1505,14 +1505,14 @@ test("Settings: each player sets their own UI size and action bar height", funct
   click(GUEST, "cz-uibigger")
   xml = tts.ui.xml
   assert(xml:find('id="cz_set_ui_Red_value"[^>]*>125%%<'), "two steps up: 125%")
-  assert(xml:find('id="cz_panel_2" visibility="Red" width="375"', 1, true), "Red's own info panel, drawn 25% bigger")
+  assert(xml:find('id="cz_panel_2" visibility="Red"[^>]* width="375"'), "Red's own info panel, drawn 25% bigger")
   assert(not xml:find(' scale="', 1, true), "drawn at real size, not with TTS's scale attribute")
   local from = xml:find('id="cz_panel_2"', 1, true)
   assert(xml:find('id="cz%-setup"[^>]*fontSize="18"', from), "its buttons' text 25% bigger too (14 -> 18)")
-  assert(xml:find('id="cz%-setup"[^>]*colors="#D6DEE8', from), "buttons keep their look")
+  assert(xml:find('id="cz%-setup"[^>]*colors="#E8B84A', from), "buttons keep their look (New Game is primary)")
   assert(xml:find('id="cz_panel" visibility="White|Brown|Orange', 1, true), "everyone else keeps the normal one")
-  assert(xml:find('id="cz_tidy_2" visibility="Red" width="150"', 1, true), "and Tidy table")
-  assert(xml:find('id="cz_settings_Red" visibility="Red" width="825"', 1, true), "menus too")
+  assert(xml:find('id="cz_tidy_2" visibility="Red" width="375"', 1, true), "and the corner buttons")
+  assert(xml:find('id="cz_settings_Red" visibility="Red"[^>]* width="860"'), "menus too (660 + padding, 25% bigger)")
   local normalBottom = tonumber(xml:match('id="cz_panel"[^>]*offsetXY="%-12 (%d+)"'))
   local redBottom = tonumber(xml:match('id="cz_panel_2"[^>]*offsetXY="%-12 (%d+)"'))
   assert(redBottom > normalBottom, "Red's info panel sits higher, above the bigger Tidy button")
@@ -1557,7 +1557,7 @@ test("opening hands: a game can offer rules to pick from in the setup menu", fun
   eq(dealt(4), "3,4,5,5", "rulebook, 4 players")
   click(HOST, "cz-setup")
   local xml = tts.ui.xml
-  assert(xml:find('id="cz%-opening%-1"[^>]*colors="#E8B84A'), "Rulebook chosen by default")
+  assert(xml:find('id="cz%-opening%-1"[^>]*colors="#5AA9E6'), "Rulebook chosen by default")
   assert(xml:find('id="cz%-opening%-2"[^>]*>Everyone 5<'), "the other option")
   click(GUEST, "cz-opening-2")
   eq(game:setupChoice("opening"), nil, "only the host can change it")
@@ -1777,7 +1777,7 @@ test("sets: toggled in the setup menu, only their cards are dealt", function()
   assert(ids.ember_smith, "base cards dealt")
   assert(not ids.fleet_admiral and not ids.night_queen, "expansion cards left out by default")
   click(HOST, "cz-setup")
-  assert(tts.ui.xml:find('id="cz%-set%-base"[^>]*colors="#E8B84A'), "the always-on set is shown on")
+  assert(tts.ui.xml:find('id="cz%-set%-base"[^>]*colors="#5AA9E6'), "the always-on set is shown on")
   assert(tts.ui.xml:find('id="cz%-set%-exp"[^>]*colors="#D6DEE8'), "the expansion off")
   click(GUEST, "cz-set-exp")
   eq(game:setsInPlay().exp, nil, "only the host can switch sets")
@@ -2110,6 +2110,86 @@ test("messages to an empty seat don't stop the game", function()
   click(GUEST, "cz-end")
   eq(game.state.turn.active, 1, "and the turn carried on")
   for _, b in ipairs(tts.broadcasts) do assert(not b:find("%[Cardalyzer%]"), "no script error: " .. b) end
+end)
+
+test("themes: button looks, framed menus, a title picture and its box", function()
+  local game = boot()
+  click(HOST, "cz-setup")
+  local xml = tts.ui.xml
+  assert(xml:find('id="cz_setup_White"[^>]*color="#0E1620F2" outline="#E8B84A" outlineSize="2 %-2"'), "the default menu: dark, gold border")
+  assert(xml:find('id="cz%-new"[^>]*colors="#E8B84A'), "Play Game in the primary look")
+  assert(xml:find('id="cz%-players%-2"[^>]*colors="#5AA9E6'), "the chosen player count in the selected look, not the same gold")
+  game.rules.ui = { theme = {
+    accent = "#FF0000",
+    buttons = { primary = { color = "#AA2222", text = "#FFFFFF" }, selected = { colors = "#1|#2|#3|#4", text = "#000000" } },
+    panels = {
+      menu = { image = "https://example.com/bg.png", border = "#00FFFF", borderSize = 3, padding = 20 },
+      title = { color = "#000000", border = "#FFFFFF", borderSize = 2, padding = 4 },
+    },
+    title = { image = "https://example.com/title.png", height = 50 },
+  } }
+  game.assetsSet = nil
+  game:refreshUI()
+  xml = tts.ui.xml
+  assert(xml:find('id="cz%-new"[^>]*colors="#AA2222|#C32727|#8B1C1C|#AA222280" textColor="#FFFFFF"'), "primary from one colour")
+  assert(xml:find('id="cz%-players%-2"[^>]*colors="#1|#2|#3|#4"'), "or a full colors string")
+  assert(xml:find('id="cz_setup_White"[^>]*width="754"[^>]*outline="#00FFFF" outlineSize="3 %-3"'), "menu padding and border")
+  local menu = xml:find('id="cz_setup_White"', 1, true)
+  assert(xml:find('<Image image="cz_img_', menu, true), "the menu's background picture")
+  assert(xml:find('id="cz_title_box"[^>]*color="#000000" outline="#FFFFFF"'), "a box around the title")
+  assert(xml:find('id="cz_title" image="cz_img_[^"]*" preserveAspect="true" preferredHeight="50"'), "the title picture")
+  local urls = {}
+  for _, a in ipairs(tts.ui.assets) do urls[a.url] = a.name end
+  assert(urls["https://example.com/bg.png"] and urls["https://example.com/title.png"], "pictures registered as UI assets")
+  assert(xml:find('id="cz_setup_White_title"[^>]*color="#FF0000"'), "the accent colour")
+end)
+
+test("a custom setup menu: change the default one, or draw your own", function()
+  local game = boot()
+  game.rules.ui = { setupMenu = function(g, color, menu, UI)
+    menu.title = "Launch"
+    menu.rows[#menu.rows + 1] = UI.optionRow("my_row", "Mode", { { id = "cz-button-1", label = "Fast", on = true } })
+    menu.buttons[1].label = "Begin"
+  end, buttons = { { label = "Fast" } } }
+  click(HOST, "cz-setup")
+  local xml = tts.ui.xml
+  assert(xml:find('id="cz_setup_White_title"[^>]*>Launch<'), "new title")
+  assert(xml:find('id="my_row"', 1, true), "an extra row")
+  assert(xml:find('id="cz%-new"[^>]*>Begin<'), "a renamed button")
+  game.rules.ui.setupMenu = function(g, color) return '<Panel id="mine_' .. color .. '" visibility="' .. color .. '"></Panel>' end
+  game:refreshUI()
+  assert(tts.ui.xml:find('id="mine_White"', 1, true), "or its own XML")
+  assert(not tts.ui.xml:find('id="cz_setup_White"', 1, true), "instead of the default")
+end)
+
+test("Rulebooks and the rules' own buttons in the corner", function()
+  local game = boot()
+  Cardalyzer_onStartGame(HOST)
+  assert(not tts.ui.xml:find('id="cz-rulebooks"', 1, true), "no Rulebooks button without rulebooks")
+  game.rules.rulebooks = {
+    { name = "Rules", url = "https://example.com/rules.pdf" },
+    { name = "Expansion", url = "https://example.com/exp.pdf" },
+    { name = "Local file", url = "file:///C:/rules.pdf" },
+  }
+  local presses = {}
+  game.rules.ui = { buttons = { { label = "Score sheet", onClick = function(g, color) presses[#presses + 1] = color end } } }
+  game:refreshUI()
+  assert(tts.ui.xml:find('id="cz%-rulebooks"[^>]*>Rulebooks<.-id="cz%-button%-1"[^>]*>Score sheet<.-id="cz%-tidy"'), "Rulebooks, own buttons, Tidy table")
+  click(GUEST, "cz-rulebooks")
+  local books = tts.live(function(o) return o.tags.cz_rulebook end)
+  eq(#books, 2, "the two web PDFs (file:// is refused)")
+  eq(books[1].data.CustomPDF.PDFUrl, "https://example.com/rules.pdf", "its PDF")
+  -- clear of every pile at the largest player count
+  local layout = Cardalyzer.require("engine.zones").layout(game.rules, nil, #game.rules.seats)
+  for _, seat in ipairs(layout.seats) do
+    for _, s in pairs(seat) do
+      if type(s) == "table" and s.position then assert(books[1].data.Transform.posX > s.position[1] + 3, "beside the play areas") end
+    end
+  end
+  click(GUEST, "cz-rulebooks")
+  eq(#tts.live(function(o) return o.tags.cz_rulebook end), 0, "pressed again: put away")
+  click(GUEST, "cz-button-1")
+  eq(presses[1], "Red", "the rules' button ran with the presser's colour")
 end)
 
 print(string.format("\n%d passed, %d failed", passed, failed))

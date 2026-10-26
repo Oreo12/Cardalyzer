@@ -10,6 +10,7 @@ local Zones = require("engine.zones")
 local Board = require("engine.board")
 local UI_ = require("engine.ui")
 local Tutorial = require("engine.tutorial")
+local Rulebooks = require("engine.rulebooks")
 
 local Game = {}
 Game.__index = Game
@@ -346,6 +347,23 @@ end
 function Game:settings(color, open)
   self.settingsOpen = self.settingsOpen or {}
   self.settingsOpen[color] = open or nil
+  self:refreshUI()
+  return true
+end
+
+-- Rulebooks: spawns the rules' PDFs beside the play areas, or removes them
+-- if they're out (engine/rulebooks.lua). Returns true when they're now out.
+function Game:toggleRulebooks()
+  return Rulebooks.toggle(self)
+end
+
+-- One of the rules' own buttons (rules.ui.buttons[i]) was pressed by `color`:
+-- runs its onClick(game, color), then redraws.
+function Game:pressButton(i, color)
+  local b = self.rules.ui and self.rules.ui.buttons and self.rules.ui.buttons[i]
+  if not b then return false, "No such button." end
+  if b.onClick then b.onClick(self, color) end
+  Board.sync(self)
   self:refreshUI()
   return true
 end

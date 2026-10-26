@@ -11,8 +11,15 @@ local Util = require("engine.util")
 local State = require("engine.state")
 local Actions = require("engine.actions")
 local Tutorial = require("engine.tutorial")
+local Theme = require("engine.theme")
 
 local UI_ = {}
+
+-- The rules being drawn, so the small helpers below can read the theme.
+-- UI_.xml (and every panel builder called on its own) sets it first.
+local current = {}
+local function use(game) current = game.rules end
+local function accent() return Theme.of(current).accent end
 
 local function escape(s)
   return (tostring(s):gsub("&", "&amp;"):gsub("<", "&lt;"):gsub(">", "&gt;"):gsub('"', "&quot;"))
@@ -21,7 +28,7 @@ end
 -- extra may set color= or alignment= itself; otherwise white, left-aligned.
 local function text(id, words, size, extra)
   extra = extra or ""
-  if not extra:find("color=", 1, true) then extra = extra .. ' color="#FFFFFF"' end
+  if not extra:find("color=", 1, true) then extra = extra .. ' color="' .. Theme.of(current).text .. '"' end
   if not extra:find("alignment=", 1, true) then extra = extra .. ' alignment="MiddleLeft"' end
   return string.format('<Text id="%s" fontSize="%d" %s>%s</Text>', id, size or 14, extra, escape(words))
 end
@@ -113,8 +120,7 @@ UI_.seatColors = {
   Green = "#4CC845", Teal = "#21B19B", Blue = "#3C96FF", Purple = "#B04CF0", Pink = "#F570CE",
 }
 
-local ACCENT = "#E8B84A"
--- No panel backgrounds or borders: text and standalone buttons sit straight on the screen.
+-- Panels with no style of their own are clear: text and standalone buttons sit straight on the screen.
 local PANEL = ' color="#00000000"'
 -- Shadowed text, readable straight over the table.
 local FX = ' outline="#000000E0" outlineSize="1.5 -1.5"'
@@ -160,6 +166,12 @@ function UI_.assets(rules)
   for _, name in ipairs(UI_.ICONS) do add(name) end
   for _, r in ipairs(rules.resources or {}) do add(UI_.iconFor(rules, r, "resource")) end
   for _, st in ipairs(rules.stats or {}) do add(UI_.iconFor(rules, st, "stat")) end
+  for _, url in ipairs(Theme.images(rules)) do
+    if not seen[url] then
+      seen[url] = true
+      out[#out + 1] = { name = Theme.assetName(url), url = url }
+    end
+  end
   return out
 end
 
@@ -171,24 +183,28 @@ local function counter(id, icon, value, size)
     .. '</Panel>'
 end
 
--- Button looks, bright enough to stand out on a dark table: gold for the main
--- action (Play all, End Turn, Play Game), light grey-blue for the rest.
--- normal|highlighted|pressed|disabled, then the text colour.
-local STYLES = {
-  primary = { "#E8B84A|#F6D27A|#C99A2E|#E8B84A80", "#1A1206" },
-  secondary = { "#D6DEE8|#F0F4F8|#AEB9C6|#D6DEE880", "#14202C" },
-}
--- The ids that get the primary look.
-UI_.PRIMARY = { ["cz-playall"] = true, ["cz-end"] = true, ["cz-new"] = true, ["cz-again"] = true }
-
--- A standalone button, as wide as its label needs. Returns XML and width.
-local function smallButton(id, label, size)
+-- A standalone button, as wide as its label needs. Its look comes from the
+-- theme: primary for the main actions (the theme's primary ids), `kind` if
+-- given ("selected" for a chosen option), else secondary. Returns XML and width.
+local function smallButton(id, label, size, kind, width)
   size = size or 12
-  local style = STYLES[UI_.PRIMARY[id] and "primary" or "secondary"]
-  local width = math.max(60, math.floor(#label * size * 0.6) + 24)
+  kind = kind or (Theme.isPrimary(current, id) and "primary" or "secondary")
+  local colors, textColor = Theme.button(current, kind)
+  width = width or math.max(60, math.floor(#label * size * 0.6) + 24)
   return string.format('<Button id="%s" onClick="Cardalyzer_onUI" preferredHeight="%d" preferredWidth="%d" fontSize="%d"'
     .. ' fontStyle="Bold" colors="%s" textColor="%s">%s</Button>',
-    id, size + 14, width, size, style[1], style[2], escape(label)), width
+    id, size + 14, width, size, colors, textColor, escape(label)), width
+end
+UI_.button = smallButton
+
+-- A panel drawn in theme style `name` (see Theme.panel): `inner` is a
+-- VerticalLayout's children, w and h their size. Returns XML, and the
+-- panel's size grown by its padding.
+function UI_.framed(id, name, inner, w, h, attrs, spacing)
+  local look, image, pad = Theme.panel(current, name)
+  return '<Panel id="' .. id .. '"' .. (attrs or "") .. ' width="' .. (w + 2 * pad) .. '" height="' .. (h + 2 * pad) .. '"' .. look .. '>'
+    .. image .. '<VerticalLayout spacing="' .. (spacing or 4) .. '" padding="' .. pad .. ' ' .. pad .. ' ' .. pad .. ' ' .. pad
+    .. '" childForceExpandHeight="false">' .. inner .. '</VerticalLayout></Panel>', w + 2 * pad, h + 2 * pad
 end
 
 -- Buttons in centred rows no wider than maxWidth. `bigger` lists ids drawn at
@@ -205,7 +221,7 @@ local function buttonRows(list, size, maxWidth, bigger)
   end
   for _, b in ipairs(list) do
     local s = (bigger and bigger[b.id]) and bigger[b.id] or size
-    local xml, w = smallButton(b.id, b.label, s)
+    local xml, w = smallButton(b.id, b.label, s, nil, b.width)
     if used > 0 and used + w > maxWidth then
       closeRow()
       row, used, rowSize = {}, 0, size
@@ -367,44 +383,70 @@ end
 -- they're shown here instead), then Settings and New Game (which opens the
 -- setup menu). Returns its XML and its unscaled height in pixels.
 function UI_.infoPanel(game, suffix, attrs, bottom)
+  use(game)
   local state = game.state
   local rows, height = {}, 0
   local function row(xml, h) rows[#rows + 1] = xml; height = height + h + 4 end
 
-  row(text("cz_title", game.rules.name or "Cardalyzer", 18, 'fontStyle="Bold" alignment="MiddleRight" color="' .. ACCENT .. '"' .. FX), 24)
+  row(UI_.titleBox(game))
   local turn = UI_.turnLine(game)
   local th = wrappedHeight(turn, 14)
   row(text("cz_turn", turn, 14, 'fontStyle="Bold" alignment="MiddleRight" preferredHeight="' .. th .. '"' .. FX), th)
   for seat = 1, #state.players do row(seatRow(game, seat)) end
   for i, msg in ipairs(game.notices and game.notices.all or {}) do
     local h = wrappedHeight(msg, 12)
-    row(text("cz_notice_" .. i, msg, 12, 'color="' .. ACCENT .. '" fontStyle="Italic" alignment="MiddleRight" preferredHeight="'
+    row(text("cz_notice_" .. i, msg, 12, 'color="' .. accent() .. '" fontStyle="Italic" alignment="MiddleRight" preferredHeight="'
       .. h .. '"' .. FX), h)
   end
   row('<HorizontalLayout spacing="6" preferredHeight="28" childForceExpandWidth="false" childAlignment="MiddleRight">'
     .. smallButton("cz-settings", "Settings", 14) .. smallButton("cz-setup", "New Game", 14) .. '</HorizontalLayout>', 28)
 
-  return '<Panel id="cz_panel' .. (suffix or "") .. '"' .. (attrs or "") .. ' width="' .. UI_.INFO_WIDTH .. '" height="' .. height
-    .. '" rectAlignment="LowerRight" offsetXY="-12 ' .. (bottom or INFO_BOTTOM) .. '"' .. PANEL
-    .. '><VerticalLayout spacing="4" childForceExpandHeight="false">' .. table.concat(rows) .. '</VerticalLayout></Panel>', height
+  local xml, _, h = UI_.framed("cz_panel" .. (suffix or ""), "info", table.concat(rows), UI_.INFO_WIDTH, height - 4,
+    (attrs or "") .. ' rectAlignment="LowerRight" offsetXY="-12 ' .. (bottom or INFO_BOTTOM) .. '"')
+  return xml, h
 end
 
--- A plain centred panel (no background): a title, optional extra rows and
--- rows of standalone buttons. The setup menu, settings, choices and game
--- over use it. extra = { xml, height }.
-local function centrePanel(id, visibility, title, titleColor, titleSize, extra, buttons, scale)
+-- The title at the top of the info panel: the theme's title picture, or the
+-- game's name, in the theme's "title" panel style. Returns XML and height.
+function UI_.titleBox(game)
+  use(game)
+  local theme = Theme.of(game.rules)
+  local t = theme.title
+  local inner, h
+  if t.image then
+    h = t.height
+    inner = '<Image id="cz_title" image="' .. Theme.assetName(t.image) .. '" preserveAspect="true" preferredHeight="' .. h .. '" />'
+  else
+    h = t.size + 6
+    inner = text("cz_title", game.rules.name or "Cardalyzer", t.size, 'fontStyle="Bold" alignment="MiddleRight" color="'
+      .. accent() .. '" preferredHeight="' .. h .. '"' .. FX)
+  end
+  local look = theme.panels.title
+  if not look then return inner, h end
+  local pad = look.padding or 0
+  local box, _, bh = UI_.framed("cz_title_box", "title", inner, (t.width or UI_.INFO_WIDTH - 2 * pad), h, ' rectAlignment="MiddleRight"')
+  return '<Panel preferredHeight="' .. bh .. '" color="#00000000">' .. box .. '</Panel>', bh
+end
+
+-- A centred panel in theme style `style` (default "menu"): a title,
+-- optional extra rows and rows of standalone buttons. The setup menu,
+-- settings, choices and game over use it. extra = { xml, height }.
+local function centrePanel(id, visibility, title, titleColor, titleSize, extra, buttons, scale, style, width)
+  width = width or 660
   local rows, height = {}, 0
   local function row(xml, h) rows[#rows + 1] = xml; height = height + h + 8 end
   local th = math.max(1, math.ceil(#title / 48)) * (titleSize + 8)
   row(text(id .. "_title", title, titleSize, 'fontStyle="Bold" alignment="MiddleCenter" preferredHeight="' .. th
     .. '" color="' .. titleColor .. '"' .. FX), th)
   if extra then row(extra[1], extra[2]) end
-  local bx, bh = buttonRows(buttons, 13, 620)
-  row(bx, bh)
-  return sized('<Panel id="' .. id .. '" visibility="' .. visibility .. '" width="660" height="'
-    .. height .. '" rectAlignment="MiddleCenter"' .. PANEL .. '><VerticalLayout spacing="8" childForceExpandHeight="false">'
-    .. table.concat(rows) .. '</VerticalLayout></Panel>', scale)
+  if #buttons > 0 then
+    local bx, bh = buttonRows(buttons, 13, width - 40)
+    row(bx, bh)
+  end
+  return sized((UI_.framed(id, style or "menu", table.concat(rows), width, height - 8,
+    ' visibility="' .. visibility .. '" rectAlignment="MiddleCenter"', 8)), scale)
 end
+UI_.centrePanel = centrePanel
 
 -- Player-count buttons (cz-players-<n>) for games that seat more than one
 -- number of players. Only the host's clicks count (see main.lua).
@@ -412,15 +454,27 @@ function UI_.playersRow(game)
   local range = game.playerRange(game.rules)
   if range.min >= range.max then return nil end
   local state = game.state
-  local current = state.nextPlayers or #state.players
-  local xml = text("cz_players", "Players", 15, 'preferredWidth="80"' .. FX)
-  for n = range.min, range.max do
-    local b = smallButton("cz-players-" .. n, tostring(n), 14)
-    if n == current then b = b:gsub('colors="[^"]*" textColor="[^"]*"', 'colors="' .. STYLES.primary[1] .. '" textColor="' .. STYLES.primary[2] .. '"') end
-    xml = xml .. b
-  end
-  return '<HorizontalLayout spacing="6" preferredHeight="30" childForceExpandWidth="false" childAlignment="MiddleCenter">'
-    .. xml .. '</HorizontalLayout>'
+  local chosen = state.nextPlayers or #state.players
+  local list = {}
+  for n = range.min, range.max do list[#list + 1] = { id = "cz-players-" .. n, label = tostring(n), on = n == chosen } end
+  return UI_.optionRow("cz_players", "Players", list)
+end
+
+-- The menu grid (theme grid): how many cells a button with this label
+-- takes, and the width of n cells.
+local function cellsFor(label)
+  local g = Theme.of(current).grid
+  local natural = math.floor(#label * g.size * 0.55) + 24
+  return math.max(1, math.ceil((natural + 6) / (g.cell + 6)))
+end
+local function cellWidth(n)
+  local g = Theme.of(current).grid
+  return n * g.cell + (n - 1) * 6
+end
+-- The grid's full width: the label column and every cell.
+function UI_.gridWidth()
+  local g = Theme.of(current).grid
+  return g.label + 6 + cellWidth(g.columns)
 end
 
 -- The setup menu, in the middle of the screen for the player who pressed New
@@ -428,14 +482,17 @@ end
 -- Close. Choices made here are kept for next time.
 -- A row of the setup menu: a label, then one button per option, the chosen
 -- ones in gold. options = { {id, label, on}, ... }.
+-- Its buttons sit on the menu grid (theme grid), so the rows line up.
 function UI_.optionRow(id, label, options)
-  local xml = text(id, label, 15, 'preferredWidth="120" alignment="MiddleRight"' .. FX)
+  local g = Theme.of(current).grid
+  local xml = text(id, label, 15, 'preferredWidth="' .. g.label .. '" alignment="MiddleRight"' .. FX)
   for _, o in ipairs(options) do
-    local b = smallButton(o.id, o.label, 14)
-    if o.on then b = b:gsub('colors="[^"]*" textColor="[^"]*"', 'colors="' .. STYLES.primary[1] .. '" textColor="' .. STYLES.primary[2] .. '"') end
-    xml = xml .. b
+    -- an option is selected or not; a plain button (on = nil) takes its usual look
+    local kind = o.kind
+    if not kind and o.on ~= nil then kind = o.on and "selected" or "secondary" end
+    xml = xml .. smallButton(o.id, o.label, g.size, kind, cellWidth(cellsFor(o.label)))
   end
-  return '<HorizontalLayout spacing="6" preferredHeight="30" childForceExpandWidth="false" childAlignment="MiddleCenter">'
+  return '<HorizontalLayout spacing="6" preferredHeight="30" childForceExpandWidth="false" childAlignment="MiddleLeft">'
     .. xml .. '</HorizontalLayout>'
 end
 
@@ -455,10 +512,13 @@ function UI_.setRows(game)
   local sets = game.rules.sets or {}
   if #sets < 2 then return {} end
   local inPlay = game:setsInPlay()
-  local rows, row = {}, {}
+  local columns = Theme.of(current).grid.columns
+  local rows, row, used = {}, {}, 0
   for _, set in ipairs(sets) do
+    local n = cellsFor(set.label)
+    if used > 0 and used + n > columns then rows[#rows + 1] = row; row = {}; used = 0 end
     row[#row + 1] = { id = "cz-set-" .. set.key, label = set.label, on = inPlay[set.key] == true }
-    if #row == 4 then rows[#rows + 1] = row; row = {} end
+    used = used + n
   end
   if #row > 0 then rows[#rows + 1] = row end
   local out = {}
@@ -467,6 +527,7 @@ function UI_.setRows(game)
 end
 
 function UI_.setupPanel(game, color)
+  use(game)
   local buttons = { { id = "cz-new", label = "Play Game" } }
   if Tutorial.buttonShown(game, color) then buttons[#buttons + 1] = { id = "cz-tutorial", label = "Tutorial" } end
   buttons[#buttons + 1] = { id = "cz-setupclose", label = "Close" }
@@ -486,14 +547,33 @@ function UI_.setupPanel(game, color)
     }))
   end
   for _, r in ipairs(UI_.setRows(game)) do add(r) end
+  -- rules.ui.setupMenu(game, color, menu, UI) may change the menu (its
+  -- title, its rows of XML, each rowHeight tall, and its buttons) or return
+  -- XML of its own to draw instead. See README, "Customising the UI".
+  local menu = { title = "New Game", rows = rows, rowHeight = 30, buttons = buttons }
+  local custom = game.rules.ui and game.rules.ui.setupMenu
+  if custom then
+    local own = custom(game, color, menu, UI_)
+    if type(own) == "string" then return own end
+    rows, buttons = menu.rows, menu.buttons
+  end
+  -- the menu's own buttons go on the grid too, under the options
+  rows[#rows + 1] = UI_.optionRow("cz_setup_buttons_" .. color, "", buttons)
+  height = 0
+  for i in ipairs(rows) do height = height + menu.rowHeight + (i > 1 and 8 or 0) end
   local extra = #rows > 0 and { '<VerticalLayout spacing="8" preferredHeight="' .. height .. '" childForceExpandHeight="false">'
     .. table.concat(rows) .. '</VerticalLayout>', height } or nil
-  return centrePanel("cz_setup_" .. color, color, "New Game", ACCENT, 22, extra, buttons, UI_.scaleOf(game, color))
+  -- the grid's rows are left-aligned: pad them in so the grid is centred
+  local width = math.max(660, UI_.gridWidth() + 20)
+  local inset = math.floor((width - UI_.gridWidth()) / 2)
+  if extra then extra[1] = extra[1]:gsub('^<VerticalLayout ', '<VerticalLayout padding="' .. inset .. ' 0 0 0" ', 1) end
+  return centrePanel("cz_setup_" .. color, color, menu.title, accent(), 22, extra, {}, UI_.scaleOf(game, color), "menu", width)
 end
 
 -- The settings menu, just for the player who opened it: their UI size and
 -- where their action bar sits (to clear their own on-screen hand).
 function UI_.settingsPanel(game, color)
+  use(game)
   local scale = UI_.scaleOf(game, color)
   local moved = game.state.view.barOffset and game.state.view.barOffset[color] or 0
   local function settingRow(id, label, value, buttons)
@@ -507,11 +587,12 @@ function UI_.settingsPanel(game, color)
       { { "cz-uismaller", "−" }, { "cz-uibigger", "+" } })
     .. settingRow("cz_set_bar_" .. color, "Action bar", (moved > 0 and "+" or "") .. moved,
       { { "cz-barup", "Up" }, { "cz-bardown", "Down" }, { "cz-barreset", "Reset" } })
-  return centrePanel("cz_settings_" .. color, color, "Settings", ACCENT, 22, { rows, 76 },
+  return centrePanel("cz_settings_" .. color, color, "Settings", accent(), 22, { rows, 76 },
     { { id = "cz-settingsclose", label = "Close" } }, scale)
 end
 
 function UI_.xml(game)
+  use(game)
   local state = game.state
   local parts = {}
 
@@ -524,9 +605,9 @@ function UI_.xml(game)
     local infoBottom = TIDY_Y + math.ceil(42 * g.scale)
     local info, h = UI_.infoPanel(game, suffix, vis, infoBottom)
     parts[#parts + 1] = sized(info, g.scale)
-    parts[#parts + 1] = sized('<Panel id="cz_tidy' .. suffix .. '"' .. vis .. ' width="120" height="30" rectAlignment="LowerRight" offsetXY="-12 '
-      .. TIDY_Y .. '"' .. PANEL .. '><HorizontalLayout childForceExpandWidth="false" childAlignment="MiddleRight">'
-      .. smallButton("cz-tidy", "Tidy table", 12) .. '</HorizontalLayout></Panel>', g.scale)
+    parts[#parts + 1] = sized('<Panel id="cz_tidy' .. suffix .. '"' .. vis .. ' width="' .. UI_.INFO_WIDTH .. '" height="30" rectAlignment="LowerRight" offsetXY="-12 '
+      .. TIDY_Y .. '"' .. PANEL .. '><HorizontalLayout spacing="6" childForceExpandWidth="false" childAlignment="MiddleRight">'
+      .. UI_.cornerButtons(game) .. '</HorizontalLayout></Panel>', g.scale)
     for _, color in ipairs(g.colors) do infoTop[color] = infoBottom + math.ceil(h * g.scale) end
   end
 
@@ -540,7 +621,7 @@ function UI_.xml(game)
     parts[#parts + 1] = sized('<Panel id="cz_notice_' .. color .. '" visibility="' .. color .. '"'
       .. ' width="' .. UI_.INFO_WIDTH .. '" height="' .. h .. '" rectAlignment="LowerRight" offsetXY="-12 '
       .. ((infoTop[color] or INFO_BOTTOM) + 6) .. '"' .. PANEL .. '>'
-      .. text("cz_notice_text_" .. color, byColor[color], 13, 'alignment="MiddleRight" color="' .. ACCENT .. '"' .. FX)
+      .. text("cz_notice_text_" .. color, byColor[color], 13, 'alignment="MiddleRight" color="' .. accent() .. '"' .. FX)
       .. '</Panel>', UI_.scaleOf(game, color))
   end
 
@@ -562,7 +643,7 @@ function UI_.xml(game)
     for i, g in ipairs(wg) do
       local _, suffix = groupAttrs(wg, i, "0.5 0.5")
       parts[#parts + 1] = centrePanel("cz_winner" .. suffix, table.concat(g.colors, "|"), winner.name .. " wins!",
-        UI_.seatColors[winner.color] or ACCENT, 34, nil, { { id = "cz-again", label = "Play Again?" } }, g.scale)
+        UI_.seatColors[winner.color] or accent(), 34, nil, { { id = "cz-again", label = "Play Again?" } }, g.scale)
     end
   end
 
@@ -583,12 +664,13 @@ function UI_.xml(game)
       nav[#nav + 1] = { id = "cz-tutclose", label = "Close" }
       nav[#nav + 1] = { id = "cz-tuthide", label = "Hide button" }
       local navXml = buttonRows(nav, 13, 640)
-      parts[#parts + 1] = sized('<Panel id="cz_tutorial_' .. color .. '" visibility="' .. color .. '"'
-        .. ' width="680" height="400" rectAlignment="MiddleCenter" color="#0E1620E6" padding="16 16 12 12"><VerticalLayout spacing="8" childForceExpandHeight="false">'
-        .. text("cz_tut_title_" .. color, page[1], 22, 'fontStyle="Bold" color="' .. ACCENT .. '" preferredHeight="34"')
+      -- in the theme's menu style: its pages are long reads, so never clear
+      local inner = text("cz_tut_title_" .. color, page[1], 22, 'fontStyle="Bold" color="' .. accent() .. '" preferredHeight="34"')
         .. text("cz_tut_body_" .. color, page[2], 16, 'alignment="UpperLeft" preferredHeight="270"')
         .. text("cz_tut_page_" .. color, "Page " .. n .. " of " .. #pages, 12, 'alignment="MiddleRight" color="#9AA4AE" preferredHeight="16"')
-        .. navXml .. '</VerticalLayout></Panel>', UI_.scaleOf(game, color))
+        .. navXml
+      parts[#parts + 1] = sized((UI_.framed("cz_tutorial_" .. color, "menu", inner, 650, 370,
+        ' visibility="' .. color .. '" rectAlignment="MiddleCenter"', 8)), UI_.scaleOf(game, color))
     end
   end
 
@@ -602,14 +684,14 @@ function UI_.xml(game)
     local color = state.players[state.turn.active].color
     local scale = UI_.scaleOf(game, color)
     if acts.prompt then
-      parts[#parts + 1] = centrePanel("cz_choice", color, acts.prompt, ACCENT, 18, nil, acts.choices, scale)
+      parts[#parts + 1] = centrePanel("cz_choice", color, acts.prompt, accent(), 18, nil, acts.choices, scale, "choice")
     end
     -- Other players' waiting choices (from events), each on their own screen.
     for seat, p in ipairs(state.players) do
       if seat ~= state.turn.active then
         local text, choices = UI_.promptFor(game, seat)
         if text then
-          parts[#parts + 1] = centrePanel("cz_choice_" .. p.color, p.color, text, ACCENT, 18, nil, choices, UI_.scaleOf(game, p.color))
+          parts[#parts + 1] = centrePanel("cz_choice_" .. p.color, p.color, text, accent(), 18, nil, choices, UI_.scaleOf(game, p.color), "choice")
         end
       end
     end
@@ -633,6 +715,18 @@ function UI_.xml(game)
     end
   end
   return table.concat(parts)
+end
+
+-- The buttons in the bottom-right corner: Rulebooks (when the rules list
+-- some), the rules' own buttons (rules.ui.buttons), then Tidy table.
+function UI_.cornerButtons(game)
+  use(game)
+  local xml = ""
+  if game.rules.rulebooks and #game.rules.rulebooks > 0 then xml = xml .. smallButton("cz-rulebooks", "Rulebooks", 12) end
+  for i, b in ipairs(game.rules.ui and game.rules.ui.buttons or {}) do
+    xml = xml .. smallButton("cz-button-" .. i, b.label, 12)
+  end
+  return xml .. smallButton("cz-tidy", "Tidy table", 12)
 end
 
 -- Where a colour's action bar sits: the default, moved in their Settings.
