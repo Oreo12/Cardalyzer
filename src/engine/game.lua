@@ -187,6 +187,18 @@ function Game:tutorial(color, action)
   return true
 end
 
+-- Moves one player's action bar up (+1) or down (-1) a step, to sit just above
+-- their own on-screen hand (TTS doesn't tell scripts how big that is). Saved,
+-- so it stays put after a reload.
+function Game:moveBar(color, dir)
+  local view = self.state.view
+  view.barOffset = view.barOffset or {}
+  local moved = (view.barOffset[color] or 0) + dir * UI_.BAR_STEP
+  view.barOffset[color] = math.max(-UI_.ACTION_BAR_Y + 10, math.min(600, moved))
+  self:refreshUI()
+  return true
+end
+
 -- Opens or closes the setup menu (New Game) for one player. Not saved.
 function Game:setup(color, open)
   self.setupOpen = self.setupOpen or {}

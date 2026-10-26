@@ -189,9 +189,8 @@ To play:
    with no background: each player's name in their seat colour, their Health
    as a heart with the number on it (and, once they have buildings in play, a
    shield in front of it for each one, showing its defense), and their deck
-   and discard counts. Below the players are the active player's Gold (a
-   coin) and Might (a reticle) for this turn. **Tidy table** is a lone button
-   in the bottom right corner:
+   and discard counts. **Tidy table** is a lone button below it, both clear of
+   TTS's own Notes button in the corner:
    ```
                      Ember Guilds
           Press New Game to set up a game.
@@ -218,16 +217,22 @@ To play:
    its starter deck, the first player draws 3 cards and everyone else draws
    5, and five cards are dealt into the market row. The menu remembers your
    choices for next time.
-5. Play your turn. A row of small buttons appears just above your hand,
-   only for the player whose turn it is, and when a card asks you something
-   the question and its options appear in the middle of the screen:
+5. Play your turn. A row of buttons appears just above your hand, only for
+   the player whose turn it is, with Play all and End Turn larger and in gold.
+   Just above it, everyone sees the active player's Gold (a coin) and Might (a
+   reticle) whenever they're above 0. When a card asks you something, the
+   question and its options appear in the middle of the screen:
    ```
                  Choose one                     <- middle of the screen
           [+3 Gold] [+3 Might]
 
-   [Play all (3)] [Attack Red (4 Might)] [Scrap Hireling: +2 Might] [End Turn]
+                    (3) (5)                     <- Gold and Might
+   [PLAY ALL (3)] [Attack Red (5 Might)] [Scrap Hireling] [END TURN] [▲] [▼]
                                                 <- just above your hand
    ```
+   TTS doesn't tell scripts how big each player's on-screen hand is, so the
+   bar starts at a typical height; ▲ and ▼ move it for you, and it stays
+   where you put it, even after a reload.
    The market turns to face whoever's turn it is, so its cards always read
    the right way up.
    - **Play a card** by dragging it from your hand into your play area (the

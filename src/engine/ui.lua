@@ -149,31 +149,50 @@ local function counter(id, icon, value, size)
     .. '</Panel>'
 end
 
--- A small standalone button, as wide as its label needs. Returns XML and width.
+-- Button looks, bright enough to stand out on a dark table: gold for the main
+-- action (Play all, End Turn, Play Game), light grey-blue for the rest.
+-- normal|highlighted|pressed|disabled, then the text colour.
+local STYLES = {
+  primary = { "#E8B84A|#F6D27A|#C99A2E|#E8B84A80", "#1A1206" },
+  secondary = { "#D6DEE8|#F0F4F8|#AEB9C6|#D6DEE880", "#14202C" },
+}
+-- The ids that get the primary look.
+UI_.PRIMARY = { ["cz-playall"] = true, ["cz-end"] = true, ["cz-new"] = true, ["cz-again"] = true }
+
+-- A standalone button, as wide as its label needs. Returns XML and width.
 local function smallButton(id, label, size)
   size = size or 12
-  local width = math.max(60, math.floor(#label * size * 0.58) + 22)
+  local style = STYLES[UI_.PRIMARY[id] and "primary" or "secondary"]
+  local width = math.max(60, math.floor(#label * size * 0.6) + 24)
   return string.format('<Button id="%s" onClick="Cardalyzer_onUI" preferredHeight="%d" preferredWidth="%d" fontSize="%d"'
-    .. ' colors="#141C26E6|#26384EF2|#0C1218F2|#14202C80" textColor="#FFFFFF">%s</Button>',
-    id, size + 14, width, size, escape(label)), width
+    .. ' fontStyle="Bold" colors="%s" textColor="%s">%s</Button>',
+    id, size + 14, width, size, style[1], style[2], escape(label)), width
 end
 
--- Buttons in centred rows no wider than maxWidth. Returns XML and its height.
-local function buttonRows(list, size, maxWidth)
-  local rows, row, used = {}, {}, 0
+-- Buttons in centred rows no wider than maxWidth. `bigger` lists ids drawn at
+-- a larger size. Returns XML and its height.
+local function buttonRows(list, size, maxWidth, bigger)
+  local rows, row, used, rowSize = {}, {}, 0, size
+  local sizes = {}
   for _, b in ipairs(list) do
-    local xml, w = smallButton(b.id, b.label, size)
-    if used > 0 and used + w > maxWidth then rows[#rows + 1] = row; row, used = {}, 0 end
+    local s = (bigger and bigger[b.id]) and bigger[b.id] or size
+    local xml, w = smallButton(b.id, b.label, s)
+    if used > 0 and used + w > maxWidth then
+      rows[#rows + 1], sizes[#rows + 1] = row, rowSize
+      row, used, rowSize = {}, 0, size
+    end
     row[#row + 1] = xml
     used = used + w + 6
+    rowSize = math.max(rowSize, s)
   end
-  if #row > 0 then rows[#rows + 1] = row end
-  local out = {}
-  for _, r in ipairs(rows) do
-    out[#out + 1] = '<HorizontalLayout spacing="6" preferredHeight="' .. (size + 14) .. '" childForceExpandWidth="false"'
+  if #row > 0 then rows[#rows + 1], sizes[#rows + 1] = row, rowSize end
+  local out, height = {}, 0
+  for i, r in ipairs(rows) do
+    out[#out + 1] = '<HorizontalLayout spacing="6" preferredHeight="' .. (sizes[i] + 14) .. '" childForceExpandWidth="false"'
       .. ' childForceExpandHeight="false" childAlignment="MiddleCenter">' .. table.concat(r) .. '</HorizontalLayout>'
+    height = height + sizes[i] + 20
   end
-  return table.concat(out), #rows * (size + 20)
+  return table.concat(out), height
 end
 
 ---------------------------------------------------------------------------
@@ -183,8 +202,11 @@ end
 -- The right-hand column: the info panel above the Tidy table button at the
 -- bottom, and a private message for one player just above the info panel.
 UI_.INFO_WIDTH = 300
-local INFO_BOTTOM = 56 -- the info panel's bottom edge, in pixels above the screen's
-UI_.ACTION_BAR_Y = 210 -- the action bar's bottom edge: just above the on-screen hand
+-- Both sit clear of TTS's own Notes button in the bottom right corner.
+local TIDY_Y = 70 -- the Tidy table button's bottom edge, in pixels above the screen's
+local INFO_BOTTOM = 112 -- the info panel's bottom edge
+UI_.ACTION_BAR_Y = 210 -- the action bar's bottom edge by default: just above the on-screen hand
+UI_.BAR_STEP = 30 -- how far one press of a player's ▲/▼ moves their bar
 
 -- Rough pixel height of a message wrapped to the info panel's width.
 local function wrappedHeight(msg, size)
@@ -220,24 +242,29 @@ local function seatRow(game, seat)
     .. xml .. '</HorizontalLayout>' .. piles, 34 + 14 + 4
 end
 
--- The active player's per-turn counters (Trade, Combat), under the player list.
-local function turnCounters(game)
+-- The active player's per-turn counters (Trade, Combat) that are above 0, for
+-- the row just above the action bar. nil when there's nothing to count.
+local function turnCounters(game, color)
   local state, rules = game.state, game.rules
   if not state.started or state.winner then return nil end
   local p = state.players[state.turn.active]
   local xml = ""
   for _, r in ipairs(rules.resources or {}) do
-    local icon = UI_.iconFor(rules, r, "resource")
     local value = p.resources[r.key] or 0
-    xml = xml .. (icon and counter("cz_res_" .. r.key, icon, value, 46)
-      or text("cz_res_" .. r.key, (r.label or Util.titleCase(r.key)) .. " " .. value, 16, FX))
+    if value > 0 then
+      local icon = UI_.iconFor(rules, r, "resource")
+      local id = "cz_res_" .. color .. "_" .. r.key
+      xml = xml .. (icon and counter(id, icon, value, 52)
+        or text(id, (r.label or Util.titleCase(r.key)) .. " " .. value, 18, 'fontStyle="Bold"' .. FX))
+    end
   end
-  return '<HorizontalLayout spacing="10" preferredHeight="46" childForceExpandWidth="false" childAlignment="MiddleRight">'
+  if xml == "" then return nil end
+  return '<HorizontalLayout spacing="12" preferredHeight="52" childForceExpandWidth="false" childAlignment="MiddleCenter">'
     .. xml .. '</HorizontalLayout>'
 end
 
--- The info panel, on the right: title, turn, the players, the active
--- player's counters, the last few messages (see Game:notify; TTS draws
+-- The info panel, on the right: title, turn, the players, the last few
+-- messages (see Game:notify; TTS draws
 -- broadcasts behind custom UI, so they're shown here instead) and New Game,
 -- which opens the setup menu. Returns its XML and its height in pixels.
 function UI_.infoPanel(game)
@@ -250,8 +277,6 @@ function UI_.infoPanel(game)
   local th = wrappedHeight(turn, 14)
   row(text("cz_turn", turn, 14, 'fontStyle="Bold" alignment="MiddleRight" preferredHeight="' .. th .. '"' .. FX), th)
   for seat = 1, #state.players do row(seatRow(game, seat)) end
-  local counters = turnCounters(game)
-  if counters then row(counters, 46) end
   for i, msg in ipairs(game.notices and game.notices.all or {}) do
     local h = wrappedHeight(msg, 12)
     row(text("cz_notice_" .. i, msg, 12, 'color="' .. ACCENT .. '" fontStyle="Italic" alignment="MiddleRight" preferredHeight="'
@@ -291,7 +316,7 @@ function UI_.playersRow(game)
   local xml = text("cz_players", "Players", 15, 'preferredWidth="80"' .. FX)
   for n = range.min, range.max do
     local b = smallButton("cz-players-" .. n, tostring(n), 14)
-    if n == current then b = b:gsub('textColor="#FFFFFF"', 'textColor="' .. ACCENT .. '" fontStyle="Bold"') end
+    if n == current then b = b:gsub('colors="[^"]*" textColor="[^"]*"', 'colors="' .. STYLES.primary[1] .. '" textColor="' .. STYLES.primary[2] .. '"') end
     xml = xml .. b
   end
   return '<HorizontalLayout spacing="6" preferredHeight="30" childForceExpandWidth="false" childAlignment="MiddleCenter">'
@@ -315,7 +340,7 @@ function UI_.xml(game)
   local parts = { info }
 
   -- Tidy table on its own, in the bottom right corner.
-  parts[#parts + 1] = '<Panel id="cz_tidy" width="120" height="30" rectAlignment="LowerRight" offsetXY="-12 14"' .. PANEL .. '>'
+  parts[#parts + 1] = '<Panel id="cz_tidy" width="120" height="30" rectAlignment="LowerRight" offsetXY="-12 ' .. TIDY_Y .. '"' .. PANEL .. '>'
     .. '<HorizontalLayout childForceExpandWidth="false" childAlignment="MiddleRight">' .. smallButton("cz-tidy", "Tidy table", 12)
     .. '</HorizontalLayout></Panel>'
 
@@ -377,19 +402,41 @@ function UI_.xml(game)
   end
 
   -- On your turn: a choice waiting goes in the middle of the screen; the
-  -- rest of what you can do sits in a bar of small buttons just above your hand.
+  -- rest of what you can do sits in a bar just above your hand, with ▲/▼ to
+  -- move it to suit your own hand size (remembered per colour). The active
+  -- player's Trade and Combat sit just above the bar, for every player, each
+  -- at their own bar height, and only while there's something to count.
   if state.started and not state.winner then
     local acts = UI_.actions(game)
     local color = state.players[state.turn.active].color
     if acts.prompt then
       parts[#parts + 1] = centrePanel("cz_choice", color, acts.prompt, ACCENT, 18, nil, acts.choices)
     end
-    local bar, barHeight = buttonRows(acts.buttons, 12, 1100)
+    local buttons = {}
+    for _, b in ipairs(acts.buttons) do buttons[#buttons + 1] = b end
+    buttons[#buttons + 1] = { id = "cz-barup", label = "▲" }
+    buttons[#buttons + 1] = { id = "cz-bardown", label = "▼" }
+    local bar, barHeight = buttonRows(buttons, 12, 1100, { ["cz-playall"] = 17, ["cz-end"] = 17 })
+    local barY = UI_.barY(game, color)
     parts[#parts + 1] = '<Panel id="cz_actions" visibility="' .. color .. '" width="1120" height="' .. barHeight
-      .. '" rectAlignment="LowerCenter" offsetXY="0 ' .. UI_.ACTION_BAR_Y .. '"' .. PANEL
+      .. '" rectAlignment="LowerCenter" offsetXY="0 ' .. barY .. '"' .. PANEL
       .. '><VerticalLayout spacing="4" childForceExpandHeight="false">' .. bar .. '</VerticalLayout></Panel>'
+    for _, p in ipairs(state.players) do
+      local counters = turnCounters(game, p.color)
+      if counters then
+        local y = UI_.barY(game, p.color) + (p.color == color and barHeight or 0) + 8
+        parts[#parts + 1] = '<Panel id="cz_counters_' .. p.color .. '" visibility="' .. p.color .. '" width="400" height="52"'
+          .. ' rectAlignment="LowerCenter" offsetXY="0 ' .. y .. '"' .. PANEL .. '>' .. counters .. '</Panel>'
+      end
+    end
   end
   return table.concat(parts)
+end
+
+-- Where a colour's action bar sits: the default, moved by their ▲/▼ presses.
+function UI_.barY(game, color)
+  local moved = game.state.view.barOffset and game.state.view.barOffset[color] or 0
+  return UI_.ACTION_BAR_Y + moved
 end
 
 ---------------------------------------------------------------------------

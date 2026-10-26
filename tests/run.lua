@@ -163,10 +163,13 @@ test("the UI: info panel on the right, action bar above the hand, Tidy table in 
   local xml = tts.ui.xml
   assert(xml:find('id="cz_panel" width="300" height="%d+" rectAlignment="LowerRight"'), "info panel on the right")
   assert(xml:find('id="cz_actions"[^>]*rectAlignment="LowerCenter" offsetXY="0 210"'), "action bar just above the hand")
-  assert(xml:find('id="cz_tidy"[^>]*rectAlignment="LowerRight" offsetXY="%-12 14"'), "Tidy table in its own corner")
+  assert(xml:find('id="cz_tidy"[^>]*rectAlignment="LowerRight" offsetXY="%-12 70"'), "Tidy table above TTS's Notes button")
+  assert(xml:find('id="cz_panel"[^>]*offsetXY="%-12 112"'), "info panel above it")
   assert(not xml:find('outline="#E8B84A"', 1, true), "no yellow borders")
   assert(not xml:find('color="#0E1620F2"', 1, true), "no panel backgrounds")
-  assert(xml:find('id="cz%-end"[^>]*fontSize="12"'), "small buttons")
+  assert(xml:find('id="cz%-end"[^>]*fontSize="17"[^>]*colors="#E8B84A'), "End Turn: bigger, gold")
+  assert(xml:find('id="cz%-playall"[^>]*fontSize="17"[^>]*colors="#E8B84A'), "Play all: bigger, gold")
+  assert(xml:find('id="cz%-tidy"[^>]*colors="#D6DEE8'), "other buttons light")
   assert(xml:find('id="cz_seat_2"[^>]*color="#E5413F"'), "seat names tinted")
   assert(not xml:find('color="[^"]*"[^>]-color="'), "no duplicate color attributes")
   eq(#tts.ui.assets, 4, "four symbols registered")
@@ -174,14 +177,28 @@ test("the UI: info panel on the right, action bar above the hand, Tidy table in 
   -- Stats sit beside each name as symbols with the number over them.
   assert(xml:find('id="cz_stat_2_health"[^>]*><Image image="cz_heart"'), "health as a heart")
   assert(xml:find('id="cz_stat_2_health_n"[^>]*>40<'), "with the number on it")
-  -- The active player's per-turn counters, below the player list.
+  -- The active player's Trade/Combat sit above the action bar, only when above 0.
+  assert(not xml:find("cz_res_", 1, true), "nothing to count at the start of the turn")
   game.state.players[1].resources.gold = 3
   game:refreshUI()
   xml = tts.ui.xml
-  assert(xml:find('id="cz_res_gold"[^>]*><Image image="cz_coin"'), "gold as a coin")
-  assert(xml:find('id="cz_res_gold_n"[^>]*>3<'), "showing 3")
-  assert(xml:find('id="cz_res_might"[^>]*><Image image="cz_reticle"'), "might as a reticle")
-  assert(xml:find("cz_seat_2_piles", 1, true) < xml:find("cz_res_gold", 1, true), "counters come after the players")
+  assert(xml:find('id="cz_res_White_gold"[^>]*><Image image="cz_coin"'), "gold as a coin")
+  assert(xml:find('id="cz_res_White_gold_n"[^>]*>3<'), "showing 3")
+  assert(not xml:find("cz_res_White_might", 1, true), "might hidden while it's 0")
+  assert(xml:find('id="cz_res_Red_gold"', 1, true), "the other player sees it too")
+  local barY = tonumber(xml:match('id="cz_actions"[^>]*offsetXY="0 (%d+)"'))
+  local countersY = tonumber(xml:match('id="cz_counters_White"[^>]*offsetXY="0 (%d+)"'))
+  assert(countersY > barY, "counters just above the bar")
+  assert(not xml:match('<Panel id="cz_panel".-</Panel>'):find("cz_res_", 1, true), "not in the info panel")
+  -- Each player can move their bar to sit above their own hand; it's remembered.
+  press(HOST, "cz-barup")
+  press(HOST, "cz-barup")
+  local moved = tonumber(tts.ui.xml:match('id="cz_actions"[^>]*offsetXY="0 (%d+)"'))
+  eq(moved, barY + 60, "two steps up")
+  local restored = boot(game:save())
+  eq(Cardalyzer.require("engine.ui").barY(restored, "White"), barY + 60, "kept after a reload")
+  game = restored
+  game.state.players[1].bases = {}
   -- A base in play shows a shield with its defense, in front of the heart.
   local State = Cardalyzer.require("engine.state")
   local vault = State.newCard(game.state, "seed_vault") -- defense from cards.csv
@@ -829,7 +846,7 @@ test("the host picks 2 to 4 players and the table is laid out for them", functio
   click(HOST, "cz-players-2")
   eq(#s.players, 3, "current game unchanged")
   click(HOST, "cz-setup")
-  assert(tts.ui.xml:find('id="cz%-players%-2"[^>]*textColor="#E8B84A"'), "the setup menu remembers the choice")
+  assert(tts.ui.xml:find('id="cz%-players%-2"[^>]*colors="#E8B84A'), "the setup menu remembers the choice")
   DBE_start()
   eq(#game.state.players, 2, "next game seats 2")
   eq(count(ofType("ScriptingTrigger")), 9, "back to two seats of zones")

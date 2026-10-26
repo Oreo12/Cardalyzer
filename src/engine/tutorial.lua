@@ -32,13 +32,14 @@ function Tutorial.pages(game)
     { "The info panel (right side)",
       "Everyone sees this panel. It shows whose turn it is and each player in their seat colour, with their "
       .. "stats as symbols (and a shield in front for each of their bases, showing its defense) and how many "
-      .. "cards are in their deck and discard pile. The active player's name is bold. Below the players are the "
-      .. "active player's " .. buy .. " and " .. attack .. " for this turn.\n\n"
+      .. "cards are in their deck and discard pile. The active player's name is bold. Their " .. buy .. " and "
+      .. attack .. " for this turn show near the bottom of the screen whenever there's something to count.\n\n"
       .. "Messages appear here too, including each ally ability as it fires. The last three are "
       .. "shown to everyone, and a message just for you (like \"It's not your turn\") appears just above the "
       .. "panel. All messages are also in chat." },
     { "Your turn (above your hand)",
-      "On your turn a row of buttons appears just above your hand. Only you can see it.\n\n"
+      "On your turn a row of buttons appears just above your hand. Only you can see it. If it covers your "
+      .. "cards or floats too high, move it with the up and down arrows at its end; it remembers where you put it.\n\n"
       .. "- Play cards by dragging them from your hand onto your play area, or press Play all.\n"
       .. "- Buy a card by pressing the Buy button on it in the market.\n"
       .. "- Spend " .. attack .. " with the Attack and Destroy buttons.\n"

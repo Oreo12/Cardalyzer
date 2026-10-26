@@ -77,6 +77,8 @@ function Cardalyzer_onUI(player, _, id)
     return game:setup(player.color, true)
   end
   if action == "setupclose" then return game:setup(player.color, false) end
+  if action == "barup" then return game:moveBar(player.color, 1) end
+  if action == "bardown" then return game:moveBar(player.color, -1) end
   if action == "tidy" then return run(player.color, game.tidy) end
   if action == "end" then return Cardalyzer_onEndTurn(player) end
   if action == "players" then
