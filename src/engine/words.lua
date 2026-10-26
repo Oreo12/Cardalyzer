@@ -16,6 +16,9 @@ Words.DEFAULT = {
   -- the info panel
   notStarted = "Press New Game to set up a game.",
   turnLine = "Turn {n} · {name} to play",
+  phaseLine = "Turn {n} · {name} · {phase}",
+  nextPhase = "{phase} →",
+  notThisPhase = "That can't be done in the {phase} phase.",
   wins = "{name} wins!",
   ["and"] = " and ",
   score = " · {n} points",

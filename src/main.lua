@@ -146,6 +146,8 @@ function Cardalyzer_onUI(player, _, id)
     run(player.color, game.scrapFromPlay, seat, arg)
   elseif action == "pick" then
     run(player.color, game.pick, seat, arg)
+  elseif action == "phase" then
+    run(player.color, game.nextPhase, seat)
   elseif action == "use" then
     run(player.color, game.activate, seat, arg)
   elseif action == "goal" then

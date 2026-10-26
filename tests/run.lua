@@ -2711,5 +2711,75 @@ test("a shared pool ends a points game; a custom check can decide any game", fun
   game.rules.win = { type = "stat_depleted", stat = "health", atOrBelow = 0 }
 end)
 
+test("turn structure: phases, play and buy costs, starting pools, keeping the hand, hooks", function()
+  local game = boot()
+  local rules = game.rules
+  rules.resources[#rules.resources + 1] = { key = "actions", label = "Actions", start = 1 }
+  rules.resources[#rules.resources + 1] = { key = "buys", label = "Buys", start = 1 }
+  local starts, ends = 0, 0
+  rules.turn = {
+    phases = {
+      { key = "action", label = "Action", play = "unit", buy = false, attack = false },
+      { key = "buy", label = "Buy", play = "building" },
+    },
+    playCost = { unit = { key = "actions", amount = 1 } },
+    buyCost = { key = "buys", amount = 1 },
+    keepHand = true, drawUpTo = true,
+    onStart = function() starts = starts + 1 end,
+    onEnd = function() ends = ends + 1 end,
+  }
+  Cardalyzer_onStartGame(HOST)
+  local s = game.state
+  local p = s.players[1]
+  eq(p.resources.actions, 1, "a resource's starting amount")
+  eq(starts, 1, "onStart ran")
+  assert(tts.ui.xml:find("Turn 1 · White · Action", 1, true), "the phase in the turn line")
+  assert(tts.ui.xml:find('id="cz%-phase"[^>]*>Buy →<'), "a button for the next phase")
+  -- a building from the market, into the hand, to test phases
+  local State = Cardalyzer.require("engine.state")
+  local vault = State.newCard(s, "seed_vault")
+  p.hand[#p.hand + 1] = vault
+  local units = {}
+  for _, uid in ipairs(p.hand) do if game:cardOf(uid).type == "unit" then units[#units + 1] = uid end end
+  assert(#units >= 2, "two units in hand")
+  assert(game:play(1, units[1]), "a unit in the Action phase")
+  eq(p.resources.actions, 0, "spent an action")
+  local ok, why = game:play(1, units[2])
+  assert(not ok and why:find("Actions"), "no actions left: " .. tostring(why))
+  ok, why = game:play(1, vault)
+  assert(not ok and why:find("Action phase"), "buildings wait for their phase: " .. tostring(why))
+  local row
+  for _, uid in ipairs(s.market.row) do if uid ~= "" then row = uid end end
+  p.resources.gold = 99
+  ok = game:buy(1, row)
+  assert(not ok, "no buying in the Action phase")
+  click(HOST, "cz-phase")
+  eq(s.turn.phase, 2, "the Buy phase")
+  assert(not tts.ui.xml:find('id="cz-phase"', 1, true), "no Next after the last phase")
+  assert(game:play(1, vault), "a building in the Buy phase")
+  assert(game:buy(1, row), "a buy")
+  eq(p.resources.buys, 0, "spent a buy")
+  local another
+  for _, uid in ipairs(s.market.row) do if uid ~= "" and uid ~= row then another = uid end end
+  ok, why = game:buy(1, another)
+  assert(not ok and why:find("Buys"), "one buy a turn: " .. tostring(why))
+  local kept = #p.hand
+  Cardalyzer_onEndTurn(HOST)
+  eq(ends, 1, "onEnd ran")
+  eq(#p.hand, math.max(kept, 5), "kept the hand and drew up to 5")
+  eq(p.resources.actions, 1, "pools back to their start for the next turn")
+  eq(s.turn.phase, 1, "the next turn starts in the first phase")
+  -- carried-over pools
+  game = boot()
+  game.rules.turn = { keepResources = { "gold" } }
+  Cardalyzer_onStartGame(HOST)
+  game.state.players[1].resources.gold = 4
+  game.state.players[1].resources.might = 3
+  Cardalyzer_onEndTurn(HOST)
+  eq(game.state.players[1].resources.gold, 4, "gold carried over")
+  eq(game.state.players[1].resources.might, 0, "might did not")
+  game.rules.turn = nil
+end)
+
 print(string.format("\n%d passed, %d failed", passed, failed))
 if failed > 0 then os.exit(1) end

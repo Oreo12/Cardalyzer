@@ -43,6 +43,8 @@ function UI_.turnLine(game)
   if not state.started then return say("notStarted") end
   if state.winner then return say("wins", { name = Actions.winnerNames(game) }) end
   local active = state.players[state.turn.active]
+  local phase = Actions.phase(game)
+  if phase then return say("phaseLine", { n = state.turn.number, name = active.name, phase = phase.label or phase.key }) end
   return say("turnLine", { n = state.turn.number, name = active.name })
 end
 
@@ -73,10 +75,12 @@ function UI_.actions(game)
 
   out.prompt, out.choices = UI_.promptFor(game, seat)
 
-  if #p.hand > 0 and not Actions.handBlocked(game, seat) then add(out.buttons, "cz-playall", say("playAll", { n = #p.hand })) end
+  local canPlay = 0
+  for _, uid in ipairs(p.hand) do if Actions.playable(game, seat, uid) then canPlay = canPlay + 1 end end
+  if canPlay > 0 and not Actions.handBlocked(game, seat) then add(out.buttons, "cz-playall", say("playAll", { n = canPlay })) end
 
   local key, label = Actions.resourceFor(game.rules, "attack")
-  local pool = key and p.resources[key] or 0
+  local pool = key and Actions.phaseAllows(game, "attack") and p.resources[key] or 0
   if pool > 0 then
     for _, other in ipairs(game:opponentsOf(seat)) do
       local guards = Actions.guards(game, other)
@@ -109,6 +113,11 @@ function UI_.actions(game)
   local goalLabel = game.rules.objectives and game.rules.objectives.label or "goal"
   for _, uid in ipairs(Actions.completable(game, seat)) do
     add(out.buttons, "cz-goal-" .. uid, say("complete", { card = game:cardOf(uid).name }))
+  end
+  local phases = game.rules.turn and game.rules.turn.phases
+  if phases and (state.turn.phase or 1) < #phases then
+    local nextPhase = phases[(state.turn.phase or 1) + 1]
+    add(out.buttons, "cz-phase", say("nextPhase", { phase = nextPhase.label or nextPhase.key }))
   end
   add(out.buttons, "cz-end", say("endTurn"))
   if #p.objectives > 0 then

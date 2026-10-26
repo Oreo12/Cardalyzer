@@ -209,13 +209,17 @@ end
 -- End-of-turn cleanup for the active seat: played cards and hand go to the
 -- discard pile (persistent cards stay in play), resource pools reset, a new
 -- hand is drawn, and play passes to the next seat still in the game.
+-- rules.turn.keepHand keeps unplayed cards in the hand; rules.turn.drawUpTo
+-- draws up to the hand size instead of a whole new hand.
 function Turn.endTurn(state, rules, random)
   local seat = state.turn.active
   local player = state.players[seat]
+  local t = rules.turn or {}
   Util.moveAll(player.play, player.discard)
-  Util.moveAll(player.hand, player.discard)
+  if not t.keepHand then Util.moveAll(player.hand, player.discard) end
   State.resetResources(player, rules)
-  Turn.draw(state, seat, player.handSize or rules.handSize, random)
+  local size = player.handSize or rules.handSize
+  Turn.draw(state, seat, t.drawUpTo and math.max(0, size - #player.hand) or size, random)
 
   state.turn.active = Turn.nextSeat(state, seat)
   state.turn.number = state.turn.number + 1

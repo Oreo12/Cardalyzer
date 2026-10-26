@@ -24,6 +24,7 @@ Guilds**, a small original sample game with placeholder art:
 - [Tutorial: make your own game](#tutorial-make-your-own-game)
 - [Card spreadsheet reference](#card-spreadsheet-reference)
 - [Rules file reference](#rules-file-reference)
+- [How a turn runs](#how-a-turn-runs)
 - [Customising the UI](#customising-the-ui)
 - [Customising the table](#customising-the-table)
 - [Using card art you already have](#using-card-art-you-already-have)
@@ -484,9 +485,10 @@ These are the fields in `games/<yours>/rules.lua`:
 | `name` | `"Ember Guilds"` | Title shown on the panel |
 | `seats` | `{ {color="White"}, {color="Red"} }` | Player colours in turn order; optional `name` per seat. Seats sit along the bottom of the table from left to right, then back along the top. A game for fewer players uses the first ones |
 | `players` | `{min=2, default=2}` | How many of the seats can play. The host picks from `min` to the number of seats in the info panel. Leave out to always use every seat |
-| `resources` | `{ {key="gold", label="Gold", spend="buy"} }` | Per-turn pools, reset at end of turn. `spend = "buy"` pays for cards, `spend = "attack"` powers attacks. Optional `icon` (see `ui.iconBaseUrl`) |
+| `resources` | `{ {key="gold", label="Gold", spend="buy"} }` | Per-turn pools, reset at end of turn to `start` (0 unless given). `spend = "buy"` pays for cards, `spend = "attack"` powers attacks. Optional `icon` (see `ui.iconBaseUrl`) |
 | `stats` | `{ {key="health", label="Health", start=40} }` | Values that persist between turns. Optional `icon` |
 | `handSize` | `5` | Cards drawn at the end of each turn |
+| `turn` | see below | How a turn runs: phases, costs for playing and buying, what's kept between turns, and hooks |
 | `openingHand` | `{3, 5}` or `5` | First hand per player in turn order (the last number repeats); one number means everyone draws that many. `{players = {[2] = {3, 5}}, otherwise = {3, 4, 5}}` depends on the number of players |
 | `openingHands` | `{ {label="Rulebook", hands={3, 5}}, {label="Everyone 5", hands=5} }` | Several opening-hand rules to choose from in the New Game menu (the first is the default; the choice is remembered). Each `hands` takes any `openingHand` form; an optional `about` explains the option in plain words (its tooltip, and the tutorial's setup page). `openingLabel` renames the row (default "Starting hands"). Overrides `openingHand` |
 | `firstSeat` | `1` | Which seat goes first |
@@ -530,6 +532,44 @@ These are the fields in `games/<yours>/rules.lua`:
 | `rulebooks` | `{ {name="Rules", url="https://…/rules.pdf"} }` | PDFs a Rulebooks button spawns beside the play areas (and puts away when pressed again). Only `http(s)` links |
 | `layout.rulebooks` | `{x=40, z=0, spacing=9.5, scale=2, yaw=180, locked=false}` | Where the rulebooks go. Every field is optional; by default they stand in a line just past the furthest play area at the largest player count |
 | `customEffects` | see below | Lua for unusual cards |
+
+## How a turn runs
+
+By default a turn is: play cards, buy, attack, then End Turn discards
+everything in play and in hand and draws a new hand. `rules.turn` changes
+that.
+
+```lua
+resources = {
+  { key = "coins", label = "Coins", spend = "buy" },
+  { key = "actions", label = "Actions", start = 1 },  -- each turn starts with 1
+  { key = "buys", label = "Buys", start = 1 },
+},
+turn = {
+  phases = {
+    { key = "action", label = "Action", play = "action", buy = false, attack = false },
+    { key = "buy", label = "Buy", play = "treasure" },
+  },
+  playCost = { action = { key = "actions", amount = 1 } }, -- playing an action card spends an Action
+  buyCost = { key = "buys", amount = 1 },                  -- each card bought spends a Buy
+  keepHand = false,       -- true: unplayed cards stay in the hand
+  drawUpTo = false,       -- true: draw up to the hand size instead of a new hand
+  keepResources = false,  -- true, or a list of keys: those pools carry over
+  onStart = function(game, seat) end,
+  onEnd = function(game, seat) end,
+},
+```
+
+- **Phases** run in order. A Next button moves on, and End Turn ends the turn
+  in any phase. A phase's `play` is the card types it allows (a type, a
+  list, `true` for any, or `false` for none). `buy = false` and
+  `attack = false` turn those off for it. The phase shows in the turn line,
+  and Play all plays only what the phase and your resources allow.
+- **Costs**: `playCost` makes playing a type of card spend a resource, and
+  `buyCost` does the same for every card bought (free buys from effects
+  don't spend it).
+- Players still can't act on someone else's turn, except to answer a choice
+  an effect puts to them.
 
 ## Customising the UI
 

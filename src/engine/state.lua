@@ -70,9 +70,17 @@ function State.rowOf(state, uid)
   return nil
 end
 
+-- Each resource back to its `start` (0 unless given) for the player's next
+-- turn, except those rules.turn.keepResources carries over (true: all, or a
+-- list of keys).
 function State.resetResources(player, rules)
+  local keep = rules.turn and rules.turn.keepResources
   for _, res in ipairs(rules.resources or {}) do
-    player.resources[res.key] = 0
+    local kept = keep == true
+    if type(keep) == "table" then
+      for _, k in ipairs(keep) do if k == res.key then kept = true end end
+    end
+    if not kept or player.resources[res.key] == nil then player.resources[res.key] = res.start or 0 end
   end
 end
 
