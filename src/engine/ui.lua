@@ -41,7 +41,7 @@ function UI_.turnLine(game)
   use(game)
   local state = game.state
   if not state.started then return say("notStarted") end
-  if state.winner then return say("wins", { name = state.players[state.winner].name }) end
+  if state.winner then return say("wins", { name = Actions.winnerNames(game) }) end
   local active = state.players[state.turn.active]
   return say("turnLine", { n = state.turn.number, name = active.name })
 end
@@ -369,7 +369,8 @@ local function seatRow(game, seat)
   -- only in a game that dealt objectives (their set may be switched off)
   local goals = rules.objectives and #p.completed + #p.objectives > 0 and say("goalsCount", { label = rules.objectives.label or "Goals",
     done = #p.completed, total = rules.objectives.toWin or #p.completed + #p.objectives }) or ""
-  local piles = text("cz_seat_" .. seat .. "_piles", say("piles", { deck = #p.deck, discard = #p.discard }) .. goals, 11,
+  local score = rules.win and rules.win.type == "points" and say("score", { n = Actions.score(game, seat) }) or ""
+  local piles = text("cz_seat_" .. seat .. "_piles", say("piles", { deck = #p.deck, discard = #p.discard }) .. goals .. score, 11,
     'color="#C8CED6" alignment="MiddleRight" preferredHeight="14"' .. FX)
   local h = math.max(symbolSize("seat"), symbolSize("base"), 20)
   return '<HorizontalLayout spacing="4" preferredHeight="' .. h .. '" childForceExpandWidth="false" childAlignment="MiddleRight">'
@@ -478,6 +479,13 @@ function UI_.infoPanel(game, suffix, attrs, bottom)
   local turn = UI_.turnLine(game)
   local th = wrappedHeight(turn, 14)
   row(text("cz_turn", turn, 14, 'fontStyle="Bold" alignment="MiddleRight" preferredHeight="' .. th .. '"' .. FX), th)
+  local pool = game.rules.win and game.rules.win.endWhen and game.rules.win.endWhen.pool
+  if pool and state.started and state.pool then
+    local label = pool.key
+    for _, st in ipairs(game.rules.stats or {}) do if st.key == pool.key then label = st.label or st.key end end
+    row(text("cz_pool", say("pool", { n = math.max(0, state.pool), label = label }), 13, 'alignment="MiddleRight" color="' .. accent()
+      .. '" preferredHeight="18"' .. FX), 18)
+  end
   for seat = 1, #state.players do row(seatRow(game, seat)) end
   for i, msg in ipairs(game.notices and game.notices.all or {}) do
     local h = wrappedHeight(msg, 12)
@@ -855,7 +863,7 @@ function UI_.xml(game)
     local wg = UI_.scaleGroups(game, skip)
     for i, g in ipairs(wg) do
       local _, suffix = groupAttrs(wg, i, "0.5 0.5")
-      parts[#parts + 1] = centrePanel("cz_winner" .. suffix, table.concat(g.colors, "|"), say("wins", { name = winner.name }),
+      parts[#parts + 1] = centrePanel("cz_winner" .. suffix, table.concat(g.colors, "|"), say("wins", { name = Actions.winnerNames(game) }),
         UI_.seatColors[winner.color] or accent(), 34, nil, { { id = "cz-again", label = say("playAgain") } }, g.scale)
     end
   end

@@ -171,6 +171,9 @@ end
 function Effects.noteGain(game, seat, key, amount)
   local turn = game.state.turn
   if amount <= 0 or seat ~= turn.active then return end
+  -- a points game's shared pool (rules.win.endWhen.pool) gives what's gained
+  local pool = game.rules.win and game.rules.win.endWhen and game.rules.win.endWhen.pool
+  if pool and pool.key == key and game.state.pool then game.state.pool = game.state.pool - amount end
   turn.gained = turn.gained or {}
   local first = (turn.gained[key] or 0) == 0
   turn.gained[key] = (turn.gained[key] or 0) + amount

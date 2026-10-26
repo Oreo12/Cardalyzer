@@ -19,7 +19,7 @@ COLUMNS = ["id", "name", "deck", "faction", "type", "cost", "copies",
            "effects", "ally_effects", "scrap_effects", "defense", "text"]
 # Optional columns: double_ally_effects (need two other cards of the faction)
 # and set (which expansion a card is from, toggled in the New Game menu).
-OPTIONAL = ["double_ally_effects", "set", "condition"]
+OPTIONAL = ["double_ally_effects", "set", "condition", "points"]
 REQUIRED = ["id", "name", "cost", "copies", "effects"]
 DECKS = {"starter", "market", "fixed", "dealt", "objective"}
 # One effect: keyword:amount, custom:name or a bare keyword like reminder,
@@ -67,8 +67,9 @@ def convert(rows):
         seen.add(card_id)
 
         deck = row.get("deck") or "market"
-        if deck not in DECKS:
-            errors.append(f"card '{card_id}': deck must be one of {sorted(DECKS)}, got '{deck}'")
+        # "market:<key>" puts a card in an extra market (rules.markets)
+        if deck not in DECKS and not re.fullmatch(r"market:\w+", deck):
+            errors.append(f"card '{card_id}': deck must be one of {sorted(DECKS)} or market:<key>, got '{deck}'")
 
         card = {
             "id": card_id,
@@ -85,6 +86,7 @@ def convert(rows):
             "set": row.get("set") or None,
             "condition": row.get("condition") or None,
             "defense": parse_int(row.get("defense"), "defense", card_id, errors, allow_blank=True),
+            "points": parse_int(row.get("points"), "points", card_id, errors, allow_blank=True),
             "text": row.get("text", ""),
         }
         cards.append({k: v for k, v in card.items() if v is not None})
