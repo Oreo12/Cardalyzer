@@ -6,7 +6,8 @@ local Util = require("engine.util")
 local Cards = {}
 Cards.__index = Cards
 
-Cards.DECKS = { starter = true, market = true, fixed = true }
+-- dealt: each player is dealt rules.deal.count of these at setup, into play.
+Cards.DECKS = { starter = true, market = true, fixed = true, dealt = true }
 
 -- Effects with no amount. Everything else needs "keyword:amount".
 Cards.BARE = { reminder = true }
@@ -77,7 +78,7 @@ local function parseRow(row, index)
   local function fail(msg) error("card '" .. id .. "': " .. msg, 0) end
 
   local deck = blank(row.deck) and "market" or row.deck
-  if not Cards.DECKS[deck] then fail("deck must be starter, market or fixed, got '" .. deck .. "'") end
+  if not Cards.DECKS[deck] then fail("deck must be starter, market, fixed or dealt, got '" .. deck .. "'") end
 
   local ok, effects = pcall(Cards.parseEffects, row.effects)
   if not ok then fail(effects) end

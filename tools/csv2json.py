@@ -21,7 +21,7 @@ COLUMNS = ["id", "name", "deck", "faction", "type", "cost", "copies",
 # and set (which expansion a card is from, toggled in the New Game menu).
 OPTIONAL = ["double_ally_effects", "set"]
 REQUIRED = ["id", "name", "cost", "copies", "effects"]
-DECKS = {"starter", "market", "fixed"}
+DECKS = {"starter", "market", "fixed", "dealt"}
 # One effect: keyword:amount, custom:name or a bare keyword like reminder,
 # optionally prefixed by a faction (blob=combat:2, ally effects only).
 SINGLE = re.compile(r"^(?:[\w]+\s*:\s*-?\d+|custom\s*:\s*[\w-]+|reminder)$")

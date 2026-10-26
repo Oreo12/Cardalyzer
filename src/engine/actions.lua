@@ -449,7 +449,10 @@ function Actions.attack(game, seat, target, baseUid)
   if #guards > 0 then return fail("Destroy their guard bases first.") end
   local stat = game.rules.win and game.rules.win.stat
   if not stat then return fail("These rules have no stat to attack (rules.win.stat).") end
-  victim.stats[stat] = (victim.stats[stat] or 0) - pool
+  -- The defender's cards in play can change the damage (whenAttacked).
+  local hit = { damage = pool, attacker = seat }
+  Actions.trigger(game, target, "whenAttacked", hit)
+  victim.stats[stat] = (victim.stats[stat] or 0) - math.max(0, hit.damage)
   player.resources[key] = 0
   Actions.checkWin(game)
   return true
