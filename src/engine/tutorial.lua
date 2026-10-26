@@ -52,12 +52,42 @@ function Tutorial.pages(game)
       .. "The market is in the middle: the market deck, the row of cards for sale, any piles that are always "
       .. "for sale, and the scrap pile for removed cards. Every area is outlined.\n\n"
       .. "Dragging a card from the market row, or one you have in play, onto the scrap pile scraps it." },
+    Tutorial.setupPage(game),
     { "Tips",
       "- If cards get knocked around, press Tidy table (bottom right). The game is tracked in the script, not "
       .. "by where cards sit, so nothing is lost. A card dropped somewhere it can't go returns on its own.\n"
-      .. "- New Game opens the setup menu (host only): pick the number of players and press Play Game.\n"
+      .. "- Hover over a choice in the setup menu to see what it does.\n"
       .. "- Don't want the Tutorial button? Press Hide button below. Type !tutorial in chat to bring it back." },
   }
+end
+
+-- The page about the New Game menu: what each choice in it means.
+function Tutorial.setupPage(game)
+  local rules = game.rules
+  local lines = { "New Game opens the setup menu. Only the host can change it. Your choices are kept for the next game.\n" }
+  local range = game.playerRange(rules)
+  if range.min < range.max then
+    lines[#lines + 1] = "- Players: how many people are playing, " .. range.min .. " to " .. range.max .. "."
+  end
+  local options = rules.openingHands or {}
+  if #options > 1 then
+    local about = {}
+    for _, o in ipairs(options) do
+      about[#about + 1] = "    · " .. o.label .. (o.about and (": " .. o.about) or "")
+    end
+    lines[#lines + 1] = "- " .. (rules.openingLabel or "Starting hands") .. ": how many cards each player draws for "
+      .. "their very first turn. Going first is an advantage, so the first player usually starts with fewer. "
+      .. "After that, everyone draws a full hand.\n" .. table.concat(about, "\n")
+  end
+  if rules.kits and #rules.kits > 0 then
+    lines[#lines + 1] = "- " .. (rules.kitLabel or "Starting decks") .. ": Standard gives everyone the same starting "
+      .. "deck. Random gives each player a different " .. (rules.kitName or "kit") .. "."
+  end
+  if rules.sets and #rules.sets > 1 then
+    lines[#lines + 1] = "- Sets: which card sets are shuffled in. Blue ones are in."
+  end
+  lines[#lines + 1] = "\nPress Play Game to deal."
+  return { "Setting up a game", table.concat(lines, "\n") }
 end
 
 -- Per-player state. Open pages live on the game (not saved); hidden buttons

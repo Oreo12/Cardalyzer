@@ -280,10 +280,10 @@ test("the tutorial opens, pages, closes and its button can be hidden", function(
   press(HOST, "cz-tutnext")
   assert(tts.ui.xml:find("The info panel (right side)", 1, true), "page 2")
   for _ = 1, 10 do press(HOST, "cz-tutnext") end
-  assert(tts.ui.xml:find("Page 5 of 5", 1, true), "stops at the last page")
+  assert(tts.ui.xml:find("Page 6 of 6", 1, true), "stops at the last page")
   assert(not tts.ui.xml:find("cz-tutnext", 1, true), "no Next on the last page")
   press(HOST, "cz-tutback")
-  assert(tts.ui.xml:find("Page 4 of 5", 1, true), "back a page")
+  assert(tts.ui.xml:find("Page 5 of 6", 1, true), "back a page")
   press(HOST, "cz-tutclose")
   assert(not tts.ui.xml:find("cz_tutorial_White", 1, true), "closed")
 
@@ -1543,7 +1543,7 @@ test("opening hands: a game can offer rules to pick from in the setup menu", fun
   local game = boot()
   game.rules.openingHands = {
     { label = "Rulebook", hands = { players = { [2] = { 3, 5 } }, otherwise = { 3, 4, 5 } } },
-    { label = "Everyone 5", hands = 5 },
+    { label = "Everyone 5", hands = 5, about = "Everyone starts with 5 cards." },
   }
   local function dealt(n)
     click(HOST, "cz-players-" .. n)
@@ -1559,6 +1559,12 @@ test("opening hands: a game can offer rules to pick from in the setup menu", fun
   local xml = tts.ui.xml
   assert(xml:find('id="cz%-opening%-1"[^>]*colors="#5AA9E6'), "Rulebook chosen by default")
   assert(xml:find('id="cz%-opening%-2"[^>]*>Everyone 5<'), "the other option")
+  assert(xml:find('id="cz_opening"[^>]*>Starting hands<'), "the row's plain-words label")
+  assert(xml:find('id="cz%-opening%-2"[^>]*tooltip="Everyone starts with 5 cards."'), "an option's about is its tooltip")
+  local page = Cardalyzer.require("engine.tutorial").setupPage(game)
+  eq(page[1], "Setting up a game", "a tutorial page about the setup menu")
+  assert(page[2]:find("Starting hands: how many cards each player draws for their very first turn", 1, true), "explains starting hands")
+  assert(page[2]:find("Everyone 5: Everyone starts with 5 cards.", 1, true), "and each option")
   click(GUEST, "cz-opening-2")
   eq(game:setupChoice("opening"), nil, "only the host can change it")
   click(HOST, "cz-opening-2")
