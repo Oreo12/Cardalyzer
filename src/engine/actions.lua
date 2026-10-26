@@ -3,6 +3,8 @@
 --
 -- Every action returns true, or false plus a message to show the player.
 local Util = require("engine.util")
+local Words = require("engine.words")
+local function say(game, key, vars) return Words.say(game.rules, key, vars) end
 local State = require("engine.state")
 local Turn = require("engine.turn")
 
@@ -60,7 +62,7 @@ function Actions.fillMarket(game)
       if c and Actions.typeDef(game, c).event then
         state.market.row[slot] = State.EMPTY
         state.market.scrap[#state.market.scrap + 1] = uid
-        if game.notify then game:notify("Event: " .. c.name .. ". " .. game.effects:describe(c.effects, c.text)) end
+        if game.notify then game:notify(Words.say(game.rules, "event", { card = c.name, effects = game.effects:describe(c.effects, c.text) })) end
         game.effects:apply(game, state.turn.active, c.effects, { uid = uid, card = c, event = true })
         for seat = 1, #state.players do Actions.settle(game, seat) end -- drop choices with nothing to pick
         again = true
@@ -117,10 +119,10 @@ end
 
 local function isActive(game, seat)
   local state = game.state
-  if not state.started then return false, "The game hasn't started." end
-  if state.winner then return false, "The game is over." end
+  if not state.started then return false, say(game, "notStartedYet") end
+  if state.winner then return false, say(game, "gameOver") end
   if state.turn.active ~= seat then
-    return false, "It's " .. state.players[state.turn.active].name .. "'s turn."
+    return false, say(game, "othersTurn", { name = state.players[state.turn.active].name })
   end
   return true
 end
@@ -197,7 +199,7 @@ function Actions.checkAllies(game, seat)
             if f ~= "none" then turnRec.allyFactions[f] = true end
           end
           if game.notify then
-            game:notify(c.name .. " ally: " .. game.effects:describe(group.effects, c.text))
+            game:notify(say(game, "ally", { card = c.name, effects = game.effects:describe(group.effects, c.text) }))
           end
           game.effects:apply(game, seat, group.effects, { uid = uid, card = c })
           -- whenYouUseAlly(game, seat, ctx, used) on the player's cards in play
@@ -233,9 +235,9 @@ function Actions.play(game, seat, uid)
   local ok, why = isActive(game, seat)
   if not ok then return fail(why) end
   local waiting = Actions.handBlocked(game, seat)
-  if waiting then return fail("First: " .. Actions.promptText(game, waiting) .. ".") end
+  if waiting then return fail(say(game, "firstDo", { what = Actions.promptText(game, waiting) })) end
   local player = game.state.players[seat]
-  if not Util.removeValue(player.hand, uid) then return fail("That card isn't in your hand.") end
+  if not Util.removeValue(player.hand, uid) then return fail(say(game, "notInHand")) end
   Actions.enterPlay(game, seat, uid)
   return true
 end
@@ -276,9 +278,9 @@ function Actions.playAll(game, seat)
   local ok, why = isActive(game, seat)
   if not ok then return fail(why) end
   local waiting = Actions.handBlocked(game, seat)
-  if waiting then return fail("First: " .. Actions.promptText(game, waiting) .. ".") end
+  if waiting then return fail(say(game, "firstDo", { what = Actions.promptText(game, waiting) })) end
   local hand = game.state.players[seat].hand
-  if #hand == 0 then return fail("Your hand is empty.") end
+  if #hand == 0 then return fail(say(game, "handEmpty")) end
   -- Stops early if a card played asks for a card from the hand first.
   while #hand > 0 and Actions.play(game, seat, hand[1]) do end
   return true
@@ -310,7 +312,7 @@ function Actions.buy(game, seat, uid, free, toTop, toHand)
   if not ok then return fail(why) end
   local market = game.state.market
   local where, slot = locate(market, uid)
-  if not where then return fail("That card can't be bought.") end
+  if not where then return fail(say(game, "cantBuy")) end
   if where == "fixed" then uid = market.fixed[slot][#market.fixed[slot]] end
   local c = card(game, uid)
   local player = game.state.players[seat]
@@ -324,7 +326,7 @@ function Actions.buy(game, seat, uid, free, toTop, toHand)
       and (not discount.type or Actions.typeMatches(discount.type, c))
     if discounted then cost = math.max(0, cost - (discount.amount or 1)) end
     if (player.resources[key] or 0) < cost then
-      return fail("Not enough " .. label .. ": " .. c.name .. " costs " .. cost .. ".")
+      return fail(say(game, "notEnough", { resource = label, card = c.name, n = cost }))
     end
     player.resources[key] = player.resources[key] - cost
     if discounted then player.flags.discount = nil end
@@ -371,7 +373,7 @@ function Actions.scrapFromPlay(game, seat, uid)
   if #c.scrapEffects == 0 then return fail(c.name .. " has no scrap ability.") end
   if not Actions.canScrap(game, seat, uid) then return fail(c.name .. " can only be scrapped with an ally in play.") end
   if not (Util.removeValue(player.play, uid) or Util.removeValue(player.bases, uid)) then
-    return fail("That card isn't in play.")
+    return fail(say(game, "notInPlay"))
   end
   Actions.toScrap(game, uid, seat, "play")
   game.effects:apply(game, seat, c.scrapEffects, { uid = uid, card = c })
@@ -401,7 +403,7 @@ function Actions.scrapFromRow(game, seat, uid)
   if game.rules.mechanics and game.rules.mechanics.scrap == false then return fail("Scrapping is off in these rules.") end
   local market = game.state.market
   local slot = Util.indexOf(market.row, uid)
-  if not slot then return fail("That card isn't in the market row.") end
+  if not slot then return fail(say(game, "notInRow")) end
   market.row[slot] = State.EMPTY
   Actions.toScrap(game, uid)
   Actions.fillMarket(game)
@@ -471,28 +473,30 @@ function Actions.attack(game, seat, target, baseUid)
   local ok, why = isActive(game, seat)
   if not ok then return fail(why) end
   local victim = game.state.players[target]
-  if target == seat or not victim then return fail("Pick an opponent to attack.") end
-  if victim.out then return fail(victim.name .. " is already out.") end
+  if target == seat or not victim then return fail(say(game, "pickOpponent")) end
+  if victim.out then return fail(say(game, "alreadyOut", { name = victim.name })) end
   local key, label = Actions.resourceFor(game.rules, "attack")
   if not key then return fail("These rules have no resource with spend = \"attack\".") end
   local player = game.state.players[seat]
   local pool = player.resources[key] or 0
-  if pool <= 0 then return fail("You have no " .. label .. " to attack with.") end
+  if pool <= 0 then return fail(say(game, "nothingToAttack", { resource = label })) end
   local guards = Actions.guards(game, target)
 
   if baseUid then
-    if not Util.indexOf(victim.bases, baseUid) then return fail("That base isn't in play.") end
-    if Actions.typeDef(game, card(game, baseUid)).target == false then return fail(card(game, baseUid).name .. " can't be attacked.") end
-    if #guards > 0 and not Util.indexOf(guards, baseUid) then return fail("Destroy their guard bases first.") end
+    if not Util.indexOf(victim.bases, baseUid) then return fail(say(game, "baseNotInPlay")) end
+    if Actions.typeDef(game, card(game, baseUid)).target == false then
+      return fail(say(game, "cantBeAttacked", { card = card(game, baseUid).name }))
+    end
+    if #guards > 0 and not Util.indexOf(guards, baseUid) then return fail(say(game, "guardsFirst")) end
     local c = card(game, baseUid)
     local defense = Actions.defenseOf(game, target, baseUid)
-    if pool < defense then return fail(c.name .. " needs " .. defense .. " " .. label .. ".") end
+    if pool < defense then return fail(say(game, "needs", { card = c.name, n = defense, resource = label })) end
     player.resources[key] = pool - defense
     Actions.destroyBase(game, target, baseUid)
     return true
   end
 
-  if #guards > 0 then return fail("Destroy their guard bases first.") end
+  if #guards > 0 then return fail(say(game, "guardsFirst")) end
   local stat = game.rules.win and game.rules.win.stat
   if not stat then return fail("These rules have no stat to attack (rules.win.stat).") end
   -- The defender's cards in play can change the damage (whenAttacked).
@@ -525,37 +529,39 @@ function Actions.prompt(game, seat, prompt)
   prompts[#prompts + 1] = prompt
 end
 
-local function plural(n, word)
-  return n .. " " .. word .. (n == 1 and "" or "s")
-end
-
 function Actions.promptText(game, prompt)
   if prompt.text then return prompt.text end
   local n, kind = prompt.count, prompt.kind
-  if kind == "choice" then return "Choose one" end
+  local cards = say(game, n == 1 and "card" or "cards")
+  if kind == "choice" then return say(game, "chooseOne") end
   if kind == "scrap" then
     local from = prompt.from or { "hand", "discard" }
-    local names = { hand = "your hand", discard = "your discard pile", row = "the market row" }
+    local names = { hand = "yourHand", discard = "yourDiscardPile", row = "theMarketRow" }
     local list = {}
-    for _, f in ipairs(from) do list[#list + 1] = names[f] or f end
-    return (prompt.optional and "Scrap up to " or "Scrap ") .. plural(n, "card") .. " from " .. table.concat(list, " or ")
+    for _, f in ipairs(from) do list[#list + 1] = names[f] and say(game, names[f]) or f end
+    return say(game, prompt.optional and "scrapUpTo" or "scrapFrom", { n = n, cards = cards, where = table.concat(list, say(game, "or")) })
   end
-  if kind == "discard" then return (prompt.optional and "Discard up to " or "Discard ") .. plural(n, "card") end
-  if kind == "scrap_row" then return "Scrap up to " .. plural(n, "card") .. " from the market row" end
+  if kind == "discard" then return say(game, prompt.optional and "discardUpTo" or "discardN", { n = n, cards = cards }) end
+  if kind == "scrap_row" then return say(game, "scrapRow", { n = n, cards = cards }) end
   if kind == "destroy_base" then
-    return (prompt.bounce and "Return up to " or "Destroy up to ") .. plural(n, "base") .. (prompt.bounce and " to its owner's hand" or "")
+    return say(game, prompt.bounce and "returnUpTo" or "destroyUpTo", { n = n, bases = say(game, n == 1 and "base" or "bases") })
   end
   if kind == "free_buy" then
-    return "Take " .. (prompt.cardType and ("a " .. (type(prompt.cardType) == "table" and table.concat(prompt.cardType, " or ") or prompt.cardType)) or "a card")
-      .. (prompt.maxCost and (" costing " .. prompt.maxCost .. " or less") or "")
-      .. (prompt.includeFixed and " from the market" or " from the market row") .. " for free"
-      .. (prompt.toTop and ", onto your deck" or prompt.toHand and ", into your hand" or "")
+    local what = prompt.cardType and say(game, "aType", {
+      type = type(prompt.cardType) == "table" and table.concat(prompt.cardType, say(game, "or")) or prompt.cardType }) or say(game, "aCard")
+    return say(game, "takeFree", {
+      what = what,
+      limit = prompt.maxCost and say(game, "costLimit", { n = prompt.maxCost }) or "",
+      where = say(game, prompt.includeFixed and "theMarket" or "theMarketRow"),
+      dest = prompt.toTop and say(game, "ontoDeck") or prompt.toHand and say(game, "intoHand") or "",
+    })
   end
-  if kind == "pick" then return "Choose a card" end
-  if kind == "place_bought" then return "Where should " .. card(game, prompt.uid).name .. " go?" end
+  if kind == "pick" then return say(game, "chooseCard") end
+  if kind == "place_bought" then return say(game, "whereGoes", { card = card(game, prompt.uid).name }) end
   if kind == "opponent" then
     local owed = prompt.owe and prompt.owe.discard
-    return owed and ("Choose an opponent to discard " .. plural(owed, "card") .. " next turn") or "Choose an opponent"
+    return owed and say(game, "chooseOpponentDiscard", { n = owed, cards = say(game, owed == 1 and "card" or "cards") })
+      or say(game, "chooseOpponent")
   end
   return kind
 end
@@ -641,8 +647,8 @@ function Actions.targets(game, seat, prompt)
     end
   elseif kind == "place_bought" then
     if Util.indexOf(player.discard, prompt.uid) then
-      out[1] = { value = "top", label = "Top of your deck" }
-      out[2] = { value = "discard", label = "Your discard pile" }
+      out[1] = { value = "top", label = say(game, "topOfDeck") }
+      out[2] = { value = "discard", label = say(game, "yourDiscard") }
     end
   end
   return out
@@ -684,12 +690,12 @@ function Actions.pick(game, seat, value)
   local state = game.state
   local player = state.players[seat]
   local prompt = player.prompts[1]
-  if not prompt then return fail("There's nothing to choose.") end
+  if not prompt then return fail(say(game, "nothingToChoose")) end
   local valid = false
   for _, t in ipairs(Actions.targets(game, seat, prompt)) do
     if t.value == value then valid = true end
   end
-  if not valid then return fail("That isn't one of the options.") end
+  if not valid then return fail(say(game, "notAnOption")) end
 
   local kind = prompt.kind
   if kind == "choice" or kind == "pick" then
@@ -758,7 +764,7 @@ function Actions.done(game, seat)
   local prompt = player.prompts[1]
   if not prompt then return fail("There's nothing to finish.") end
   if not prompt.optional and #Actions.targets(game, seat, prompt) > 0 then
-    return fail("You have to choose first: " .. Actions.promptText(game, prompt) .. ".")
+    return fail(say(game, "chooseFirst", { what = Actions.promptText(game, prompt) }))
   end
   finish(game, seat)
   Actions.settle(game, seat)
@@ -796,7 +802,7 @@ function Actions.activate(game, seat, uid)
       return true
     end
   end
-  return fail("That can't be used now.")
+  return fail(say(game, "cantUse"))
 end
 
 ---------------------------------------------------------------------------
@@ -829,14 +835,14 @@ function Actions.completeObjective(game, seat, uid)
   local ok, why = isActive(game, seat)
   if not ok then return fail(why) end
   local player = game.state.players[seat]
-  if not Util.indexOf(player.objectives, uid) then return fail("That isn't one of your goals.") end
-  if not Util.indexOf(Actions.completable(game, seat), uid) then return fail("You can't complete that yet.") end
+  if not Util.indexOf(player.objectives, uid) then return fail(say(game, "notYourGoal")) end
+  if not Util.indexOf(Actions.completable(game, seat), uid) then return fail(say(game, "notYet")) end
   Util.removeValue(player.objectives, uid)
   player.completed[#player.completed + 1] = uid
   local turn = game.state.turn
   turn.completed = (turn.completed or 0) + 1
   local c = card(game, uid)
-  if game.notify then game:notify(player.name .. " completed " .. c.name .. ".") end
+  if game.notify then game:notify(say(game, "completed", { name = player.name, card = c.name })) end
   game.effects:apply(game, seat, c.effects, { uid = uid, card = c })
   local rules = game.rules.objectives or {}
   if rules.toWin and #player.completed >= rules.toWin then game.state.winner = seat end
@@ -877,7 +883,7 @@ function Actions.endTurn(game, seat)
   local player = game.state.players[seat]
   for _, prompt in ipairs(player.prompts) do
     if not prompt.optional and #Actions.targets(game, seat, prompt) > 0 then
-      return fail("Finish this first: " .. Actions.promptText(game, prompt) .. ".")
+      return fail(say(game, "finishFirst", { what = Actions.promptText(game, prompt) }))
     end
   end
   while player.prompts[1] do finish(game, seat) end

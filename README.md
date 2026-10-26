@@ -508,13 +508,19 @@ These are the fields in `games/<yours>/rules.lua`:
 | `layout.mats` | `{ seat = {image="https://…"}, market = {image="https://…"} }` | Play mats: pictures under each player's areas, the market, or anywhere (see [Customising the table](#customising-the-table)) |
 | `layout.tableImage` | `"https://…/table.jpg"` | The table's picture, when the save uses TTS's custom table |
 | `tutorial` | `false` | Leave out to show the Tutorial button; `false` removes it for everyone |
+| `tutorialPages` | `{ {title="Our rules", body="…"} }` or `function(game, pages) return pages end` | Pages added after the tutorial's own, or a function that returns the pages to show (reorder, replace or drop any) |
 | `animate` | `false` | Leave out to animate cards: each card flies to its new pile (dealt one after another; face down into a hand). `false` makes piles change instantly. Tidy table is always instant |
+| `animation` | `{stagger=0.12, linger=0.4, lift=1.2}` | Seconds between cards dealt one after another, seconds a landed card lingers, and how high cards fly. TTS sets how long a card takes to move |
 | `ui.iconBaseUrl` | `"https://…/icons/"` | Where the counter symbols are: a folder with `coin.png`, `reticle.png`, `heart.png` and `shield.png` (draw them with `tools/make_icons.py`). Defaults to the ones in this repo. The buy resource shows as a coin, the attack resource as a reticle and the win stat as a heart; set `icon = "coin"` (or a full image URL) on any resource or stat to choose, and anything without one shows as text |
-| `outlines` | `false` | Leave out to outline every play area, deck, discard pile, the market row, market deck, fixed piles and scrap pile on the table (in seat colours and gold). Outlines are drawn at `layout.surfaceY`; set that to your table's surface height if they float. `false` turns them off |
+| `outlines` | `false` or `{seat="#FFFFFF", market="#E8B84A", thickness=1.5, hide={deck=true}}` | Leave out to outline every play area, deck, discard pile, the market row, market deck, fixed piles and scrap pile on the table (in seat colours and gold). Outlines are drawn at `layout.surfaceY`; set that to your table's surface height if they float. `false` turns them off. A table sets one colour for every seat, the market's colour, a thickness multiplier, and areas to leave unoutlined (`play`, `bases`, `deck`, `discard`, `row`, `slots`, `marketDeck`, `fixed`, `scrap`) |
 | `ui.theme` | see [Customising the UI](#customising-the-ui) | Colours, panel backgrounds and borders, the title, the menu grid |
 | `ui.setupMenu` | a function | Changes the New Game menu, or replaces it (see [Customising the UI](#customising-the-ui)) |
 | `ui.buttons` | `{ {label="Scores", onClick=function(game, color) end} }` | Your own buttons, in the bottom-right corner |
 | `ui.tooltips` | `{ ["cz-tidy"] = "Straighten the table", ["cz-rulebooks"] = false }` | Every menu and panel button has a tooltip saying what it does; this replaces any of them by button id, or removes one with `false` |
+| `ui.words` | `{ playAll = "Deploy all ({n})", ["effect.draw"] = "Draw {n} cards" }` | Rename any word the engine shows (see [Words](#words)) |
+| `ui.describeCard` | `function(game, card, text) return text end` | A card's tooltip on the table; `text` is the engine's |
+| `ui.buyButton` | `{color="#1A1A1A", textColor="#FFD95A", fontSize=150, width=900, height=260, position={0, 0.6, 1.7}}` | The Buy button on market cards |
+| `ui.messages` | `{count=3, chat=true}` | How many messages the info panel shows (0 for none), and whether they also go to chat |
 | `rulebooks` | `{ {name="Rules", url="https://…/rules.pdf"} }` | PDFs a Rulebooks button spawns beside the play areas (and puts away when pressed again). Only `http(s)` links |
 | `layout.rulebooks` | `{x=40, z=0, spacing=9.5, scale=2, yaw=180, locked=false}` | Where the rulebooks go. Every field is optional; by default they stand in a line just past the furthest play area at the largest player count |
 | `customEffects` | see below | Lua for unusual cards |
@@ -618,6 +624,26 @@ theme = {
   top.
 - Each player can still move their own action bar up or down in Settings.
   That's added to the bar's `y`.
+
+### Words
+
+Every word the engine shows is in `src/engine/words.lua`: button labels,
+the info panel, the menus, messages, the questions it asks, and the Buy
+button. `rules.ui.words` renames any of them, for your game's own terms or
+a translation. `{name}` parts are filled in when the text is shown, and a
+word can also be a function.
+
+```lua
+ui = {
+  words = {
+    playAll = "Deploy all ({n})",
+    endTurn = "Pass",
+    theMarketRow = "the Trade Row",
+    notEnough = "You need {n} {resource} for {card}.",
+    ["effect.draw"] = "Draw {n} cards",     -- how an effect keyword describes itself
+  },
+},
+```
 
 ### Your own New Game menu
 
