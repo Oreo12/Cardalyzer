@@ -219,33 +219,44 @@ local GOLD = { 0.91, 0.72, 0.29 }
 -- Outlines of every area on the table, as TTS vector lines: each seat's play
 -- area, bases, deck and discard pile in its colour, and the market row,
 -- market deck, fixed piles and scrap pile in gold. rules.outlines = false
--- turns them off.
+-- turns them off; a table changes them:
+--   { seat = "#FFFFFF" (one colour for every seat; default its own colour),
+--     market = "#E8B84A", thickness = 1 (times the usual),
+--     hide = { deck = true, slots = true } }
+-- Area names for `hide`: play, bases, deck, discard, row (round the whole
+-- market row), slots (each card in it), marketDeck, fixed, scrap.
 function Zones.outlines(rules, layout, colors)
   if rules.outlines == false then return {} end
+  local opts = type(rules.outlines) == "table" and rules.outlines or {}
+  local hide = opts.hide or {}
+  local Util = require("engine.util")
+  local marketRgb = Util.color(opts.market) or GOLD
+  local seatRgb = Util.color(opts.seat)
+  local k = opts.thickness or 1
   local y = layoutValue(rules, "surfaceY") + 0.02 + Zones.matThickness(rules)
   local scale = layoutValue(rules, "cardScale")
   local card = { 2.4 * scale, 3.4 * scale }
   local lines = {}
-  local function box(s, rgb, thickness, pad)
-    if s.hidden then return end
+  local function box(name, s, rgb, thickness, pad)
+    if s.hidden or hide[name] then return end
     lines[#lines + 1] = {
       points = Zones.corners(s, y, pad or 0.15, card),
-      color = rgb, thickness = thickness or 0.08, loop = true, square = true,
+      color = rgb, thickness = (thickness or 0.08) * k, loop = true, square = true,
     }
   end
   for seat, s in ipairs(layout.seats) do
-    local rgb = Zones.SEAT_RGB[colors[seat]] or GOLD
-    box(s.play, rgb, 0.1, 0)
-    box(s.bases, rgb, 0.1, 0)
-    box(s.deck, rgb, 0.08, 0)
-    box(s.discard, rgb, 0.08, 0)
+    local rgb = seatRgb or Zones.SEAT_RGB[colors[seat]] or GOLD
+    box("play", s.play, rgb, 0.1, 0)
+    box("bases", s.bases, rgb, 0.1, 0)
+    box("deck", s.deck, rgb, 0.08, 0)
+    box("discard", s.discard, rgb, 0.08, 0)
   end
   local m = layout.market
-  if #m.row > 0 then box(m.area, GOLD, 0.12, 0) end
-  for _, slot in ipairs(m.row) do box(slot, GOLD) end
-  box(m.deck, GOLD)
-  for _, s in pairs(m.fixed) do box(s, GOLD) end
-  box(m.scrap, GOLD)
+  if #m.row > 0 then box("row", m.area, marketRgb, 0.12, 0) end
+  for _, slot in ipairs(m.row) do box("slots", slot, marketRgb) end
+  box("marketDeck", m.deck, marketRgb)
+  for _, s in pairs(m.fixed) do box("fixed", s, marketRgb) end
+  box("scrap", m.scrap, marketRgb)
   return lines
 end
 

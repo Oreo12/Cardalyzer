@@ -14,8 +14,21 @@ local function statLabel(rules, key)
   return Util.titleCase(key or "")
 end
 
--- Returns { {title, body}, ... }.
+-- Returns { {title, body}, ... }: the engine's pages, then rules.tutorialPages.
+-- That's either a list of the game's own pages ({ {title, body}, ... }, added
+-- after the engine's), or a function(game, pages) returning the pages to show
+-- (to reorder, replace or drop any).
 function Tutorial.pages(game)
+  local pages = Tutorial.enginePages(game)
+  local own = game.rules.tutorialPages
+  if type(own) == "function" then return own(game, pages) or pages end
+  for _, page in ipairs(own or {}) do
+    pages[#pages + 1] = { page.title or page[1], page.body or page[2] }
+  end
+  return pages
+end
+
+function Tutorial.enginePages(game)
   local rules = game.rules
   local _, buy = Actions.resourceFor(rules, "buy")
   local _, attack = Actions.resourceFor(rules, "attack")

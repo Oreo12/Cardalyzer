@@ -12,6 +12,7 @@ local UI_ = require("engine.ui")
 local Tutorial = require("engine.tutorial")
 local Rulebooks = require("engine.rulebooks")
 local Kits = require("engine.kits")
+local Words = require("engine.words")
 
 local Game = {}
 Game.__index = Game
@@ -325,10 +326,13 @@ function Game:notify(msg, color)
     self.notices.byColor[color] = msg
     if Game.seated(color) then printToColor(msg, color, { 1, 0.8, 0.4 }) end
   else
+    -- rules.ui.messages = { count = 3, chat = true }: how many the info panel
+    -- shows (0 for none), and whether they also go to chat
+    local opts = self.rules.ui and self.rules.ui.messages or {}
     local all = self.notices.all
     all[#all + 1] = msg
-    while #all > 3 do table.remove(all, 1) end
-    printToAll(msg, { 1, 0.8, 0.4 })
+    while #all > (opts.count or 3) do table.remove(all, 1) end
+    if opts.chat ~= false then printToAll(msg, { 1, 0.8, 0.4 }) end
   end
   self:refreshUI()
 end
@@ -348,7 +352,7 @@ function Game:tutorial(color, action)
   elseif action == "tuthide" then
     Tutorial.close(self, color)
     Tutorial.setHidden(self, color, true)
-    return self:notify("Tutorial button hidden. Type !tutorial in chat to bring it back.", color)
+    return self:notify(Words.say(self.rules, "tutorialHidden"), color)
   end
   self:refreshUI()
   return true
@@ -473,10 +477,10 @@ function Game:act(action, ...)
   if ok then
     Actions.settle(self, self.state.turn.active)
     for seat, p in ipairs(self.state.players) do
-      if p.out and not wasOut[seat] and seat ~= self.state.winner then self:notify(p.name .. " is out.") end
+      if p.out and not wasOut[seat] and seat ~= self.state.winner then self:notify(Words.say(self.rules, "isOut", { name = p.name })) end
     end
     if self.state.winner and not hadWinner then
-      self:notify(self.state.players[self.state.winner].name .. " wins!")
+      self:notify(Words.say(self.rules, "wins", { name = self.state.players[self.state.winner].name }))
     end
     Wait.frames(function()
       Board.sync(self)
@@ -574,7 +578,7 @@ function Game:scrapDropped(seat, uid, key)
   if key:match("^market%.row%.") then
     if prompt and prompt.kind == "scrap_row" then return self:pick(seat, uid) end
     local ok, why = self:act(Actions.scrapFromRow, seat, uid)
-    if ok then self:notify(player.name .. " scrapped " .. c.name .. " from the market row.") end
+    if ok then self:notify(Words.say(self.rules, "scrappedFromRow", { name = player.name, card = c.name })) end
     return ok, why
   elseif key == seat .. ".play" or key == seat .. ".bases" then
     return self:scrapFromPlay(seat, uid)

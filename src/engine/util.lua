@@ -1,6 +1,16 @@
 -- Small helpers shared by the engine modules. No TTS API calls here.
 local Util = {}
 
+-- A colour as TTS's { r, g, b, a } (0 to 1), from "#RRGGBB", "#RRGGBBAA" or
+-- a table that's already one. nil stays nil.
+function Util.color(c)
+  if type(c) ~= "string" then return c end
+  local r, g, b, a = c:match("^#(%x%x)(%x%x)(%x%x)(%x?%x?)$")
+  if not r then return nil end
+  local function f(x) return tonumber(x, 16) / 255 end
+  return { f(r), f(g), f(b), a ~= "" and f(a) or 1 }
+end
+
 function Util.trim(s)
   return (s:gsub("^%s+", ""):gsub("%s+$", ""))
 end

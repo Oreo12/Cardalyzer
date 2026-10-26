@@ -13,6 +13,7 @@ local Actions = require("engine.actions")
 local Tutorial = require("engine.tutorial")
 local Theme = require("engine.theme")
 local Kits = require("engine.kits")
+local Words = require("engine.words")
 
 local UI_ = {}
 
@@ -21,6 +22,8 @@ local UI_ = {}
 local current = {}
 local function use(game) current = game.rules end
 local function accent() return Theme.of(current).accent end
+-- The game's word for `key` (engine/words.lua; rules.ui.words renames them).
+local function say(key, vars) return Words.say(current, key, vars) end
 
 local function escape(s)
   return (tostring(s):gsub("&", "&amp;"):gsub("<", "&lt;"):gsub(">", "&gt;"):gsub('"', "&quot;"))
@@ -35,11 +38,12 @@ local function text(id, words, size, extra)
 end
 
 function UI_.turnLine(game)
+  use(game)
   local state = game.state
-  if not state.started then return "Press New Game to set up a game." end
-  if state.winner then return state.players[state.winner].name .. " wins!" end
+  if not state.started then return say("notStarted") end
+  if state.winner then return say("wins", { name = state.players[state.winner].name }) end
   local active = state.players[state.turn.active]
-  return "Turn " .. state.turn.number .. " · " .. active.name .. " to play"
+  return say("turnLine", { n = state.turn.number, name = active.name })
 end
 
 -- A seat's first waiting choice: its text and its option buttons (nil if none).
@@ -49,11 +53,12 @@ function UI_.promptFor(game, seat)
   local prompt = p.prompts[1]
   local choices = {}
   if not prompt then return nil, choices end
-  local more = #p.prompts > 1 and (" (+" .. (#p.prompts - 1) .. " more)") or ""
+  use(game)
+  local more = #p.prompts > 1 and say("more", { n = #p.prompts - 1 }) or ""
   for _, t in ipairs(Actions.targets(game, seat, prompt)) do
     choices[#choices + 1] = { id = "cz-pick-" .. t.value, label = t.label }
   end
-  if prompt.optional then choices[#choices + 1] = { id = "cz-done", label = prompt.kind == "reminder" and "Done" or "Skip / done" } end
+  if prompt.optional then choices[#choices + 1] = { id = "cz-done", label = say(prompt.kind == "reminder" and "done" or "skip") } end
   return Actions.promptText(game, prompt) .. more, choices
 end
 
@@ -68,7 +73,7 @@ function UI_.actions(game)
 
   out.prompt, out.choices = UI_.promptFor(game, seat)
 
-  if #p.hand > 0 and not Actions.handBlocked(game, seat) then add(out.buttons, "cz-playall", "Play all (" .. #p.hand .. ")") end
+  if #p.hand > 0 and not Actions.handBlocked(game, seat) then add(out.buttons, "cz-playall", say("playAll", { n = #p.hand })) end
 
   local key, label = Actions.resourceFor(game.rules, "attack")
   local pool = key and p.resources[key] or 0
@@ -76,13 +81,15 @@ function UI_.actions(game)
     for _, other in ipairs(game:opponentsOf(seat)) do
       local guards = Actions.guards(game, other)
       local victim = state.players[other]
-      if #guards == 0 then add(out.buttons, "cz-attack-" .. other, "Attack " .. victim.name .. " (" .. pool .. " " .. label .. ")") end
+      if #guards == 0 then
+        add(out.buttons, "cz-attack-" .. other, say("attack", { name = victim.name, n = pool, resource = label }))
+      end
       for _, uid in ipairs(victim.bases) do
         local c = game.cards:get(State.cardId(state, uid))
         local open = #guards == 0 or Util.indexOf(guards, uid)
         local defense = Actions.defenseOf(game, other, uid)
         if open and pool >= defense and Actions.typeDef(game, c).target ~= false then
-          add(out.buttons, "cz-hit-" .. other .. "-" .. uid, "Destroy " .. c.name .. " (" .. defense .. ")")
+          add(out.buttons, "cz-hit-" .. other .. "-" .. uid, say("destroy", { card = c.name, n = defense }))
         end
       end
     end
@@ -91,22 +98,23 @@ function UI_.actions(game)
   for _, uid in ipairs(Actions.inPlay(p)) do
     local c = game:cardOf(uid) -- a card copying another this turn shows that card's scrap ability
     if Actions.canScrap(game, seat, uid) then -- (some need an ally in play first)
-      add(out.buttons, "cz-scrap-" .. uid, "Scrap " .. c.name .. ": " .. game.effects:describe(c.scrapEffects, c.text))
+      add(out.buttons, "cz-scrap-" .. uid, say("scrap", { card = c.name, effects = game.effects:describe(c.scrapEffects, c.text) }))
     end
   end
 
   for _, a in ipairs(Actions.activatable(game, seat)) do
-    add(out.buttons, "cz-use-" .. a.uid, "Use " .. game:cardOf(a.uid).name .. (a.def.text and (": " .. a.def.text) or ""))
+    local name = game:cardOf(a.uid).name
+    add(out.buttons, "cz-use-" .. a.uid, a.def.text and say("useWith", { card = name, text = a.def.text }) or say("use", { card = name }))
   end
   local goalLabel = game.rules.objectives and game.rules.objectives.label or "goal"
   for _, uid in ipairs(Actions.completable(game, seat)) do
-    add(out.buttons, "cz-goal-" .. uid, "Complete " .. game:cardOf(uid).name)
+    add(out.buttons, "cz-goal-" .. uid, say("complete", { card = game:cardOf(uid).name }))
   end
-  add(out.buttons, "cz-end", "End Turn")
+  add(out.buttons, "cz-end", say("endTurn"))
   if #p.objectives > 0 then
     local names = {}
     for _, uid in ipairs(p.objectives) do names[#names + 1] = game:cardOf(uid).name end
-    out.goals = "Your " .. goalLabel:lower() .. ": " .. table.concat(names, ", ")
+    out.goals = say("yourGoals", { label = goalLabel:lower(), list = table.concat(names, ", ") })
   end
   -- Everything in one list, for callers that don't care where it's shown.
   out.all = {}
@@ -341,7 +349,7 @@ local function seatRow(game, seat)
   local state, rules = game.state, game.rules
   local p = state.players[seat]
   local active = state.started and state.turn.active == seat
-  local name = (active and "▶ " or "") .. p.name .. (p.out and ": out" or "")
+  local name = (active and "▶ " or "") .. p.name .. (p.out and say("out") or "")
   local xml = text("cz_seat_" .. seat, name, 16, 'color="' .. (UI_.seatColors[p.color] or "#FFFFFF") .. '"'
     .. (active and ' fontStyle="Bold"' or "") .. ' preferredWidth="110"' .. FX)
   if not p.out then
@@ -359,9 +367,9 @@ local function seatRow(game, seat)
     end
   end
   -- only in a game that dealt objectives (their set may be switched off)
-  local goals = rules.objectives and #p.completed + #p.objectives > 0 and (" · " .. (rules.objectives.label or "Goals") .. " " .. #p.completed
-    .. "/" .. (rules.objectives.toWin or #p.completed + #p.objectives)) or ""
-  local piles = text("cz_seat_" .. seat .. "_piles", "Deck " .. #p.deck .. " · Discard " .. #p.discard .. goals, 11,
+  local goals = rules.objectives and #p.completed + #p.objectives > 0 and say("goalsCount", { label = rules.objectives.label or "Goals",
+    done = #p.completed, total = rules.objectives.toWin or #p.completed + #p.objectives }) or ""
+  local piles = text("cz_seat_" .. seat .. "_piles", say("piles", { deck = #p.deck, discard = #p.discard }) .. goals, 11,
     'color="#C8CED6" alignment="MiddleRight" preferredHeight="14"' .. FX)
   local h = math.max(symbolSize("seat"), symbolSize("base"), 20)
   return '<HorizontalLayout spacing="4" preferredHeight="' .. h .. '" childForceExpandWidth="false" childAlignment="MiddleRight">'
@@ -478,10 +486,10 @@ function UI_.infoPanel(game, suffix, attrs, bottom)
   end
   if game.rules.kits and game:kitsOn() then
     row('<HorizontalLayout preferredHeight="28" childForceExpandWidth="false" childAlignment="MiddleRight">'
-      .. smallButton("cz-kitmenu", "Your " .. (game.rules.kitName or "kit"), 14) .. '</HorizontalLayout>', 28)
+      .. smallButton("cz-kitmenu", say("yourKit", { kit = game.rules.kitName or "kit" }), 14) .. '</HorizontalLayout>', 28)
   end
   row('<HorizontalLayout spacing="6" preferredHeight="28" childForceExpandWidth="false" childAlignment="MiddleRight">'
-    .. smallButton("cz-settings", "Settings", 14) .. smallButton("cz-setup", "New Game", 14) .. '</HorizontalLayout>', 28)
+    .. smallButton("cz-settings", say("settings"), 14) .. smallButton("cz-setup", say("newGame"), 14) .. '</HorizontalLayout>', 28)
 
   local at = Theme.of(current).positions.info
   local y = at.y or bottom or INFO_BOTTOM
@@ -543,7 +551,7 @@ function UI_.playersRow(game)
   for n = range.min, range.max do
     list[#list + 1] = { id = "cz-players-" .. n, label = tostring(n), on = n == chosen, tooltip = "Deal the next game for " .. n .. " players." }
   end
-  return UI_.optionRow("cz_players", "Players", list)
+  return UI_.optionRow("cz_players", say("players"), list)
 end
 
 -- The menu grid (theme grid): how many cells a button with this label
@@ -610,7 +618,7 @@ function UI_.openingRow(game)
   for i, o in ipairs(options) do
     list[#list + 1] = { id = "cz-opening-" .. i, label = o.label, on = i == chosen, tooltip = o.about }
   end
-  return UI_.optionRow("cz_opening", game.rules.openingLabel or "Starting hands", list)
+  return UI_.optionRow("cz_opening", game.rules.openingLabel or say("startingHands"), list)
 end
 
 -- The set toggles (cz-set-<key>), when the rules list sets, four to a row.
@@ -624,14 +632,14 @@ function UI_.setRows(game)
     local tip = set.about or ((set.always and "Always in: " or "Shuffle in ") .. "the " .. set.label .. " cards.")
     list[#list + 1] = { id = "cz-set-" .. set.key, label = set.label, on = inPlay[set.key] == true, tooltip = tip }
   end
-  return UI_.optionRows("cz_sets", "Sets", list)
+  return UI_.optionRows("cz_sets", say("sets"), list)
 end
 
 function UI_.setupPanel(game, color)
   use(game)
-  local buttons = { { id = "cz-new", label = "Play Game" } }
-  if Tutorial.buttonShown(game, color) then buttons[#buttons + 1] = { id = "cz-tutorial", label = "Tutorial" } end
-  buttons[#buttons + 1] = { id = "cz-setupclose", label = "Close" }
+  local buttons = { { id = "cz-new", label = say("playGame") } }
+  if Tutorial.buttonShown(game, color) then buttons[#buttons + 1] = { id = "cz-tutorial", label = say("tutorial") } end
+  buttons[#buttons + 1] = { id = "cz-setupclose", label = say("close") }
   local rows, height = {}, 0
   local function add(r)
     if not r then return end
@@ -642,8 +650,8 @@ function UI_.setupPanel(game, color)
   add(UI_.openingRow(game))
   if game.rules.kits and #game.rules.kits > 0 then
     local on = game:kitsOn()
-    add(UI_.optionRow("cz_kits", game.rules.kitLabel or "Starting decks", {
-      { id = "cz-kits-off", label = "Standard", on = not on },
+    add(UI_.optionRow("cz_kits", game.rules.kitLabel or say("startingDecks"), {
+      { id = "cz-kits-off", label = say("standard"), on = not on },
       { id = "cz-kits-on", label = game.rules.kitName or "Kit", on = on },
     }))
     if on then add(UI_.kitSummaryRow(game)) end
@@ -652,7 +660,7 @@ function UI_.setupPanel(game, color)
   -- rules.ui.setupMenu(game, color, menu, UI) may change the menu (its
   -- title, its rows of XML, each rowHeight tall, and its buttons) or return
   -- XML of its own to draw instead. See README, "Customising the UI".
-  local menu = { title = "New Game", rows = rows, rowHeight = 30, buttons = buttons }
+  local menu = { title = say("setupTitle"), rows = rows, rowHeight = 30, buttons = buttons }
   local custom = game.rules.ui and game.rules.ui.setupMenu
   if custom then
     local own = custom(game, color, menu, UI_)
@@ -723,10 +731,10 @@ function UI_.kitPanel(game, color)
       .. '</HorizontalLayout>', h)
   end
 
-  local modes = { { id = "cz-kitmode-premade", label = "Premade", on = draft.mode == "premade" },
-    { id = "cz-kitmode-random", label = "Random", on = draft.mode == "random" } }
-  if rules.kitParts then modes[#modes + 1] = { id = "cz-kitmode-custom", label = "Custom", on = draft.mode == "custom" } end
-  addRows(UI_.optionRows("cz_kitmode", "Choose", modes, columns))
+  local modes = { { id = "cz-kitmode-premade", label = say("premade"), on = draft.mode == "premade" },
+    { id = "cz-kitmode-random", label = say("random"), on = draft.mode == "random" } }
+  if rules.kitParts then modes[#modes + 1] = { id = "cz-kitmode-custom", label = say("custom"), on = draft.mode == "custom" } end
+  addRows(UI_.optionRows("cz_kitmode", say("choose"), modes, columns))
 
   if draft.mode == "premade" then
     local list = {}
@@ -737,8 +745,7 @@ function UI_.kitPanel(game, color)
     local kit = Kits.byKey(rules, draft.kit)
     if kit then note("cz_kit_about", kit.label .. ". " .. Kits.describe(game, kit)) end
   elseif draft.mode == "random" then
-    note("cz_kit_about", "When the game starts you get a random premade " .. kitName()
-      .. ", one nobody else picked while there are any left.")
+    note("cz_kit_about", say("kitRandomNote", { kit = kitName() }))
   else
     for i, part in ipairs(rules.kitParts) do
       local chosen = draft.parts[part.key]
@@ -750,10 +757,10 @@ function UI_.kitPanel(game, color)
       local label = part.label .. ((part.count or 1) > 1 and (" (" .. part.count .. ")") or "")
       addRows(UI_.optionRows("cz_kitpart_" .. i, label, list, columns))
     end
-    note("cz_kit_about", "Hover over a choice to see what it is. Anything you leave unpicked is picked at random when the game starts.")
+    note("cz_kit_about", say("kitCustomNote"))
   end
   addRows({ UI_.optionRow("cz_kit_buttons_" .. color, "", {
-    { id = "cz-kitsave", label = "Save and go back" }, { id = "cz-kitcancel", label = "Cancel" } }) })
+    { id = "cz-kitsave", label = say("saveAndBack") }, { id = "cz-kitcancel", label = say("cancel") } }) })
 
   local width = gridWidth + 20
   local inset = math.floor((width - gridWidth) / 2)
@@ -775,12 +782,12 @@ function UI_.settingsPanel(game, color)
     return '<HorizontalLayout spacing="6" preferredHeight="30" childForceExpandWidth="false" childAlignment="MiddleCenter">'
       .. xml .. '</HorizontalLayout>'
   end
-  local rows = settingRow("cz_set_ui_" .. color, "UI size", math.floor(scale * 100 + 0.5) .. "%",
+  local rows = settingRow("cz_set_ui_" .. color, say("uiSize"), math.floor(scale * 100 + 0.5) .. "%",
       { { "cz-uismaller", "−" }, { "cz-uibigger", "+" } })
-    .. settingRow("cz_set_bar_" .. color, "Action bar", (moved > 0 and "+" or "") .. moved,
-      { { "cz-barup", "Up" }, { "cz-bardown", "Down" }, { "cz-barreset", "Reset" } })
-  return centrePanel("cz_settings_" .. color, color, "Settings", accent(), 22, { rows, 76 },
-    { { id = "cz-settingsclose", label = "Close" } }, scale)
+    .. settingRow("cz_set_bar_" .. color, say("actionBar"), (moved > 0 and "+" or "") .. moved,
+      { { "cz-barup", say("up") }, { "cz-bardown", say("down") }, { "cz-barreset", say("reset") } })
+  return centrePanel("cz_settings_" .. color, color, say("settings"), accent(), 22, { rows, 76 },
+    { { id = "cz-settingsclose", label = say("close") } }, scale)
 end
 
 function UI_.xml(game)
@@ -848,8 +855,8 @@ function UI_.xml(game)
     local wg = UI_.scaleGroups(game, skip)
     for i, g in ipairs(wg) do
       local _, suffix = groupAttrs(wg, i, "0.5 0.5")
-      parts[#parts + 1] = centrePanel("cz_winner" .. suffix, table.concat(g.colors, "|"), winner.name .. " wins!",
-        UI_.seatColors[winner.color] or accent(), 34, nil, { { id = "cz-again", label = "Play Again?" } }, g.scale)
+      parts[#parts + 1] = centrePanel("cz_winner" .. suffix, table.concat(g.colors, "|"), say("wins", { name = winner.name }),
+        UI_.seatColors[winner.color] or accent(), 34, nil, { { id = "cz-again", label = say("playAgain") } }, g.scale)
     end
   end
 
@@ -865,15 +872,15 @@ function UI_.xml(game)
       local n = open[color]
       local page = pages[n]
       local nav = {}
-      if n > 1 then nav[#nav + 1] = { id = "cz-tutback", label = "Back" } end
-      if n < #pages then nav[#nav + 1] = { id = "cz-tutnext", label = "Next" } end
-      nav[#nav + 1] = { id = "cz-tutclose", label = "Close" }
-      nav[#nav + 1] = { id = "cz-tuthide", label = "Hide button" }
+      if n > 1 then nav[#nav + 1] = { id = "cz-tutback", label = say("back") } end
+      if n < #pages then nav[#nav + 1] = { id = "cz-tutnext", label = say("next") } end
+      nav[#nav + 1] = { id = "cz-tutclose", label = say("close") }
+      nav[#nav + 1] = { id = "cz-tuthide", label = say("hideButton") }
       local navXml = buttonRows(nav, 13, 640)
       -- in the theme's menu style: its pages are long reads, so never clear
       local inner = text("cz_tut_title_" .. color, page[1], 22, 'fontStyle="Bold" color="' .. accent() .. '" preferredHeight="34"')
         .. text("cz_tut_body_" .. color, page[2], 16, 'alignment="UpperLeft" preferredHeight="330"')
-        .. text("cz_tut_page_" .. color, "Page " .. n .. " of " .. #pages, 12, 'alignment="MiddleRight" color="#9AA4AE" preferredHeight="16"')
+        .. text("cz_tut_page_" .. color, say("page", { n = n, total = #pages }), 12, 'alignment="MiddleRight" color="#9AA4AE" preferredHeight="16"')
         .. navXml
       parts[#parts + 1] = sized((UI_.framed("cz_tutorial_" .. color, "menu", inner, 650, 430,
         ' visibility="' .. color .. '"' .. place("menus"), 8)), UI_.scaleOf(game, color))
@@ -935,11 +942,11 @@ end
 function UI_.cornerButtons(game)
   use(game)
   local xml = ""
-  if game.rules.rulebooks and #game.rules.rulebooks > 0 then xml = xml .. smallButton("cz-rulebooks", "Rulebooks", 12) end
+  if game.rules.rulebooks and #game.rules.rulebooks > 0 then xml = xml .. smallButton("cz-rulebooks", say("rulebooks"), 12) end
   for i, b in ipairs(game.rules.ui and game.rules.ui.buttons or {}) do
     xml = xml .. smallButton("cz-button-" .. i, b.label, 12)
   end
-  return xml .. smallButton("cz-tidy", "Tidy table", 12)
+  return xml .. smallButton("cz-tidy", say("tidy"), 12)
 end
 
 -- Where a colour's action bar sits: the default, moved in their Settings.

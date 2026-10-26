@@ -20,7 +20,15 @@ function Board.imageUrl(rules, file)
   return (rules.art and rules.art.baseUrl or "") .. file
 end
 
+-- A card's tooltip text. rules.ui.describeCard(game, card, text) may return
+-- the game's own (`text` is the engine's).
 function Board.describe(game, card)
+  local text = Board.defaultDescription(game, card)
+  local own = game.rules.ui and game.rules.ui.describeCard
+  return own and own(game, card, text) or text
+end
+
+function Board.defaultDescription(game, card)
   local fx = game.effects
   local lines = {}
   local header = "Cost " .. card.cost
@@ -241,14 +249,19 @@ local function rotation(spot, faceUp)
 end
 
 -- Buy button on a market card or fixed pile; clicks go to Cardalyzer_onBuy in main.lua.
-local function addBuyButton(obj, cost)
+-- The Buy button on market cards. rules.ui.buyButton changes its look:
+-- { color, textColor ("#RRGGBB" or {r, g, b, a}), fontSize, width, height,
+--   position = {x, y, z} on the card }. Its label is the "buy" word.
+local function addBuyButton(game, obj, cost)
+  local look = game.rules.ui and game.rules.ui.buyButton or {}
   obj.createButton({
     click_function = "Cardalyzer_onBuy",
     function_owner = Global,
-    label = "Buy · " .. cost,
-    position = { 0, 0.6, 1.7 },
-    width = 900, height = 260, font_size = 150,
-    color = { 0.1, 0.1, 0.1, 0.9 }, font_color = { 1, 0.85, 0.35 },
+    label = require("engine.words").say(game.rules, "buy", { n = cost }),
+    position = look.position or { 0, 0.6, 1.7 },
+    width = look.width or 900, height = look.height or 260, font_size = look.fontSize or 150,
+    color = Util.color(look.color) or { 0.1, 0.1, 0.1, 0.9 },
+    font_color = Util.color(look.textColor) or { 1, 0.85, 0.35 },
   })
 end
 
@@ -329,7 +342,7 @@ local function draw(game, pile, uids)
   if pile.buyable and pile.style == "stack" then cost = game.cards:get(State.cardId(game.state, uids[n])).cost end
   local waiting, readied = (pile.style == "stack") and 1 or n, {}
   local function ready(obj)
-    if cost then addBuyButton(obj, cost) end
+    if cost then addBuyButton(game, obj, cost) end
     readied[#readied + 1] = obj
     if #readied == waiting then
       removeOld()
@@ -359,11 +372,17 @@ function Board.renderPile(game, pile)
   game.state.view.sig[pile.key] = signature(pile.uids)
 end
 
--- Animation timing in seconds. rules.animate = false turns animation off.
+-- Animation timing in seconds. rules.animate = false turns animation off;
+-- rules.animation = { stagger, linger, lift } changes these (TRAVEL is how
+-- long TTS itself takes to move a card, so it can't be changed).
 Board.TRAVEL = 0.45 -- one card's flight
 Board.STAGGER = 0.12 -- gap between cards dealt one after another
 Board.LINGER = 0.4 -- a landed card stays this long, until the real card has appeared under it
-local LIFT = 1.2 -- cards fly this far above the table
+Board.LIFT = 1.2 -- cards fly this far above the table
+local function timing(game, key, default)
+  local a = game.rules.animation
+  return a and a[key] or default
+end
 
 -- Runs fn after `delay` seconds (straight away for no delay).
 local function after(delay, fn)
@@ -377,14 +396,14 @@ local function fly(game, uid, from, to, rot, delay)
   after(delay, function()
     local obj = spawnObjectData({
       data = Board.cardData(game, uid),
-      position = { from[1], from[2] + LIFT, from[3] },
+      position = { from[1], from[2] + timing(game, "lift", Board.LIFT), from[3] },
       rotation = rot,
     })
     obj.setLock(true)
     obj.interactable = false
-    obj.setPositionSmooth({ to[1], to[2] + LIFT * 0.4, to[3] }, false, true)
+    obj.setPositionSmooth({ to[1], to[2] + timing(game, "lift", Board.LIFT) * 0.4, to[3] }, false, true)
     local guid = obj.getGUID()
-    after(Board.TRAVEL + Board.LINGER, function()
+    after(Board.TRAVEL + timing(game, "linger", Board.LINGER), function()
       local landed = getObjectFromGUID(guid)
       if landed then landed.destruct() end
     end)
@@ -444,7 +463,7 @@ function Board.sync(game, opts)
         local rot = rotation(pile.spot, pile.faceUp and pile.style ~= "hand")
         local landed = 0
         for _, f in ipairs(flights) do
-          local delay = dealt * Board.STAGGER
+          local delay = dealt * timing(game, "stagger", Board.STAGGER)
           dealt = dealt + 1
           fly(game, f.uid, f.from, f.to, rot, delay)
           view.at[f.uid] = f.to

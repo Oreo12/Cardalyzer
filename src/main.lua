@@ -17,6 +17,9 @@ local function tell(color, msg)
   if Game.seated(color) then broadcastToColor(msg, color, { 1, 0.8, 0.4 }) end
 end
 
+-- The game's word for `key` (engine/words.lua).
+local function say(key) return require("engine.words").say(game and game.rules, key) end
+
 -- Runs a game method for a player; shows them why if it was refused.
 local function run(color, method, ...)
   local ok, done, why = pcall(method, game, ...)
@@ -51,7 +54,7 @@ end
 function Cardalyzer_onStartGame(player)
   if not game then return end
   if not player.host and not player.promoted then
-    return tell(player.color, "Only the host can start a new game.")
+    return tell(player.color, say("hostOnlyNewGame"))
   end
   game:setup(player.color, false)
   local ok, err = pcall(game.newGame, game)
@@ -61,7 +64,7 @@ end
 function Cardalyzer_onEndTurn(player)
   if not game then return end
   local seat = game:seatOfColor(player.color)
-  if not seat then return tell(player.color, "Take a seat to play.") end
+  if not seat then return tell(player.color, say("takeASeat")) end
   run(player.color, game.endTurn, seat)
 end
 
@@ -72,7 +75,7 @@ function Cardalyzer_onUI(player, _, id)
   if action == "new" then return Cardalyzer_onStartGame(player) end
   if action == "setup" or action == "again" then -- New Game, or Play Again? after a win
     if not player.host and not player.promoted then
-      return tell(player.color, "Only the host can start a new game.")
+      return tell(player.color, say("hostOnlyNewGame"))
     end
     return game:setup(player.color, true)
   end
@@ -91,13 +94,13 @@ function Cardalyzer_onUI(player, _, id)
   if action == "end" then return Cardalyzer_onEndTurn(player) end
   if action == "players" then
     if not player.host and not player.promoted then
-      return tell(player.color, "Only the host can change the number of players.")
+      return tell(player.color, say("hostOnlyPlayers"))
     end
     return run(player.color, game.setPlayers, tonumber(arg))
   end
   if action == "set" then
     if not player.host and not player.promoted then
-      return tell(player.color, "Only the host can choose the sets.")
+      return tell(player.color, say("hostOnlySets"))
     end
     return run(player.color, game.toggleSet, arg)
   end
@@ -106,7 +109,7 @@ function Cardalyzer_onUI(player, _, id)
     -- once they're on, anyone pressing it opens their own kit menu.
     if arg ~= "off" and game:kitsOn() then return run(player.color, game.kitMenu, player.color, true) end
     if not player.host and not player.promoted then
-      return tell(player.color, "Only the host can choose the starting decks.")
+      return tell(player.color, say("hostOnlyKits"))
     end
     run(player.color, game.setKits, arg)
     if arg ~= "off" then run(player.color, game.kitMenu, player.color, true) end
@@ -124,14 +127,14 @@ function Cardalyzer_onUI(player, _, id)
   end
   if action == "opening" then
     if not player.host and not player.promoted then
-      return tell(player.color, "Only the host can change how many cards are dealt.")
+      return tell(player.color, say("hostOnlyHands"))
     end
     return run(player.color, game.setOpening, tonumber(arg))
   end
   if action:sub(1, 3) == "tut" then return game:tutorial(player.color, action) end
 
   local seat = game:seatOfColor(player.color)
-  if not seat then return tell(player.color, "Take a seat to play.") end
+  if not seat then return tell(player.color, say("takeASeat")) end
   if action == "playall" then
     run(player.color, game.playAll, seat)
   elseif action == "attack" then
@@ -163,7 +166,7 @@ end
 function Cardalyzer_onBuy(obj, color)
   if not game then return end
   local seat = game:seatOfColor(color)
-  if not seat then return tell(color, "Take a seat to play.") end
+  if not seat then return tell(color, say("takeASeat")) end
   run(color, game.buyObject, seat, obj.getGUID(), obj.getGMNotes())
 end
 

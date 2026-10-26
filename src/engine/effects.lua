@@ -15,7 +15,7 @@ local function signed(n)
 end
 
 function Effects.new(rules)
-  local self = setmetatable({ handlers = {}, custom = {} }, Effects)
+  local self = setmetatable({ handlers = {}, custom = {}, rules = rules }, Effects)
 
   for _, res in ipairs(rules.resources or {}) do
     local key, label = res.key, res.label or Util.titleCase(res.key)
@@ -224,7 +224,13 @@ function Effects:describe(list, fallback)
       parts[#parts + 1] = table.concat(options, " or ")
     else
       local handler = self.handlers[effect.key]
-      parts[#parts + 1] = handler and handler.text and handler.text(effect.amount) or (effect.key .. " " .. effect.amount)
+      -- the game's own words for this keyword (rules.ui.words["effect.<key>"]) come first
+      local own = self.rules and self.rules.ui and self.rules.ui.words and self.rules.ui.words["effect." .. effect.key]
+      if own then
+        parts[#parts + 1] = require("engine.words").say(self.rules, "effect." .. effect.key, { n = effect.amount })
+      else
+        parts[#parts + 1] = handler and handler.text and handler.text(effect.amount) or (effect.key .. " " .. effect.amount)
+      end
     end
     if effect.ally then
       parts[#parts] = "(" .. Util.titleCase(effect.ally) .. ") " .. parts[#parts]

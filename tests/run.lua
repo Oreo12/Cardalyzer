@@ -2405,5 +2405,93 @@ test("positions: every panel's anchor and offset", function()
   assert(tts.ui.xml:find('id="cz_actions"[^>]* offsetXY="100 180"'), "moved up in Settings")
 end)
 
+test("words: a game renames buttons, messages, questions and effects", function()
+  local game = boot()
+  game.rules.ui = { words = {
+    playAll = "Deploy all ({n})",
+    endTurn = function() return "Pass" end,
+    newGame = "Fresh Game",
+    notEnough = "Need {n} {resource} for {card}.",
+    ["effect.draw"] = "Draw {n} card(s)",
+    chooseOne = "Pick one",
+  } }
+  Cardalyzer_onStartGame(HOST)
+  local xml = tts.ui.xml
+  assert(xml:find('id="cz%-playall"[^>]*>Deploy all %(%d+%)<'), "a renamed button with its number")
+  assert(xml:find('id="cz%-end"[^>]*>Pass<'), "a word given as a function")
+  assert(xml:find('id="cz%-setup"[^>]*>Fresh Game<'), "the info panel's buttons")
+  eq(game.effects:describe({ { key = "draw", amount = 2 } }), "Draw 2 card(s)", "an effect's description")
+  eq(game.effects:describe({ { key = "health", amount = 2 } }), "+2 Health", "others keep their own")
+  local Actions = Cardalyzer.require("engine.actions")
+  eq(Actions.promptText(game, { kind = "choice", count = 1 }), "Pick one", "a question")
+  local p = game.state.players[1]
+  p.resources.gold = 0
+  local row = game.state.market.row
+  local uid
+  for _, u in ipairs(row) do if u ~= "" then uid = u end end
+  local ok, why = game:buy(1, uid)
+  assert(not ok and why:find("^Need %d+ Gold for "), "a message: " .. tostring(why))
+end)
+
+test("tutorial pages: a game adds its own, or rebuilds the list", function()
+  local game = boot()
+  local Tutorial = Cardalyzer.require("engine.tutorial")
+  local n = #Tutorial.pages(game)
+  game.rules.tutorialPages = { { title = "Our rules", body = "Read the book." } }
+  local pages = Tutorial.pages(game)
+  eq(#pages, n + 1, "one page added")
+  eq(pages[#pages][1], "Our rules", "at the end")
+  game.rules.tutorialPages = function(g, list) return { list[1], { "Only this", "and the welcome page" } } end
+  eq(#Tutorial.pages(game), 2, "or the game's own list")
+  game.rules.tutorialPages = nil
+end)
+
+test("outlines: one seat colour, a market colour, thickness, hidden ones", function()
+  local game = boot()
+  game.rules.outlines = { seat = "#FF0000", market = "#00FF00", thickness = 2, hide = { slots = true, deck = true } }
+  Cardalyzer_onStartGame(HOST)
+  local seatLines, marketLines = 0, 0
+  for _, line in ipairs(tts.lines) do
+    if line.color[1] == 1 and line.color[2] == 0 then seatLines = seatLines + 1 end
+    if line.color[2] == 1 and line.color[1] == 0 then marketLines = marketLines + 1 end
+    assert(line.thickness >= 0.16, "twice as thick")
+  end
+  eq(seatLines, 2 * 3, "play, bases and discard per seat (deck hidden)")
+  eq(marketLines, 1 + 1 + #game.fixedIds + 1, "the row, market deck, fixed piles and scrap (no slots)")
+  game.rules.outlines = nil
+end)
+
+test("animation timing, card tooltips, the Buy button's look, message history", function()
+  local game = boot()
+  game.rules.animation = { stagger = 0.5, linger = 1, lift = 3 }
+  game.rules.ui = {
+    describeCard = function(g, card, text) return card.name .. "!\n" .. text end,
+    buyButton = { color = "#102030", textColor = "#FFFFFF", fontSize = 99 },
+    messages = { count = 1, chat = false },
+  }
+  tts.deferTimers = true
+  Cardalyzer_onStartGame(HOST)
+  local delays = {}
+  for _, timer in ipairs(tts.timers) do delays[#delays + 1] = timer.at end
+  table.sort(delays)
+  local spaced = false
+  for i = 2, #delays do if math.abs(delays[i] - delays[i - 1] - 0.5) < 0.001 then spaced = true end end
+  assert(spaced, "dealt cards 0.5 s apart")
+  tts.runTimers()
+  tts.deferTimers = false
+  local card = tts.live(function(o) return o.type == "Card" and #o.buttons > 0 end)[1]
+  assert(card, "a market card with a Buy button")
+  eq(card.buttons[1].font_size, 99, "the button's font size")
+  eq(card.buttons[1].color[1], 0x10 / 255, "and colour")
+  assert(card.data.Description:find("^" .. card.data.Nickname .. "!\n"), "the game's card tooltip")
+  local before = #tts.broadcasts
+  game:notify("one")
+  game:notify("two")
+  eq(#game.notices.all, 1, "keeps one message")
+  eq(game.notices.all[1], "two", "the latest")
+  eq(#tts.broadcasts, before, "not sent to chat")
+  game.rules.animation, game.rules.ui = nil, nil
+end)
+
 print(string.format("\n%d passed, %d failed", passed, failed))
 if failed > 0 then os.exit(1) end
