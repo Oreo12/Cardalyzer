@@ -2057,6 +2057,37 @@ test("activated abilities, discounts, buyToDeck, whenYouGain and same-name allie
   eq(p.resources.gold, gold + 10, "two of them: both fire")
 end)
 
+test("granting all allies, whenYouUseAlly, defense modifiers and hidden helpers", function()
+  local game, put = blank()
+  local p = game.state.players[1]
+  -- whenYouUseAlly: told which ally group fired
+  local used = {}
+  game.effects:registerCustom("watchAllies", { text = "", whenYouUseAlly = function(g, seat, ctx, u) used[#used + 1] = u.card.id end })
+  game.cards:get("seed_vault").effects = { { key = "custom", fn = "watchAllies" } }
+  put(1, "bases", "seed_vault")
+  game:play(1, put(1, "hand", "ember_smith"))
+  eq(#used, 0, "no ally yet")
+  game:grantAllies(1, "all")
+  eq(p.resources.might, 4, "granting all: the Smith's ally fires")
+  eq(used[1], "ember_smith", "and whenYouUseAlly heard it")
+  eq(game.effects:describe(game:cardOf(p.bases[1]).effects), "", "a helper with text \"\" isn't described")
+  -- defenseMod: +1 to the holder's bases, -1 to everyone else's
+  game.effects:registerCustom("walls", { defenseMod = function(g, seat, ctx, base) return base.owner == seat and 1 or -1 end })
+  game.cards:get("hidden_den").effects = { { key = "custom", fn = "walls" } }
+  put(1, "bases", "hidden_den")
+  local Actions = Cardalyzer.require("engine.actions")
+  local State = Cardalyzer.require("engine.state")
+  local mine = put(1, "bases", "seed_vault")
+  local theirs = State.newCard(game.state, "seed_vault")
+  game.state.players[2].bases[1] = theirs
+  local printed = game.cards:get("seed_vault").defense
+  eq(Actions.defenseOf(game, 1, mine), printed + 1, "my base")
+  eq(Actions.defenseOf(game, 2, theirs), printed - 1, "their base")
+  p.resources.might = 10
+  game:refreshUI()
+  assert(tts.ui.xml:find("Destroy Seed Vault (" .. (printed - 1) .. ")", 1, true), "the attack button shows the new defense")
+end)
+
 test("any player's waiting choice shows on their own screen", function()
   local game = blank()
   game:prompt(2, { kind = "choice", options = { { key = "gold", amount = 1 }, { key = "might", amount = 1 } } })

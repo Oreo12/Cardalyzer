@@ -215,7 +215,9 @@ function Effects:describe(list, fallback)
   for _, effect in ipairs(list) do
     if effect.key == "custom" then
       local def = self.custom[effect.fn]
-      parts[#parts + 1] = (def and def.text) or fallback or effect.fn
+      if not (def and def.text == "") then -- text = "": a hidden helper, not described
+        parts[#parts + 1] = (def and def.text) or fallback or effect.fn
+      end
     elseif effect.key == "choice" then
       local options = {}
       for _, option in ipairs(effect.options) do options[#options + 1] = self:describe({ option }, fallback) end

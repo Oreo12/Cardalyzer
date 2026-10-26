@@ -143,11 +143,13 @@ end
 -- its own needs a card sharing any of the owner's factions.
 -- group.need other cards are needed (1, or 2 for a double ally). Counted per
 -- faction: a double ally needs two other cards of the same faction.
--- Factions granted this turn (Game:grantAllies) always count as met.
+-- Factions granted this turn (Game:grantAllies) always count as met;
+-- granting "all" meets every ally condition.
 local function allyMet(game, uid, c, group, cardsInPlay)
   local need = group.need or 1
   local factions = group.faction and { group.faction } or c.factions
   local granted = game.state.turn.granted or {}
+  if granted.all then return true end
   for _, f in ipairs(factions) do
     if granted[f] then return true end
   end
@@ -198,6 +200,8 @@ function Actions.checkAllies(game, seat)
             game:notify(c.name .. " ally: " .. game.effects:describe(group.effects, c.text))
           end
           game.effects:apply(game, seat, group.effects, { uid = uid, card = c })
+          -- whenYouUseAlly(game, seat, ctx, used) on the player's cards in play
+          Actions.trigger(game, seat, "whenYouUseAlly", { uid = uid, card = c, faction = group.faction })
           again = true
         end
       end
@@ -443,6 +447,24 @@ function Actions.checkWin(game)
   if #alive == 1 then game.state.winner = alive[1] end
 end
 
+-- A base's defense now: its printed defense plus every defenseMod(game,
+-- seat, ctx, base) hook on any player's cards in play. base = { uid, owner }
+-- ("your bases gain +1 Defense"). Never below 0.
+function Actions.defenseOf(game, owner, uid)
+  local defense = card(game, uid).defense or 0
+  for seat, player in ipairs(game.state.players) do
+    for _, other in ipairs(Actions.inPlay(player)) do
+      for _, effect in ipairs(card(game, other).effects) do
+        local def = effect.key == "custom" and game.effects.custom[effect.fn]
+        if def and def.defenseMod then
+          defense = defense + (def.defenseMod(game, seat, { uid = other }, { uid = uid, owner = owner }) or 0)
+        end
+      end
+    end
+  end
+  return math.max(0, defense)
+end
+
 -- Without baseUid, spends the whole attack pool on the target player's
 -- win stat. With it, spends the base's defense to destroy that base.
 function Actions.attack(game, seat, target, baseUid)
@@ -463,7 +485,7 @@ function Actions.attack(game, seat, target, baseUid)
     if Actions.typeDef(game, card(game, baseUid)).target == false then return fail(card(game, baseUid).name .. " can't be attacked.") end
     if #guards > 0 and not Util.indexOf(guards, baseUid) then return fail("Destroy their guard bases first.") end
     local c = card(game, baseUid)
-    local defense = c.defense or 0
+    local defense = Actions.defenseOf(game, target, baseUid)
     if pool < defense then return fail(c.name .. " needs " .. defense .. " " .. label .. ".") end
     player.resources[key] = pool - defense
     Actions.destroyBase(game, target, baseUid)

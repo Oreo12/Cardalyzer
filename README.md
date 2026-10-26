@@ -54,6 +54,7 @@ So today you can play a full game for 2 to 4 players:
 - attack any opponent and their buildings, with guard buildings that must fall first,
 - knock players out until one is left, who wins,
 - use card sheets you already host, such as ones on Steam Cloud,
+- give each player their own starting kit (deck, cards in play, stats and hand size),
 - save and reload at any point, including mid-choice.
 
 ## Limits and compatibility
@@ -403,7 +404,7 @@ One row per card. The column order doesn't matter, but the names do.
 | `id` | yes | Unique id: lowercase letters, digits, `_` | `war_anvil` |
 | `name` | yes | Name shown on the card | `War Anvil` |
 | `deck` | no (default `market`) | Which pile the card starts in: `starter`, `market`, `fixed` or `dealt` (see below) | `market` |
-| `faction` | no (default `none`) | Faction for ally effects and frame colour. Two factions: `forge/grove`. `any` counts as every faction | `forge` |
+| `faction` | no (default `none`) | Faction for ally effects and frame colour. Two factions: `forge/grove`. `any` counts as every faction; `anyname` counts as any card name for same-name allies | `forge` |
 | `type` | no (default `unit`) | A type from `cardTypes` in the rules | `building` |
 | `cost` | yes | Price in the market | `4` |
 | `copies` | yes | How many copies exist (see `deck`) | `1` |
@@ -459,7 +460,9 @@ fine.
 In `ally_effects` only, an effect can name the faction it needs:
 `veil=scrap_row:1` fires when a Veil card is in play, whatever the card's own
 faction. Without a prefix, an ally effect needs any card that shares one of
-its factions. Each ally effect fires at most once per turn.
+its factions. The prefix `samename=` needs another card with the same name
+(or one whose faction is `anyname`) in play. Each ally effect fires at most
+once per turn.
 
 Some keywords are always available:
 
@@ -487,6 +490,7 @@ These are the fields in `games/<yours>/rules.lua`:
 | `market.buyTo` | `"discard"` or `"deck_top"` | Where bought cards go |
 | `deal` | `{count=2}` | How many `dealt` cards each player gets at the start |
 | `objectives` | `{count=3, perTurn=1, toWin=3, label="Missions"}` | Secret goals (`objective` cards): how many each player gets, how many can be completed per turn, and how many completed win the game |
+| `kits` | `{ {key="red", set="red_kit", label="Red", handSize=6, stats={health=60}} }` | Starting kits. With Starting decks set to Random in the New Game menu, each player gets a different kit: that set's `starter` cards replace the usual starters, its `dealt` cards go into their play area, its `market` cards join the market deck, and `stats`/`handSize` replace the player's. A kit's set is never dealt otherwise. `kitName` names a kit in the menu (default "kit") and `kitLabel` names the option (default "Starting decks") |
 | `market.returnScrapped` | `true` | A scrapped card from a fixed pile goes back to its pile instead of the scrap pile (Star Realms' Explorers) |
 | `sets` | `{ {key="base", label="Base Game", always=true}, {key="exp1", label="Expansion", default=true} }` | Sets of cards (named in the `set` column) the host switches in or out in the New Game menu. `always` sets can't be switched off; `default` ones start on. Cards with no `set` are always in |
 | `market.faceActive` | `false` | Leave out to turn the market's cards to face the player whose turn it is; `false` keeps them facing seat 1 |
@@ -610,8 +614,10 @@ Besides `apply`, a custom effect can have:
 `game.state.turn.played` lists the cards played this turn, in order.
 Turn flags for the next card bought (each takes `true`, a type such as
 `"ship"`, or a list of types, and is used up when it applies):
-`buyToTop`, `mayBuyToTop` (asks), `buyToHand`, and `buyToPlay` (straight into
-play, its effects applying).
+`buyToTop`, `mayBuyToTop` (asks), `buyToHand`, `buyToDeck` (shuffled into the
+deck), and `buyToPlay` (straight into play, its effects applying).
+`flags.discount = { faction = "forge", amount = 1 }` makes the next matching
+card cheaper (`type` works too; leave both out for any card).
 
 More hooks a custom effect can have:
 
@@ -625,10 +631,28 @@ More hooks a custom effect can have:
   its owner (not their bases) is attacked; it can lower `hit.damage`.
 - `atTurnEnd = function(game, seat, job)`: runs for jobs queued with
   `game:atTurnEnd({ custom = "<name>", ... })` this turn.
+- `activate = function(game, seat, ctx)`: the card's owner gets a Use button
+  while it's in play, usable once each turn ("once each turn, you may gain 2
+  Trade").
+- `whenYouGain = function(game, seat, ctx, gain)`: while in play, runs each
+  time its owner gains a resource or stat on their turn. `gain` is
+  `{ key, amount, first }`; `first` is true for the first gain of that key
+  this turn.
+- `whenYouUseScrap = function(game, seat, ctx, used)`: while in play, runs
+  after its owner uses a card's scrap ability. `used` is `{ uid, card }`.
+- `whenYouUseAlly = function(game, seat, ctx, used)`: while in play, runs
+  after one of its owner's ally abilities fires. `used` is
+  `{ uid, card, faction }` (the ally's prefix, if it has one).
+- `defenseMod = function(game, seat, ctx, base)`: while in play, returns a
+  change to any building's defense. `base` is `{ uid, owner }`; `seat` is
+  this card's owner ("your bases gain +1 Defense").
+
+A custom effect with `text = ""` is a hidden helper: it isn't listed when the
+card's effects are described.
 
 `game:grantAllies(seat, faction)` makes every ally ability of that faction
 count as met for the rest of the turn ("you may use all your Blob ally
-abilities"). A prompt can be queued for any player, not just the one whose
+abilities"); `faction = "all"` meets every ally condition. A prompt can be queued for any player, not just the one whose
 turn it is (an event asking everyone); it shows on that player's screen.
 `pick` prompts also take `scope = "hand"` or `"deck"`.
 

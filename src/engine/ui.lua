@@ -72,8 +72,9 @@ function UI_.actions(game)
       for _, uid in ipairs(victim.bases) do
         local c = game.cards:get(State.cardId(state, uid))
         local open = #guards == 0 or Util.indexOf(guards, uid)
-        if open and pool >= (c.defense or 0) and Actions.typeDef(game, c).target ~= false then
-          add(out.buttons, "cz-hit-" .. other .. "-" .. uid, "Destroy " .. c.name .. " (" .. (c.defense or 0) .. ")")
+        local defense = Actions.defenseOf(game, other, uid)
+        if open and pool >= defense and Actions.typeDef(game, c).target ~= false then
+          add(out.buttons, "cz-hit-" .. other .. "-" .. uid, "Destroy " .. c.name .. " (" .. defense .. ")")
         end
       end
     end
@@ -255,7 +256,7 @@ local function seatRow(game, seat)
   if not p.out then
     for i, uid in ipairs(p.bases) do
       local c = game.cards:get(State.cardId(state, uid))
-      if c.defense then xml = xml .. counter("cz_base_" .. seat .. "_" .. i, "shield", c.defense, 30) end
+      if c.defense then xml = xml .. counter("cz_base_" .. seat .. "_" .. i, "shield", Actions.defenseOf(game, seat, uid), 30) end
     end
     for _, st in ipairs(rules.stats or {}) do
       local icon = UI_.iconFor(rules, st, "stat")
