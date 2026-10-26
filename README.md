@@ -485,7 +485,7 @@ These are the fields in `games/<yours>/rules.lua`:
 | `stats` | `{ {key="health", label="Health", start=40} }` | Values that persist between turns. Optional `icon` |
 | `handSize` | `5` | Cards drawn at the end of each turn |
 | `openingHand` | `{3, 5}` or `5` | First hand per player in turn order (the last number repeats); one number means everyone draws that many. `{players = {[2] = {3, 5}}, otherwise = {3, 4, 5}}` depends on the number of players |
-| `openingHands` | `{ {label="Rulebook", hands={3, 5}}, {label="Everyone 5", hands=5} }` | Several opening-hand rules to choose from in the New Game menu (the first is the default; the choice is remembered). Each `hands` takes any `openingHand` form. Overrides `openingHand` |
+| `openingHands` | `{ {label="Rulebook", hands={3, 5}}, {label="Everyone 5", hands=5} }` | Several opening-hand rules to choose from in the New Game menu (the first is the default; the choice is remembered). Each `hands` takes any `openingHand` form; an optional `about` explains the option in plain words (its tooltip, and the tutorial's setup page). `openingLabel` renames the row (default "Starting hands"). Overrides `openingHand` |
 | `firstSeat` | `1` | Which seat goes first |
 | `market.rowSize` | `5` | Face-up market slots |
 | `market.buyTo` | `"discard"` or `"deck_top"` | Where bought cards go |

@@ -186,14 +186,15 @@ end
 -- A standalone button, as wide as its label needs. Its look comes from the
 -- theme: primary for the main actions (the theme's primary ids), `kind` if
 -- given ("selected" for a chosen option), else secondary. Returns XML and width.
-local function smallButton(id, label, size, kind, width)
+local function smallButton(id, label, size, kind, width, tooltip)
   size = size or 12
   kind = kind or (Theme.isPrimary(current, id) and "primary" or "secondary")
   local colors, textColor = Theme.button(current, kind)
   width = width or math.max(60, math.floor(#label * size * 0.6) + 24)
+  local tip = tooltip and (' tooltip="' .. escape(tooltip) .. '" tooltipPosition="Above" tooltipWidth="320"') or ""
   return string.format('<Button id="%s" onClick="Cardalyzer_onUI" preferredHeight="%d" preferredWidth="%d" fontSize="%d"'
-    .. ' fontStyle="Bold" colors="%s" textColor="%s">%s</Button>',
-    id, size + 14, width, size, colors, textColor, escape(label)), width
+    .. ' fontStyle="Bold" colors="%s" textColor="%s"%s>%s</Button>',
+    id, size + 14, width, size, colors, textColor, tip, escape(label)), width
 end
 UI_.button = smallButton
 
@@ -490,20 +491,23 @@ function UI_.optionRow(id, label, options)
     -- an option is selected or not; a plain button (on = nil) takes its usual look
     local kind = o.kind
     if not kind and o.on ~= nil then kind = o.on and "selected" or "secondary" end
-    xml = xml .. smallButton(o.id, o.label, g.size, kind, cellWidth(cellsFor(o.label)))
+    xml = xml .. smallButton(o.id, o.label, g.size, kind, cellWidth(cellsFor(o.label)), o.tooltip)
   end
   return '<HorizontalLayout spacing="6" preferredHeight="30" childForceExpandWidth="false" childAlignment="MiddleLeft">'
     .. xml .. '</HorizontalLayout>'
 end
 
--- The opening-hand choice (cz-opening-<i>), when the rules offer more than one.
+-- The starting-hand choice (cz-opening-<i>), when the rules offer more than
+-- one. Each option's `about` is its tooltip (and is in the tutorial).
 function UI_.openingRow(game)
   local options = game.rules.openingHands or {}
   if #options < 2 then return nil end
   local chosen = game:setupChoice("opening") or 1
   local list = {}
-  for i, o in ipairs(options) do list[#list + 1] = { id = "cz-opening-" .. i, label = o.label, on = i == chosen } end
-  return UI_.optionRow("cz_opening", "First hands", list)
+  for i, o in ipairs(options) do
+    list[#list + 1] = { id = "cz-opening-" .. i, label = o.label, on = i == chosen, tooltip = o.about }
+  end
+  return UI_.optionRow("cz_opening", game.rules.openingLabel or "Starting hands", list)
 end
 
 -- The set toggles (cz-set-<key>), when the rules list sets, four to a row.
@@ -666,10 +670,10 @@ function UI_.xml(game)
       local navXml = buttonRows(nav, 13, 640)
       -- in the theme's menu style: its pages are long reads, so never clear
       local inner = text("cz_tut_title_" .. color, page[1], 22, 'fontStyle="Bold" color="' .. accent() .. '" preferredHeight="34"')
-        .. text("cz_tut_body_" .. color, page[2], 16, 'alignment="UpperLeft" preferredHeight="270"')
+        .. text("cz_tut_body_" .. color, page[2], 16, 'alignment="UpperLeft" preferredHeight="330"')
         .. text("cz_tut_page_" .. color, "Page " .. n .. " of " .. #pages, 12, 'alignment="MiddleRight" color="#9AA4AE" preferredHeight="16"')
         .. navXml
-      parts[#parts + 1] = sized((UI_.framed("cz_tutorial_" .. color, "menu", inner, 650, 370,
+      parts[#parts + 1] = sized((UI_.framed("cz_tutorial_" .. color, "menu", inner, 650, 430,
         ' visibility="' .. color .. '" rectAlignment="MiddleCenter"', 8)), UI_.scaleOf(game, color))
     end
   end
