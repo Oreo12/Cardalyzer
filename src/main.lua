@@ -14,7 +14,7 @@ end
 
 local function tell(color, msg)
   if game then return game:notify(msg, color) end
-  broadcastToColor(msg, color, { 1, 0.8, 0.4 })
+  if Game.seated(color) then broadcastToColor(msg, color, { 1, 0.8, 0.4 }) end
 end
 
 -- Runs a game method for a player; shows them why if it was refused.

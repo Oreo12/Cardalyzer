@@ -152,11 +152,18 @@ end
 
 -- Shows a message in the info panel (or only to one colour) and copies it to
 -- the chat log. Used instead of broadcasts, which TTS draws behind the UI.
+-- Is someone sitting at this colour? TTS's printToColor raises an error for an
+-- empty seat (a player who left, or a host playing several seats).
+function Game.seated(color)
+  local ok, seated = pcall(function() return Player[color].seated end)
+  return ok and seated == true
+end
+
 function Game:notify(msg, color)
   msg = tostring(msg)
   if color then
     self.notices.byColor[color] = msg
-    printToColor(msg, color, { 1, 0.8, 0.4 })
+    if Game.seated(color) then printToColor(msg, color, { 1, 0.8, 0.4 }) end
   else
     local all = self.notices.all
     all[#all + 1] = msg

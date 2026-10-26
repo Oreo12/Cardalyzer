@@ -1539,5 +1539,19 @@ test("Settings: each player sets their own UI size and action bar height", funct
   assert(not tts.ui.xml:find("cz_settings_Red", 1, true), "Close shuts it")
 end)
 
+test("messages to an empty seat don't stop the game", function()
+  local game = boot()
+  Cardalyzer_onStartGame(HOST)
+  tts.empty.Red = true -- the host is playing Red's turns, or Red left
+  Cardalyzer_onEndTurn(HOST)
+  eq(game.state.turn.active, 2, "Red's turn")
+  click(GUEST, "cz-playall")
+  click(GUEST, "cz-playall") -- the hand is empty now: a private "Your hand is empty."
+  assert(tts.ui.xml:find('id="cz_notice_Red"', 1, true), "still shown on Red's screen")
+  click(GUEST, "cz-end")
+  eq(game.state.turn.active, 1, "and the turn carried on")
+  for _, b in ipairs(tts.broadcasts) do assert(not b:find("%[Cardalyzer%]"), "no script error: " .. b) end
+end)
+
 print(string.format("\n%d passed, %d failed", passed, failed))
 if failed > 0 then os.exit(1) end

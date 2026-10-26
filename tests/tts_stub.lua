@@ -46,6 +46,7 @@ tts.newObject = newObject
 function tts.reset()
   tts.objects, tts.order, tts.broadcasts, tts.ui = {}, {}, {}, { values = {} }
   tts.flights, tts.timers, tts.deferTimers, tts.lines = {}, {}, false, nil
+  tts.empty = {}
 end
 
 -- Wait.time runs at once unless tts.deferTimers is set; then callbacks wait
@@ -91,9 +92,16 @@ function getObjects() return tts.live() end
 function getObjectsWithTag(tag) return tts.live(function(o) return o.tags[tag] end) end
 
 function broadcastToAll(msg) tts.broadcasts[#tts.broadcasts + 1] = msg end
-function broadcastToColor(msg, color) tts.broadcasts[#tts.broadcasts + 1] = color .. ": " .. msg end
+function broadcastToColor(msg, color)
+  if tts.empty[color] then error("Error in broadcastToColor: Player " .. color .. " does not exist.") end
+  tts.broadcasts[#tts.broadcasts + 1] = color .. ": " .. msg
+end
 function printToAll(msg) tts.broadcasts[#tts.broadcasts + 1] = msg end
-function printToColor(msg, color) tts.broadcasts[#tts.broadcasts + 1] = color .. ": " .. msg end
+-- Like TTS: messaging an empty seat is an error.
+function printToColor(msg, color)
+  if tts.empty[color] then error("Error in printToColor: Player " .. color .. " does not exist.") end
+  tts.broadcasts[#tts.broadcasts + 1] = color .. ": " .. msg
+end
 
 UI = {
   setXml = function(xml) tts.ui.xml = xml end,
@@ -107,6 +115,11 @@ Wait = {
     tts.timers[#tts.timers + 1] = { at = (tts.now or 0) + delay, fn = fn }
   end,
 }
+-- Every colour is seated unless a test empties it: tts.empty[color] = true.
+tts.empty = {}
+Player = setmetatable({}, { __index = function(_, color)
+  return { color = color, seated = not tts.empty[color], getHandObjects = function() return {} end }
+end })
 Global = { name = "Global", setVectorLines = function(lines) tts.lines = lines end }
 JSON = { encode = json.encode, decode = json.decode }
 
