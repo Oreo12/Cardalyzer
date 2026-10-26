@@ -33,16 +33,47 @@ end
 -- `opening` is the opening-hand rule (see Turn.openingRule); default rules.openingHand.
 -- `sets` ({ [key] = true }) limits the cards to those sets; a card with no
 -- set is always in. nil means every card.
-function Turn.setup(state, rules, cards, random, opening, sets)
+-- `kits` ({ [seat] = kit }) gives players their own starting pack (rules.kits):
+-- the kit's set supplies that player's starter cards (instead of the usual
+-- ones) and its dealt cards go into their play area; its market cards join
+-- the market deck. kit.stats and kit.handSize override the player's.
+function Turn.setup(state, rules, cards, random, opening, sets, kits)
+  kits = kits or {}
+  local kitSets = {}
+  for _, kit in ipairs(rules.kits or {}) do kitSets[kit.set] = true end
+  local inKit = {}
+  for _, kit in pairs(kits) do inKit[kit.set] = true end
   local function inDeck(deck)
     local out = {}
     for _, card in ipairs(cards:inDeck(deck)) do
-      if not sets or not card.set or sets[card.set] then out[#out + 1] = card end
+      local ok
+      if card.set and kitSets[card.set] then
+        ok = deck == "market" and inKit[card.set] -- a kit's trade cards, when the kit is played
+      else
+        ok = not sets or not card.set or sets[card.set]
+      end
+      if ok then out[#out + 1] = card end
     end
     return out
   end
-  for _, player in ipairs(state.players) do
-    for _, card in ipairs(inDeck("starter")) do
+  for seat, player in ipairs(state.players) do
+    local kit = kits[seat]
+    local starters = inDeck("starter")
+    if kit then
+      starters = {}
+      for _, card in ipairs(cards:inDeck("starter")) do
+        if card.set == kit.set then starters[#starters + 1] = card end
+      end
+      for _, card in ipairs(cards:inDeck("dealt")) do
+        if card.set == kit.set then
+          for _ = 1, card.copies do player.bases[#player.bases + 1] = State.newCard(state, card.id) end
+        end
+      end
+      for key, value in pairs(kit.stats or {}) do player.stats[key] = value end
+      player.handSize = kit.handSize
+      player.kit = kit.key
+    end
+    for _, card in ipairs(starters) do
       for _ = 1, card.copies do
         player.deck[#player.deck + 1] = State.newCard(state, card.id)
       end
@@ -161,7 +192,7 @@ function Turn.endTurn(state, rules, random)
   Util.moveAll(player.play, player.discard)
   Util.moveAll(player.hand, player.discard)
   State.resetResources(player, rules)
-  Turn.draw(state, seat, rules.handSize, random)
+  Turn.draw(state, seat, player.handSize or rules.handSize, random)
 
   state.turn.active = Turn.nextSeat(state, seat)
   state.turn.number = state.turn.number + 1

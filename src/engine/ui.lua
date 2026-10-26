@@ -86,6 +86,9 @@ function UI_.actions(game)
     end
   end
 
+  for _, a in ipairs(Actions.activatable(game, seat)) do
+    add(out.buttons, "cz-use-" .. a.uid, "Use " .. game:cardOf(a.uid).name .. (a.def.text and (": " .. a.def.text) or ""))
+  end
   local goalLabel = game.rules.objectives and game.rules.objectives.label or "goal"
   for _, uid in ipairs(Actions.completable(game, seat)) do
     add(out.buttons, "cz-goal-" .. uid, "Complete " .. game:cardOf(uid).name)
@@ -473,6 +476,13 @@ function UI_.setupPanel(game, color)
   end
   add(UI_.playersRow(game))
   add(UI_.openingRow(game))
+  if game.rules.kits and #game.rules.kits > 0 then
+    local mode = game:setupChoice("kits") or "off"
+    add(UI_.optionRow("cz_kits", game.rules.kitLabel or "Starting decks", {
+      { id = "cz-kits-off", label = "Standard", on = mode ~= "random" },
+      { id = "cz-kits-random", label = "Random " .. (game.rules.kitName or "kit"), on = mode == "random" },
+    }))
+  end
   for _, r in ipairs(UI_.setRows(game)) do add(r) end
   local extra = #rows > 0 and { '<VerticalLayout spacing="8" preferredHeight="' .. height .. '" childForceExpandHeight="false">'
     .. table.concat(rows) .. '</VerticalLayout>', height } or nil

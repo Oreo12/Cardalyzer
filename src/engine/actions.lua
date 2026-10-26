@@ -151,6 +151,14 @@ local function allyMet(game, uid, c, group, cardsInPlay)
   for _, f in ipairs(factions) do
     if granted[f] then return true end
   end
+  if group.faction == "samename" then -- "Splinter": another card with this name (or one with faction anyname)
+    local found = 0
+    for _, other in ipairs(cardsInPlay) do
+      local oc = other ~= uid and card(game, other)
+      if oc and (oc.id == c.id or hasFaction(oc, "anyname")) then found = found + 1 end
+    end
+    return found >= need
+  end
   for _, f in ipairs(factions) do
     if f ~= "none" then
       local found = 0
@@ -306,10 +314,16 @@ function Actions.buy(game, seat, uid, free, toTop, toHand)
   if not free then
     local key, label = Actions.resourceFor(game.rules, "buy")
     if not key then return fail("These rules have no resource with spend = \"buy\".") end
-    if (player.resources[key] or 0) < c.cost then
-      return fail("Not enough " .. label .. ": " .. c.name .. " costs " .. c.cost .. ".")
+    -- flags.discount = { faction?, type?, amount }: the next matching card costs less
+    local cost, discount = c.cost, player.flags.discount
+    local discounted = discount and (not discount.faction or hasFaction(c, discount.faction))
+      and (not discount.type or Actions.typeMatches(discount.type, c))
+    if discounted then cost = math.max(0, cost - (discount.amount or 1)) end
+    if (player.resources[key] or 0) < cost then
+      return fail("Not enough " .. label .. ": " .. c.name .. " costs " .. cost .. ".")
     end
-    player.resources[key] = player.resources[key] - c.cost
+    player.resources[key] = player.resources[key] - cost
+    if discounted then player.flags.discount = nil end
   end
 
   if where == "row" then market.row[slot] = State.EMPTY else table.remove(market.fixed[slot]) end
@@ -322,6 +336,9 @@ function Actions.buy(game, seat, uid, free, toTop, toHand)
   end
   if toHand or take("buyToHand") then
     player.hand[#player.hand + 1] = uid
+  elseif take("buyToDeck") then -- shuffled into the deck
+    player.deck[#player.deck + 1] = uid
+    Util.shuffle(player.deck, game.random)
   elseif take("buyToPlay") then
     Actions.fillMarket(game)
     Actions.enterPlay(game, seat, uid)
@@ -354,6 +371,7 @@ function Actions.scrapFromPlay(game, seat, uid)
   end
   Actions.toScrap(game, uid, seat, "play")
   game.effects:apply(game, seat, c.scrapEffects, { uid = uid, card = c })
+  Actions.trigger(game, seat, "whenYouUseScrap", { uid = uid, card = c })
   return true
 end
 
@@ -726,6 +744,40 @@ function Actions.done(game, seat)
 end
 
 ---------------------------------------------------------------------------
+-- Activated abilities: a card in play whose custom effect has activate(game,
+-- seat, ctx) can be used once each turn without scrapping it (a "Use" button).
+---------------------------------------------------------------------------
+
+function Actions.activatable(game, seat)
+  local out = {}
+  local used = game.state.turn.activated or {}
+  for _, uid in ipairs(Actions.inPlay(game.state.players[seat])) do
+    if not used[uid] then
+      for _, effect in ipairs(card(game, uid).effects) do
+        local def = effect.key == "custom" and game.effects.custom[effect.fn]
+        if def and def.activate then out[#out + 1] = { uid = uid, def = def }; break end
+      end
+    end
+  end
+  return out
+end
+
+function Actions.activate(game, seat, uid)
+  local ok, why = isActive(game, seat)
+  if not ok then return fail(why) end
+  for _, a in ipairs(Actions.activatable(game, seat)) do
+    if a.uid == uid then
+      local turn = game.state.turn
+      turn.activated = turn.activated or {}
+      turn.activated[uid] = true
+      a.def.activate(game, seat, { uid = uid, card = card(game, uid) })
+      return true
+    end
+  end
+  return fail("That can't be used now.")
+end
+
+---------------------------------------------------------------------------
 -- Objectives: secret per-player goals (deck = objective). Each card names a
 -- custom effect in its condition column whose check(game, seat) says the
 -- goal is met; completing it applies the card's effects as the reward.
@@ -782,6 +834,7 @@ function Actions.startTurn(game, seat)
   turn.allyFired, turn.played, turn.copies = {}, {}, {}
   turn.factions, turn.atEnd, turn.scrapped = {}, {}, { total = 0, handOrDiscard = 0 }
   turn.granted, turn.gained, turn.allyFactions, turn.completed = {}, {}, {}, 0
+  turn.activated = {}
   if (player.owed.discard or 0) > 0 then
     Actions.prompt(game, seat, { kind = "discard", count = player.owed.discard, optional = false })
     player.owed.discard = 0

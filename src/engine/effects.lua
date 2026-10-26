@@ -172,7 +172,12 @@ function Effects.noteGain(game, seat, key, amount)
   local turn = game.state.turn
   if amount <= 0 or seat ~= turn.active then return end
   turn.gained = turn.gained or {}
+  local first = (turn.gained[key] or 0) == 0
   turn.gained[key] = (turn.gained[key] or 0) + amount
+  -- whenYouGain(game, seat, ctx, gain) on the player's cards in play; gain.first
+  -- is true the first time this turn they gain this key.
+  local Actions = require("engine.actions")
+  Actions.trigger(game, seat, "whenYouGain", { key = key, amount = amount, first = first })
 end
 
 function Effects:register(key, handler)
