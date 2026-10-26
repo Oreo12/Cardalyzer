@@ -198,7 +198,7 @@ To play:
                        Deck 0 · Discard 0
                   Red        [♥ 40]
                        Deck 0 · Discard 0
-                          [New Game]
+               [Settings] [New Game]
    ```
    Messages, such as "It's not your turn" or "Ember Smith ally: +2 Might",
    appear inside this panel (the last three for everyone, plus a private line
@@ -227,12 +227,15 @@ To play:
           [+3 Gold] [+3 Might]
 
                     (3) (5)                     <- Gold and Might
-   [PLAY ALL (3)] [Attack Red (5 Might)] [Scrap Hireling] [END TURN] [▲] [▼]
+   [PLAY ALL (3)] [Attack Red (5 Might)] [Scrap Hireling] [END TURN]
                                                 <- just above your hand
    ```
-   TTS doesn't tell scripts how big each player's on-screen hand is, so the
-   bar starts at a typical height; ▲ and ▼ move it for you, and it stays
-   where you put it, even after a reload.
+   **Settings**, next to New Game, is each player's own: **UI size** makes
+   all of Cardalyzer's UI smaller or bigger (70% to 155%) for you alone, and
+   **Action bar** moves your bar up or down to clear your on-screen hand
+   (TTS doesn't tell scripts how big that is), or resets it. Settings are
+   kept with the save. There's no resolution setting: TTS already scales
+   custom UI to each player's screen.
    The market turns to face whoever's turn it is, so its cards always read
    the right way up.
    - **Play a card** by dragging it from your hand into your play area (the

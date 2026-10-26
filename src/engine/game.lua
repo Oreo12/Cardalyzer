@@ -187,14 +187,37 @@ function Game:tutorial(color, action)
   return true
 end
 
--- Moves one player's action bar up (+1) or down (-1) a step, to sit just above
--- their own on-screen hand (TTS doesn't tell scripts how big that is). Saved,
--- so it stays put after a reload.
+-- Moves one player's action bar up (+1) or down (-1) a step, or back to the
+-- default (0), to sit just above their own on-screen hand (TTS doesn't tell
+-- scripts how big that is). Saved, so it stays put after a reload.
 function Game:moveBar(color, dir)
   local view = self.state.view
   view.barOffset = view.barOffset or {}
-  local moved = (view.barOffset[color] or 0) + dir * UI_.BAR_STEP
+  local moved = dir == 0 and 0 or (view.barOffset[color] or 0) + dir * UI_.BAR_STEP
   view.barOffset[color] = math.max(-UI_.ACTION_BAR_Y + 10, math.min(600, moved))
+  self:refreshUI()
+  return true
+end
+
+-- Makes one player's UI a size smaller (-1) or bigger (+1), from UI_.SCALES.
+-- Saved with the game.
+function Game:setUiScale(color, dir)
+  local view = self.state.view
+  view.uiScale = view.uiScale or {}
+  local current, at = UI_.scaleOf(self, color), 1
+  for i, s in ipairs(UI_.SCALES) do
+    if math.abs(s - current) < math.abs(UI_.SCALES[at] - current) then at = i end
+  end
+  at = math.max(1, math.min(#UI_.SCALES, at + dir))
+  view.uiScale[color] = UI_.SCALES[at] ~= 1 and UI_.SCALES[at] or nil
+  self:refreshUI()
+  return true
+end
+
+-- Opens or closes the settings menu for one player. Not saved.
+function Game:settings(color, open)
+  self.settingsOpen = self.settingsOpen or {}
+  self.settingsOpen[color] = open or nil
   self:refreshUI()
   return true
 end

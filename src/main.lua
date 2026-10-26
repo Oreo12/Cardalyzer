@@ -77,8 +77,14 @@ function Cardalyzer_onUI(player, _, id)
     return game:setup(player.color, true)
   end
   if action == "setupclose" then return game:setup(player.color, false) end
+  -- Settings: anyone can change their own UI size and action bar height.
+  if action == "settings" then return game:settings(player.color, true) end
+  if action == "settingsclose" then return game:settings(player.color, false) end
+  if action == "uismaller" then return game:setUiScale(player.color, -1) end
+  if action == "uibigger" then return game:setUiScale(player.color, 1) end
   if action == "barup" then return game:moveBar(player.color, 1) end
   if action == "bardown" then return game:moveBar(player.color, -1) end
+  if action == "barreset" then return game:moveBar(player.color, 0) end
   if action == "tidy" then return run(player.color, game.tidy) end
   if action == "end" then return Cardalyzer_onEndTurn(player) end
   if action == "players" then

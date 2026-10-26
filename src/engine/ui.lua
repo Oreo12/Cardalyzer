@@ -213,7 +213,7 @@ UI_.INFO_WIDTH = 300
 local TIDY_Y = 70 -- the Tidy table button's bottom edge, in pixels above the screen's
 local INFO_BOTTOM = 112 -- the info panel's bottom edge
 UI_.ACTION_BAR_Y = 210 -- the action bar's bottom edge by default: just above the on-screen hand
-UI_.BAR_STEP = 30 -- how far one press of a player's ▲/▼ moves their bar
+UI_.BAR_STEP = 30 -- how far one press of Up / Down in Settings moves a player's bar
 
 -- Rough pixel height of a message wrapped to the info panel's width.
 local function wrappedHeight(msg, size)
@@ -270,11 +270,67 @@ local function turnCounters(game, color)
     .. xml .. '</HorizontalLayout>'
 end
 
+---------------------------------------------------------------------------
+-- Per-player settings: UI size and action bar height (Settings menu)
+---------------------------------------------------------------------------
+
+-- The UI sizes a player can pick, smallest to largest (1 is normal).
+UI_.SCALES = { 0.7, 0.8, 0.9, 1, 1.1, 1.25, 1.4, 1.55 }
+
+-- A colour's UI size (state.view.uiScale, saved with the game).
+function UI_.scaleOf(game, color)
+  return game.state.view.uiScale and game.state.view.uiScale[color] or 1
+end
+
+-- Scale attributes for a panel, growing from `pivot` (its anchored corner).
+local function scaleAttr(scale, pivot)
+  if scale == 1 then return "" end
+  return string.format(' scale="%s %s" pivot="%s"', scale, scale, pivot)
+end
+
+-- Every TTS colour (except those in `skip`) grouped by UI size, normal size
+-- first. Panels everyone sees are drawn once per group, each scaled for it.
+-- `single` is set when everyone shares one size and nobody is skipped.
+function UI_.scaleGroups(game, skip)
+  local byScale, order = {}, {}
+  for _, color in ipairs(Tutorial.allColors) do
+    if not (skip and skip[color]) then
+      local s = UI_.scaleOf(game, color)
+      if not byScale[s] then
+        byScale[s] = { scale = s, colors = {} }
+        order[#order + 1] = s
+      end
+      local list = byScale[s].colors
+      list[#list + 1] = color
+    end
+  end
+  table.sort(order, function(a, b)
+    if a == 1 or b == 1 then return a == 1 and b ~= 1 end
+    return a < b
+  end)
+  local groups = {}
+  for _, s in ipairs(order) do groups[#groups + 1] = byScale[s] end
+  groups.single = #groups == 1 and not skip
+  return groups
+end
+
+-- The visibility and scale attributes for group i, and the id suffix that
+-- keeps copies apart (none for the first).
+local function groupAttrs(groups, i, pivot)
+  local g = groups[i]
+  local vis = groups.single and "" or (' visibility="' .. table.concat(g.colors, "|") .. '"')
+  return vis .. scaleAttr(g.scale, pivot), i == 1 and "" or ("_" .. i)
+end
+
+---------------------------------------------------------------------------
+-- Panels
+---------------------------------------------------------------------------
+
 -- The info panel, on the right: title, turn, the players, the last few
--- messages (see Game:notify; TTS draws
--- broadcasts behind custom UI, so they're shown here instead) and New Game,
--- which opens the setup menu. Returns its XML and its height in pixels.
-function UI_.infoPanel(game)
+-- messages (see Game:notify; TTS draws broadcasts behind custom UI, so
+-- they're shown here instead), then Settings and New Game (which opens the
+-- setup menu). Returns its XML and its unscaled height in pixels.
+function UI_.infoPanel(game, suffix, attrs, bottom)
   local state = game.state
   local rows, height = {}, 0
   local function row(xml, h) rows[#rows + 1] = xml; height = height + h + 4 end
@@ -289,17 +345,18 @@ function UI_.infoPanel(game)
     row(text("cz_notice_" .. i, msg, 12, 'color="' .. ACCENT .. '" fontStyle="Italic" alignment="MiddleRight" preferredHeight="'
       .. h .. '"' .. FX), h)
   end
-  row('<HorizontalLayout preferredHeight="28" childForceExpandWidth="false" childAlignment="MiddleRight">'
-    .. smallButton("cz-setup", "New Game", 14) .. '</HorizontalLayout>', 28)
+  row('<HorizontalLayout spacing="6" preferredHeight="28" childForceExpandWidth="false" childAlignment="MiddleRight">'
+    .. smallButton("cz-settings", "Settings", 14) .. smallButton("cz-setup", "New Game", 14) .. '</HorizontalLayout>', 28)
 
-  return '<Panel id="cz_panel" width="' .. UI_.INFO_WIDTH .. '" height="' .. height .. '" rectAlignment="LowerRight" offsetXY="-12 '
-    .. INFO_BOTTOM .. '"' .. PANEL .. '><VerticalLayout spacing="4" childForceExpandHeight="false">' .. table.concat(rows)
-    .. '</VerticalLayout></Panel>', height
+  return '<Panel id="cz_panel' .. (suffix or "") .. '"' .. (attrs or "") .. ' width="' .. UI_.INFO_WIDTH .. '" height="' .. height
+    .. '" rectAlignment="LowerRight" offsetXY="-12 ' .. (bottom or INFO_BOTTOM) .. '"' .. PANEL
+    .. '><VerticalLayout spacing="4" childForceExpandHeight="false">' .. table.concat(rows) .. '</VerticalLayout></Panel>', height
 end
 
--- A plain centred panel (no background): a title, an optional extra row and
--- rows of standalone buttons. The setup menu, choices and game over use it.
-local function centrePanel(id, visibility, title, titleColor, titleSize, extra, buttons)
+-- A plain centred panel (no background): a title, optional extra rows and
+-- rows of standalone buttons. The setup menu, settings, choices and game
+-- over use it. extra = { xml, height }.
+local function centrePanel(id, visibility, title, titleColor, titleSize, extra, buttons, scale)
   local rows, height = {}, 0
   local function row(xml, h) rows[#rows + 1] = xml; height = height + h + 8 end
   local th = math.max(1, math.ceil(#title / 48)) * (titleSize + 8)
@@ -308,7 +365,7 @@ local function centrePanel(id, visibility, title, titleColor, titleSize, extra, 
   if extra then row(extra[1], extra[2]) end
   local bx, bh = buttonRows(buttons, 13, 620)
   row(bx, bh)
-  return '<Panel id="' .. id .. '" visibility="' .. visibility .. '" width="660" height="'
+  return '<Panel id="' .. id .. '" visibility="' .. visibility .. '"' .. scaleAttr(scale or 1, "0.5 0.5") .. ' width="660" height="'
     .. height .. '" rectAlignment="MiddleCenter"' .. PANEL .. '><VerticalLayout spacing="8" childForceExpandHeight="false">'
     .. table.concat(rows) .. '</VerticalLayout></Panel>'
 end
@@ -338,18 +395,48 @@ function UI_.setupPanel(game, color)
   if Tutorial.buttonShown(game, color) then buttons[#buttons + 1] = { id = "cz-tutorial", label = "Tutorial" } end
   buttons[#buttons + 1] = { id = "cz-setupclose", label = "Close" }
   local players = UI_.playersRow(game)
-  return centrePanel("cz_setup_" .. color, color, "New Game", ACCENT, 22, players and { players, 30 }, buttons)
+  return centrePanel("cz_setup_" .. color, color, "New Game", ACCENT, 22, players and { players, 30 }, buttons,
+    UI_.scaleOf(game, color))
+end
+
+-- The settings menu, just for the player who opened it: their UI size and
+-- where their action bar sits (to clear their own on-screen hand).
+function UI_.settingsPanel(game, color)
+  local scale = UI_.scaleOf(game, color)
+  local moved = game.state.view.barOffset and game.state.view.barOffset[color] or 0
+  local function settingRow(id, label, value, buttons)
+    local xml = text(id, label, 15, 'preferredWidth="130" alignment="MiddleRight"' .. FX)
+    for _, b in ipairs(buttons) do xml = xml .. smallButton(b[1], b[2], 14) end
+    if value then xml = xml .. text(id .. "_value", value, 15, 'preferredWidth="70" alignment="MiddleLeft" fontStyle="Bold"' .. FX) end
+    return '<HorizontalLayout spacing="6" preferredHeight="30" childForceExpandWidth="false" childAlignment="MiddleCenter">'
+      .. xml .. '</HorizontalLayout>'
+  end
+  local rows = settingRow("cz_set_ui_" .. color, "UI size", math.floor(scale * 100 + 0.5) .. "%",
+      { { "cz-uismaller", "−" }, { "cz-uibigger", "+" } })
+    .. settingRow("cz_set_bar_" .. color, "Action bar", (moved > 0 and "+" or "") .. moved,
+      { { "cz-barup", "Up" }, { "cz-bardown", "Down" }, { "cz-barreset", "Reset" } })
+  return centrePanel("cz_settings_" .. color, color, "Settings", ACCENT, 22, { rows, 76 },
+    { { id = "cz-settingsclose", label = "Close" } }, scale)
 end
 
 function UI_.xml(game)
   local state = game.state
-  local info, infoHeight = UI_.infoPanel(game)
-  local parts = { info }
+  local parts = {}
 
-  -- Tidy table on its own, in the bottom right corner.
-  parts[#parts + 1] = '<Panel id="cz_tidy" width="120" height="30" rectAlignment="LowerRight" offsetXY="-12 ' .. TIDY_Y .. '"' .. PANEL .. '>'
-    .. '<HorizontalLayout childForceExpandWidth="false" childAlignment="MiddleRight">' .. smallButton("cz-tidy", "Tidy table", 12)
-    .. '</HorizontalLayout></Panel>'
+  -- The info panel and Tidy table (bottom right), once per UI size in use.
+  -- Tidy table sits clear of TTS's own Notes button; the info panel above it.
+  local groups = UI_.scaleGroups(game)
+  local infoTop = {}
+  for i, g in ipairs(groups) do
+    local tidyAttrs, suffix = groupAttrs(groups, i, "1 0")
+    local infoBottom = TIDY_Y + math.ceil(42 * g.scale)
+    local info, h = UI_.infoPanel(game, suffix, tidyAttrs, infoBottom)
+    parts[#parts + 1] = info
+    parts[#parts + 1] = '<Panel id="cz_tidy' .. suffix .. '"' .. tidyAttrs .. ' width="120" height="30" rectAlignment="LowerRight" offsetXY="-12 '
+      .. TIDY_Y .. '"' .. PANEL .. '><HorizontalLayout childForceExpandWidth="false" childAlignment="MiddleRight">'
+      .. smallButton("cz-tidy", "Tidy table", 12) .. '</HorizontalLayout></Panel>'
+    for _, color in ipairs(g.colors) do infoTop[color] = infoBottom + math.ceil(h * g.scale) end
+  end
 
   -- A private message for one player, just above the info panel.
   local byColor = game.notices and game.notices.byColor or {}
@@ -358,28 +445,33 @@ function UI_.xml(game)
   table.sort(colors)
   for _, color in ipairs(colors) do
     local h = wrappedHeight(byColor[color], 13) + 6
-    parts[#parts + 1] = '<Panel id="cz_notice_' .. color .. '" visibility="' .. color .. '" width="' .. UI_.INFO_WIDTH
-      .. '" height="' .. h .. '" rectAlignment="LowerRight" offsetXY="-12 ' .. (INFO_BOTTOM + infoHeight + 6) .. '"' .. PANEL .. '>'
+    parts[#parts + 1] = '<Panel id="cz_notice_' .. color .. '" visibility="' .. color .. '"' .. scaleAttr(UI_.scaleOf(game, color), "1 0")
+      .. ' width="' .. UI_.INFO_WIDTH .. '" height="' .. h .. '" rectAlignment="LowerRight" offsetXY="-12 '
+      .. ((infoTop[color] or INFO_BOTTOM) + 6) .. '"' .. PANEL .. '>'
       .. text("cz_notice_text_" .. color, byColor[color], 13, 'alignment="MiddleRight" color="' .. ACCENT .. '"' .. FX)
       .. '</Panel>'
   end
 
-  -- The setup menu, for each player who opened it.
-  local setup = {}
-  for color in pairs(game.setupOpen or {}) do setup[#setup + 1] = color end
-  table.sort(setup)
-  for _, color in ipairs(setup) do parts[#parts + 1] = UI_.setupPanel(game, color) end
+  -- The setup and settings menus, for each player who opened one.
+  for _, which in ipairs({ { game.setupOpen, UI_.setupPanel }, { game.settingsOpen, UI_.settingsPanel } }) do
+    local open = {}
+    for color in pairs(which[1] or {}) do open[#open + 1] = color end
+    table.sort(open)
+    for _, color in ipairs(open) do parts[#parts + 1] = which[2](game, color) end
+  end
 
   -- Game over: the winner, in the middle of the screen for everyone (except
   -- whoever has the setup menu open there), with Play Again? to set up the next.
   if state.winner then
-    local who = {}
-    for _, color in ipairs(Tutorial.allColors) do
-      if not (game.setupOpen or {})[color] then who[#who + 1] = color end
-    end
     local winner = state.players[state.winner]
-    parts[#parts + 1] = centrePanel("cz_winner", table.concat(who, "|"), winner.name .. " wins!",
-      UI_.seatColors[winner.color] or ACCENT, 34, nil, { { id = "cz-again", label = "Play Again?" } })
+    local skip = {}
+    for color in pairs(game.setupOpen or {}) do skip[color] = true end
+    local wg = UI_.scaleGroups(game, skip)
+    for i, g in ipairs(wg) do
+      local _, suffix = groupAttrs(wg, i, "0.5 0.5")
+      parts[#parts + 1] = centrePanel("cz_winner" .. suffix, table.concat(g.colors, "|"), winner.name .. " wins!",
+        UI_.seatColors[winner.color] or ACCENT, 34, nil, { { id = "cz-again", label = "Play Again?" } }, g.scale)
+    end
   end
 
   -- The tutorial, in the middle of the screen, for each player reading it.
@@ -399,8 +491,8 @@ function UI_.xml(game)
       nav[#nav + 1] = { id = "cz-tutclose", label = "Close" }
       nav[#nav + 1] = { id = "cz-tuthide", label = "Hide button" }
       local navXml = buttonRows(nav, 13, 640)
-      parts[#parts + 1] = '<Panel id="cz_tutorial_' .. color .. '" visibility="' .. color .. '" width="680" height="400"'
-        .. ' rectAlignment="MiddleCenter" color="#0E1620E6" padding="16 16 12 12"><VerticalLayout spacing="8" childForceExpandHeight="false">'
+      parts[#parts + 1] = '<Panel id="cz_tutorial_' .. color .. '" visibility="' .. color .. '"' .. scaleAttr(UI_.scaleOf(game, color), "0.5 0.5")
+        .. ' width="680" height="400" rectAlignment="MiddleCenter" color="#0E1620E6" padding="16 16 12 12"><VerticalLayout spacing="8" childForceExpandHeight="false">'
         .. text("cz_tut_title_" .. color, page[1], 22, 'fontStyle="Bold" color="' .. ACCENT .. '" preferredHeight="34"')
         .. text("cz_tut_body_" .. color, page[2], 16, 'alignment="UpperLeft" preferredHeight="270"')
         .. text("cz_tut_page_" .. color, "Page " .. n .. " of " .. #pages, 12, 'alignment="MiddleRight" color="#9AA4AE" preferredHeight="16"')
@@ -409,38 +501,36 @@ function UI_.xml(game)
   end
 
   -- On your turn: a choice waiting goes in the middle of the screen; the
-  -- rest of what you can do sits in a bar just above your hand, with ▲/▼ to
-  -- move it to suit your own hand size (remembered per colour). The active
-  -- player's Trade and Combat sit just above the bar, for every player, each
-  -- at their own bar height, and only while there's something to count.
+  -- rest of what you can do sits in a bar just above your hand (its height is
+  -- in Settings). The active player's Trade and Combat sit just above the
+  -- bar, for every player at their own bar height and UI size, and only
+  -- while there's something to count.
   if state.started and not state.winner then
     local acts = UI_.actions(game)
     local color = state.players[state.turn.active].color
+    local scale = UI_.scaleOf(game, color)
     if acts.prompt then
-      parts[#parts + 1] = centrePanel("cz_choice", color, acts.prompt, ACCENT, 18, nil, acts.choices)
+      parts[#parts + 1] = centrePanel("cz_choice", color, acts.prompt, ACCENT, 18, nil, acts.choices, scale)
     end
-    local buttons = {}
-    for _, b in ipairs(acts.buttons) do buttons[#buttons + 1] = b end
-    buttons[#buttons + 1] = { id = "cz-barup", label = "▲" }
-    buttons[#buttons + 1] = { id = "cz-bardown", label = "▼" }
-    local bar, barHeight = buttonRows(buttons, 12, 1100, { ["cz-playall"] = 17, ["cz-end"] = 17 })
+    local bar, barHeight = buttonRows(acts.buttons, 12, 1100, { ["cz-playall"] = 17, ["cz-end"] = 17 })
     local barY = UI_.barY(game, color)
-    parts[#parts + 1] = '<Panel id="cz_actions" visibility="' .. color .. '" width="1120" height="' .. barHeight
-      .. '" rectAlignment="LowerCenter" offsetXY="0 ' .. barY .. '"' .. PANEL
+    parts[#parts + 1] = '<Panel id="cz_actions" visibility="' .. color .. '"' .. scaleAttr(scale, "0.5 0") .. ' width="1120" height="'
+      .. barHeight .. '" rectAlignment="LowerCenter" offsetXY="0 ' .. barY .. '"' .. PANEL
       .. '><VerticalLayout spacing="4" childForceExpandHeight="false">' .. bar .. '</VerticalLayout></Panel>'
     for _, p in ipairs(state.players) do
       local counters = turnCounters(game, p.color)
       if counters then
-        local y = UI_.barY(game, p.color) + (p.color == color and barHeight or 0) + 8
-        parts[#parts + 1] = '<Panel id="cz_counters_' .. p.color .. '" visibility="' .. p.color .. '" width="400" height="52"'
-          .. ' rectAlignment="LowerCenter" offsetXY="0 ' .. y .. '"' .. PANEL .. '>' .. counters .. '</Panel>'
+        local s = UI_.scaleOf(game, p.color)
+        local y = UI_.barY(game, p.color) + (p.color == color and math.ceil(barHeight * s) or 0) + 8
+        parts[#parts + 1] = '<Panel id="cz_counters_' .. p.color .. '" visibility="' .. p.color .. '"' .. scaleAttr(s, "0.5 0")
+          .. ' width="400" height="52" rectAlignment="LowerCenter" offsetXY="0 ' .. y .. '"' .. PANEL .. '>' .. counters .. '</Panel>'
       end
     end
   end
   return table.concat(parts)
 end
 
--- Where a colour's action bar sits: the default, moved by their ▲/▼ presses.
+-- Where a colour's action bar sits: the default, moved in their Settings.
 function UI_.barY(game, color)
   local moved = game.state.view.barOffset and game.state.view.barOffset[color] or 0
   return UI_.ACTION_BAR_Y + moved

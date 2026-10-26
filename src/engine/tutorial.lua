@@ -39,7 +39,8 @@ function Tutorial.pages(game)
       .. "panel. All messages are also in chat." },
     { "Your turn (above your hand)",
       "On your turn a row of buttons appears just above your hand. Only you can see it. If it covers your "
-      .. "cards or floats too high, move it with the up and down arrows at its end; it remembers where you put it.\n\n"
+      .. "cards or floats too high, move it in Settings (next to New Game), where you can also make all of "
+      .. "Cardalyzer's UI bigger or smaller. Your settings are your own and are kept with the save.\n\n"
       .. "- Play cards by dragging them from your hand onto your play area, or press Play all.\n"
       .. "- Buy a card by pressing the Buy button on it in the market.\n"
       .. "- Spend " .. attack .. " with the Attack and Destroy buttons.\n"

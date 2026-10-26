@@ -1488,5 +1488,52 @@ test("the market turns to face the player whose turn it is", function()
   game.rules.market.faceActive = nil
 end)
 
+test("Settings: each player sets their own UI size and action bar height", function()
+  local game = boot()
+  Cardalyzer_onStartGame(HOST)
+  local xml = tts.ui.xml
+  assert(xml:find('id="cz%-settings"[^>]*>Settings<'), "Settings button in the info panel")
+  assert(not xml:find("cz-barup", 1, true), "the bar's arrows moved into Settings")
+  click(GUEST, "cz-settings")
+  xml = tts.ui.xml
+  assert(xml:find('id="cz_settings_Red" visibility="Red"', 1, true), "opens for the player who asked, guests too")
+  assert(xml:find('id="cz_set_ui_Red_value"[^>]*>100%%<'), "UI size starts at 100%")
+  assert(xml:find("cz-uibigger", 1, true) and xml:find("cz-barreset", 1, true), "size and bar controls")
+
+  -- Bigger UI for Red only: Red gets their own scaled copies of shared panels.
+  click(GUEST, "cz-uibigger")
+  click(GUEST, "cz-uibigger")
+  xml = tts.ui.xml
+  assert(xml:find('id="cz_set_ui_Red_value"[^>]*>125%%<'), "two steps up: 125%")
+  assert(xml:find('id="cz_panel_2" visibility="Red" scale="1.25 1.25" pivot="1 0"', 1, true), "Red's info panel, scaled from its corner")
+  assert(xml:find('id="cz_panel" visibility="White|Brown|Orange', 1, true), "everyone else keeps the normal one")
+  assert(xml:find('id="cz_tidy_2" visibility="Red" scale="1.25 1.25"', 1, true), "and Tidy table")
+  assert(xml:find('id="cz_settings_Red" visibility="Red" scale="1.25 1.25"', 1, true), "menus too")
+  local normalBottom = tonumber(xml:match('id="cz_panel"[^>]*offsetXY="%-12 (%d+)"'))
+  local redBottom = tonumber(xml:match('id="cz_panel_2"[^>]*offsetXY="%-12 (%d+)"'))
+  assert(redBottom > normalBottom, "Red's info panel sits higher, above the bigger Tidy button")
+  for _ = 1, 10 do click(GUEST, "cz-uibigger") end
+  assert(tts.ui.xml:find('id="cz_set_ui_Red_value"[^>]*>155%%<'), "stops at the largest")
+
+  -- The action bar: White's own height, in White's settings.
+  click(HOST, "cz-settings")
+  local before = Cardalyzer.require("engine.ui").barY(game, "White")
+  click(HOST, "cz-barup")
+  eq(Cardalyzer.require("engine.ui").barY(game, "White"), before + 30, "Up")
+  assert(tts.ui.xml:find('id="cz_set_bar_White_value"[^>]*>%+30<'), "shown")
+  click(HOST, "cz-barreset")
+  eq(Cardalyzer.require("engine.ui").barY(game, "White"), before, "Reset")
+  click(HOST, "cz-uismaller")
+  assert(tts.ui.xml:find('id="cz_actions" visibility="White" scale="0.9 0.9" pivot="0.5 0"', 1, true), "White's bar scales from its bottom")
+
+  -- Kept after a reload; menus closed.
+  local restored = boot(game:save())
+  local UI = Cardalyzer.require("engine.ui")
+  eq(UI.scaleOf(restored, "Red"), 1.55, "Red's size kept")
+  eq(UI.scaleOf(restored, "White"), 0.9, "White's size kept")
+  click(GUEST, "cz-settingsclose")
+  assert(not tts.ui.xml:find("cz_settings_Red", 1, true), "Close shuts it")
+end)
+
 print(string.format("\n%d passed, %d failed", passed, failed))
 if failed > 0 then os.exit(1) end
