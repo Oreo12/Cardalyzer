@@ -2645,5 +2645,71 @@ test("extra markets: their own deck and row, bought from, scrapped from, refille
   game.rules.markets = nil
 end)
 
+test("points games: card points and a stat, end triggers, the round finished, ties shared", function()
+  local game = boot()
+  local Actions = Cardalyzer.require("engine.actions")
+  local State = Cardalyzer.require("engine.state")
+  game.cards:get("apprentice").points = 1
+  game.rules.win = { type = "points", stat = "health", endWhen = { rounds = 2 }, finishRound = true }
+  Cardalyzer_onStartGame(HOST)
+  local s = game.state
+  local starters = 0
+  for _, list in ipairs({ s.players[1].deck, s.players[1].hand }) do
+    for _, uid in ipairs(list) do if s.cards[uid] == "apprentice" then starters = starters + 1 end end
+  end
+  eq(Actions.score(game, 1), starters + s.players[1].stats.health, "points on cards plus the stat")
+  assert(tts.ui.xml:find(" · " .. Actions.score(game, 1) .. " points", 1, true), "scores on the right")
+  local function turn() Cardalyzer_onEndTurn({ color = s.players[s.turn.active].color, host = s.turn.active == 1 }) end
+  turn(); turn()
+  eq(s.turn.round, 1, "one round played")
+  assert(not s.winner, "not over yet")
+  s.players[2].stats.health = s.players[2].stats.health + 5
+  turn(); turn()
+  eq(s.winner, 2, "two rounds: the higher score wins")
+  assert(tts.ui.xml:find("Red wins!", 1, true), "announced")
+  -- a tie is shared
+  game = boot()
+  game.rules.win = { type = "points", endWhen = { rounds = 1 }, finishRound = true }
+  Cardalyzer_onStartGame(HOST)
+  s = game.state
+  turn(); turn()
+  eq(#s.winners, 2, "equal scores share the win")
+  eq(Actions.winnerNames(game), "White and Red", "both named")
+  -- triggered mid-round: everyone still gets the same number of turns
+  game = boot()
+  game.rules.win = { type = "points", endWhen = { custom = function(g) return g.state.turn.number >= 2 end }, finishRound = true }
+  Cardalyzer_onStartGame(HOST)
+  s = game.state
+  turn()
+  assert(s.ending and not s.winner, "triggered after White's turn: Red still plays")
+  turn()
+  assert(s.winner, "over once the round is done")
+  game.rules.win = nil
+end)
+
+test("a shared pool ends a points game; a custom check can decide any game", function()
+  local game = boot()
+  game.rules.win = { type = "points", stat = "health", endWhen = { pool = { key = "health", amount = 3 } } }
+  Cardalyzer_onStartGame(HOST)
+  local s = game.state
+  eq(s.pool, 3, "the pool starts full")
+  assert(tts.ui.xml:find("3 Health left", 1, true), "shown on the right")
+  game.effects:apply(game, 1, { { key = "health", amount = 2 } })
+  eq(s.pool, 1, "gains come out of the pool")
+  Cardalyzer_onEndTurn(HOST)
+  assert(not s.winner, "not empty yet")
+  game.effects:apply(game, 2, { { key = "health", amount = 2 } })
+  Cardalyzer_onEndTurn({ color = "Red" })
+  assert(s.winner, "the pool ran out: game over")
+  -- custom check
+  game = boot()
+  game.rules.win = { type = "stat_depleted", stat = "health", atOrBelow = 0,
+    check = function(g) if #g.state.players[1].discard >= 1 then return 1 end end }
+  Cardalyzer_onStartGame(HOST)
+  Cardalyzer_onEndTurn(HOST)
+  eq(game.state.winner, 1, "the game's own check decided")
+  game.rules.win = { type = "stat_depleted", stat = "health", atOrBelow = 0 }
+end)
+
 print(string.format("\n%d passed, %d failed", passed, failed))
 if failed > 0 then os.exit(1) end

@@ -490,7 +490,7 @@ function Game:act(action, ...)
       if p.out and not wasOut[seat] and seat ~= self.state.winner then self:notify(Words.say(self.rules, "isOut", { name = p.name })) end
     end
     if self.state.winner and not hadWinner then
-      self:notify(Words.say(self.rules, "wins", { name = self.state.players[self.state.winner].name }))
+      self:notify(Words.say(self.rules, "wins", { name = Actions.winnerNames(self) }))
     end
     Wait.frames(function()
       Board.sync(self)

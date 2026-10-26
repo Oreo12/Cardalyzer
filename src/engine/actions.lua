@@ -439,8 +439,14 @@ end
 
 -- A player whose win stat drops to `atOrBelow` is out: they take no more
 -- turns, can't be attacked and owe nothing. The last player left wins.
+-- rules.win.check(game), in any kind of game, may decide instead: it returns
+-- the winning seat, a list of seats (a shared win), or nil to play on.
 function Actions.checkWin(game)
   local win = game.rules.win
+  if win and win.check and not game.state.winner then
+    local result = win.check(game)
+    if result then return Actions.declare(game, type(result) == "table" and result or { result }) end
+  end
   if not win or win.type ~= "stat_depleted" then return end
   local alive = {}
   for seat, p in ipairs(game.state.players) do
@@ -450,6 +456,78 @@ function Actions.checkWin(game)
     if not p.out then alive[#alive + 1] = seat end
   end
   if #alive == 1 then game.state.winner = alive[1] end
+end
+
+-- The game is won by these seats (more than one: a shared win).
+function Actions.declare(game, seats)
+  game.state.winner = seats[1]
+  game.state.winners = #seats > 1 and seats or nil
+end
+
+-- The winner's name, or the names of everyone sharing the win.
+function Actions.winnerNames(game)
+  local s = game.state
+  local names = {}
+  for _, seat in ipairs(s.winners or { s.winner }) do names[#names + 1] = s.players[seat].name end
+  if #names <= 1 then return names[1] end
+  return table.concat(names, ", ", 1, #names - 1) .. say(game, "and") .. names[#names]
+end
+
+-- A player's score in a points game: the points on every card they own
+-- (deck, hand, discard pile, in play) plus their rules.win.stat, if any.
+function Actions.score(game, seat)
+  local p = game.state.players[seat]
+  local win = game.rules.win or {}
+  local total = win.stat and (p.stats[win.stat] or 0) or 0
+  for _, list in ipairs({ p.deck, p.hand, p.discard, p.play, p.bases }) do
+    for _, uid in ipairs(list) do total = total + (card(game, uid).points or 0) end
+  end
+  return total
+end
+
+-- Has something ended a points game? rules.win.endWhen:
+--   marketEmpty = true   the market row and deck have run out
+--   fixedEmpty = n       n fixed piles are empty
+--   pool = { key, amount }  a shared pool of a stat (`amount` to start), taken
+--                        from as players gain that stat, has run out
+--   rounds = n           n full rounds have been played
+--   custom = function(game) return true end
+local function endTriggered(game)
+  local s, e = game.state, game.rules.win.endWhen or {}
+  if e.marketEmpty and #s.market.deck == 0 then
+    local empty = true
+    for _, uid in ipairs(s.market.row) do if uid ~= State.EMPTY then empty = false end end
+    if empty then return true end
+  end
+  if e.fixedEmpty then
+    local n = 0
+    for _, id in ipairs(game.fixedIds or {}) do if #(s.market.fixed[id] or {}) == 0 then n = n + 1 end end
+    if n >= e.fixedEmpty then return true end
+  end
+  if e.pool and (s.pool or 0) <= 0 then return true end
+  if e.rounds and (s.turn.round or 0) >= e.rounds then return true end
+  if e.custom and e.custom(game) then return true end
+  return false
+end
+
+-- After each turn of a points game: once the end is triggered, the game ends
+-- (at once, or with rules.win.finishRound when the round is over, so everyone
+-- has had the same number of turns) and the highest score wins; a tie is a
+-- shared win.
+function Actions.checkEnd(game, roundOver)
+  local win = game.rules.win
+  if not win or win.type ~= "points" or game.state.winner then return end
+  local s = game.state
+  if roundOver then s.turn.round = (s.turn.round or 0) + 1 end
+  if not s.ending and endTriggered(game) then s.ending = true end
+  if not s.ending or (win.finishRound and not roundOver) then return end
+  local best, seats = nil, {}
+  for seat in ipairs(s.players) do
+    local score = Actions.score(game, seat)
+    if not best or score > best then best, seats = score, { seat }
+    elseif score == best then seats[#seats + 1] = seat end
+  end
+  Actions.declare(game, seats)
 end
 
 -- A base's defense now: its printed defense plus every defenseMod(game,
@@ -927,6 +1005,10 @@ function Actions.endTurn(game, seat)
 
   Turn.endTurn(game.state, game.rules, game.random)
   for _, uid in ipairs(keep) do player.hand[#player.hand + 1] = uid end
+  -- a round is over when play comes back round to the first seat
+  Actions.checkEnd(game, game.state.turn.active == (game.state.turn.first or game.rules.firstSeat or 1))
+  Actions.checkWin(game)
+  if game.state.winner then return true end
   Actions.startTurn(game, game.state.turn.active)
   return true
 end

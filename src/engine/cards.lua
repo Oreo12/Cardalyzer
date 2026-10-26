@@ -123,6 +123,7 @@ local function parseRow(row, index)
     allyEffects = ally,
     scrapEffects = scrap,
     defense = tonumber(row.defense),
+    points = tonumber(row.points) or 0, -- victory points, for rules.win.type = "points"
     text = row.text or "",
   }
 end

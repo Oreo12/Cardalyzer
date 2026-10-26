@@ -39,6 +39,8 @@ end
 -- the market deck. kit.stats and kit.handSize override the player's.
 function Turn.setup(state, rules, cards, random, opening, sets, kits)
   kits = kits or {}
+  local pool = rules.win and rules.win.endWhen and rules.win.endWhen.pool
+  if pool then state.pool = pool.amount end
   local kitSets = {}
   for _, kit in ipairs(rules.kits or {}) do kitSets[kit.set] = true end
   -- the kit market cards in play: listed by a kit (kit.market), or all of a
@@ -144,6 +146,7 @@ function Turn.setup(state, rules, cards, random, opening, sets, kits)
 
   local count = #state.players
   local first = math.min(rules.firstSeat or 1, count)
+  state.turn.first = first -- a round ends when play comes back round to this seat
   for order = 1, count do
     local seat = (first + order - 2) % count + 1
     Turn.draw(state, seat, Turn.openingHandSize(opening or rules.openingHand, order, count, rules.handSize))

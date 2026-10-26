@@ -415,6 +415,7 @@ One row per card. The column order doesn't matter, but the names do.
 | `double_ally_effects` | no | Like `ally_effects`, but needs two other cards of the faction in play | `might:3` |
 | `scrap_effects` | no | Effects when you scrap it (remove it from the game). A faction prefix (`forge=might:8`) means it can only be scrapped while that ally is in play | `might:2` |
 | `condition` | no | For `objective` cards: the custom effect whose `check` says the goal is met | `sevenShips` |
+| `points` | no | Victory points the card is worth at the end of a points game (`win.type = "points"`) | `3` |
 | `set` | no | Which set the card belongs to (a `key` from `rules.sets`); players choose sets in the New Game menu | `expansion1` |
 | `defense` | no | Damage needed to destroy a persistent card | `5` |
 | `text` | no | Extra rules text shown on the card | `Ally: take a free card.` |
@@ -504,7 +505,8 @@ These are the fields in `games/<yours>/rules.lua`:
 | `factions` | `forge = {label="Forge", color="#C8502D"}` | Faction labels and frame colours |
 | `cardTypes` | `wall = {persistent=true, guard=true}` | Types. Persistent ones stay in play and apply their effects again each turn; guard ones must be destroyed before their owner or other buildings can be attacked. `replay = false`: a persistent card doesn't apply its effects again each turn. `target = false`: it can't be attacked or destroyed (a hero that stays until you scrap it). `event = true`: revealed into the market row, it resolves at once for the player whose turn it is, then goes to the scrap pile and the slot refills |
 | `mechanics` | `{allies=true, persistent=true, scrap=true}` | Turn whole mechanics on or off |
-| `win` | `{type="stat_depleted", stat="health", atOrBelow=0}` | Attacks lower this stat. A player who drops to it is out (no more turns, can't be attacked); the last player left wins |
+| `win` | `{type="stat_depleted", stat="health", atOrBelow=0}` | How the game is won. `stat_depleted`: attacks lower this stat; a player who drops to it is out (no more turns, can't be attacked); the last player left wins. `points`: the highest score wins when the game ends (see below). Either kind can add `check = function(game)` returning the winning seat, a list of seats (a shared win), or nil to play on |
+| `win` (points) | `{type="points", stat="honor", endWhen={pool={key="honor", amount=60}, marketEmpty=true}, finishRound=true}` | A score is the `points` on every card a player owns plus their `stat`, if given. The game ends when any `endWhen` is met: `marketEmpty` (row and deck run out), `fixedEmpty = n` (n fixed piles empty), `pool = {key, amount}` (a shared pool of that stat, taken from as players gain it, runs out; shown on the right), `rounds = n`, or `custom = function(game)`. With `finishRound`, the round is played out so everyone has the same number of turns. Equal top scores share the win. Scores show on the right |
 | `art.baseUrl` | `"https://…/games/sample/"` | Where the card images are hosted (see [Using card art you already have](#using-card-art-you-already-have)) |
 | `layout` | `{seatDistance=10, cardSpacing=2.8, seatSpread=28}` | Table spacing; adjust if piles overlap your table's edge. `seatSpread` is how far apart two seats on the same side sit (default 10 × `cardSpacing`) |
 | `layout.seating` | `"around"` | Where the seats sit: `"sides"` (default), `"around"`, `"oneSide"`, or exact spots (see [Customising the table](#customising-the-table)) |

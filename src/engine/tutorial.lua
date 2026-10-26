@@ -33,7 +33,9 @@ function Tutorial.enginePages(game)
   local _, buy = Actions.resourceFor(rules, "buy")
   local _, attack = Actions.resourceFor(rules, "attack")
   buy, attack = buy or "buy points", attack or "attack points"
-  local win = rules.win and rules.win.stat
+  local win = rules.win and rules.win.type == "points" and "Score the most points by the end of the game: points on your cards"
+    .. (rules.win.stat and (" plus your " .. statLabel(rules, rules.win.stat)) or "") .. ". Everyone's score is on the right."
+    or rules.win and rules.win.stat
     and ("Bring an opponent's " .. statLabel(rules, rules.win.stat) .. " down to " .. (rules.win.atOrBelow or 0) .. " to win.")
     or "The game's rules decide how to win."
 
