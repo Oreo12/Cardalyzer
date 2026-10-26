@@ -121,6 +121,12 @@ Player = setmetatable({}, { __index = function(_, color)
   return { color = color, seated = not tts.empty[color], getHandObjects = function() return {} end }
 end })
 Global = { name = "Global", setVectorLines = function(lines) tts.lines = lines end }
+-- The table: a custom one, whose picture tests can read (tts.tableUrl).
+Tables = {
+  getTable = function() return "Table_Custom" end,
+  getCustomURL = function() return tts.tableUrl or "" end,
+  setCustomURL = function(url) tts.tableUrl = url end,
+}
 JSON = { encode = json.encode, decode = json.decode }
 
 return tts

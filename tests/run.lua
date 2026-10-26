@@ -2275,5 +2275,83 @@ test("Rulebooks and the rules' own buttons in the corner", function()
   eq(presses[1], "Red", "the rules' button ran with the presser's colour")
 end)
 
+test("table layout: areas move, resize or turn off; the market moves or has no row", function()
+  local game = boot()
+  local Zones = Cardalyzer.require("engine.zones")
+  local before = Zones.layout(game.rules, nil, 2).seats[1].play
+  game.rules.layout = { areas = { play = { out = 5, width = 16 }, bases = false, scrap = false, market = { z = 3 } } }
+  Cardalyzer_onStartGame(HOST)
+  local s = game.layout.seats[1]
+  eq(s.play.size[1], 16, "play area resized")
+  eq(s.play.position[3], before.position[3] + 3, "and moved 3 further out")
+  assert(s.bases.hidden and game.layout.market.scrap.hidden, "bases and scrap pile turned off")
+  eq(game.layout.market.row[1].position[3], 3, "the market moved")
+  local keys = {}
+  for _, e in ipairs(Zones.zoneSpots(game.layout)) do keys[e.key] = true end
+  assert(keys["1.play"] and not keys["1.bases"], "no zone for a turned-off area")
+  for _, line in ipairs(tts.lines) do
+    for _, pt in ipairs(line.points) do
+      assert(not Zones.contains(s.bases, pt[1], pt[3], -0.5), "no outline for the bases area")
+    end
+  end
+  eq(Zones.onScrap(game.layout, game.layout.market.scrap.position[1], game.layout.market.scrap.position[3]), false,
+    "nothing to drop onto")
+  -- bases sit in the play row
+  local base = Cardalyzer.require("engine.state").newCard(game.state, "seed_vault")
+  game.state.players[1].bases[1] = base
+  local piles = {}
+  for _, pile in ipairs(Cardalyzer.require("engine.board").piles(game)) do piles[pile.key] = pile end
+  assert(not piles["1.bases"] and not piles["market.scrap"], "no piles for turned-off areas")
+  eq(piles["1.play"].uids[#piles["1.play"].uids], base, "the base at the end of the play row")
+  -- a market with no row
+  game.rules.layout = nil
+  local rowSize = game.rules.market.rowSize
+  game.rules.market.rowSize = 0
+  Cardalyzer_onStartGame(HOST)
+  eq(#game.layout.market.row, 0, "no row")
+  assert(game.layout.market.deck.hidden, "and no market deck shown")
+  for _ = 1, 6 do
+    local who = game.state.turn.active == 1 and HOST or GUEST
+    click(who, "cz-playall")
+    Cardalyzer_onEndTurn(who)
+  end
+  for _, b in ipairs(tts.broadcasts) do assert(not b:find("%[Cardalyzer%]"), "plays without a row: " .. b) end
+  game.rules.market.rowSize = rowSize
+end)
+
+test("play mats under each seat and the market, extra mats, the table picture", function()
+  local game = boot()
+  game.rules.layout = { mats = {
+    seat = { image = { White = "https://example.com/white.png", Red = "https://example.com/red.png", default = "https://example.com/seat.png" } },
+    market = { image = "https://example.com/market.png" },
+    extra = { { image = "https://example.com/logo.png", x = 0, z = 25, width = 8, depth = 4 }, { image = "file:///C:/x.png" } },
+  }, tableImage = "https://example.com/table.jpg" }
+  Cardalyzer_onStartGame(HOST)
+  local mats = tts.live(function(o) return o.tags.cz_mat end)
+  eq(#mats, 2 + 1 + 1, "a mat per seat, the market's and one extra (file:// is refused)")
+  local byUrl = {}
+  for _, m in ipairs(mats) do byUrl[m.data.CustomImage.ImageURL] = m end
+  local white = byUrl["https://example.com/white.png"]
+  assert(white and byUrl["https://example.com/red.png"], "each seat's own picture")
+  assert(white.data.Locked, "locked in place")
+  local Zones = Cardalyzer.require("engine.zones")
+  local t = white.data.Transform
+  local mat = { position = { t.posX, 0, t.posZ }, right = { 1, 0 }, forward = { 0, 1 }, size = { t.scaleX * 2, 0, t.scaleZ * 2 } }
+  for _, name in ipairs({ "play", "bases", "deck", "discard" }) do
+    local s = game.layout.seats[1][name]
+    assert(Zones.contains(mat, s.position[1], s.position[3]), "White's mat covers their " .. name)
+  end
+  assert(tts.lines[1].points[1][2] > 1.1 + 0.05, "outlines lie on top of the mats")
+  eq(tts.tableUrl, "https://example.com/table.jpg", "the table's picture")
+  local guids = {}
+  for _, m in ipairs(mats) do guids[m.getGUID()] = true end
+  game:tidy()
+  for _, m in ipairs(tts.live(function(o) return o.tags.cz_mat end)) do assert(guids[m.getGUID()], "unchanged mats are kept") end
+  click(HOST, "cz-players-3")
+  Cardalyzer_onStartGame(HOST)
+  eq(#tts.live(function(o) return o.tags.cz_mat end), 3 + 1 + 1, "re-laid for three players")
+  game.rules.layout = nil
+end)
+
 print(string.format("\n%d passed, %d failed", passed, failed))
 if failed > 0 then os.exit(1) end

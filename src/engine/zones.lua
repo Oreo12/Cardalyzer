@@ -47,6 +47,35 @@ local function seatFrame(seat, count, distance, spread)
   }
 end
 
+-- Each seat's areas, in that seat's frame: `along` its row (to the
+-- player's right), `out` toward the table centre, `width` along and `depth`
+-- out, all in table units. rules.layout.areas changes any of these
+-- ({ play = { out = 3 } }), or turns an area off with false: its cards are
+-- then not shown on the table. With bases off, cards that stay in play sit
+-- in the play area instead.
+function Zones.seatAreas(rules)
+  local gap = layoutValue(rules, "cardSpacing")
+  local areas = {
+    play = { along = 0, out = 2, width = gap * 6, depth = 4 },
+    bases = { along = gap * 4.5, out = 2, width = gap * 2.5, depth = 4 },
+    deck = { along = -gap * 2, out = -3, width = 2.6, depth = 3.6 },
+    discard = { along = gap * 2, out = -3, width = 2.6, depth = 3.6 },
+    hand = { along = 0, out = -9, width = gap * 7, depth = 4 },
+  }
+  local over = rules.layout and rules.layout.areas or {}
+  for name, area in pairs(areas) do
+    local o = over[name]
+    if o == false then
+      area.hidden = true
+    elseif type(o) == "table" then
+      for k, v in pairs(o) do area[k] = v end
+    end
+  end
+  -- the hand and the deck and discard pile can't be turned off
+  areas.hand.hidden, areas.deck.hidden, areas.discard.hidden = nil, nil, nil
+  return areas
+end
+
 local function spot(frame, y, along, out, yaw, size)
   return {
     position = {
@@ -75,17 +104,24 @@ function Zones.layout(rules, fixedIds, count)
   count = count or Zones.defaultCount(rules)
 
   local result = { seats = {}, market = { row = {}, fixed = {} } }
+  local areas = Zones.seatAreas(rules)
+  local function area(f, name, height, ownYaw)
+    local a = areas[name]
+    local s = spot(f, name == "hand" and y + 2 or y, a.along, a.out, ownYaw or yaw, { a.width, height, a.depth })
+    s.hidden = a.hidden
+    return s
+  end
   for seat = 1, count do
     local f = seatFrame(seat, count, distance, spread)
     result.seats[seat] = {
-      play = spot(f, y, 0, 2, yaw, { gap * 6, 3, 4 }),
-      bases = spot(f, y, gap * 4.5, 2, yaw, { gap * 2.5, 3, 4 }),
-      deck = spot(f, y, -gap * 2, -3, yaw, { 2.6, 3, 3.6 }),
-      discard = spot(f, y, gap * 2, -3, yaw, { 2.6, 3, 3.6 }),
+      play = area(f, "play", 3),
+      bases = area(f, "bases", 3),
+      deck = area(f, "deck", 3),
+      discard = area(f, "discard", 3),
       -- A hand zone faces its seat at the seat's own yaw. TTS keeps a card's
       -- yaw relative to the hand zone, so cards dealt into it still use the
       -- card yaw (as in a stock TTS table: hand zone 0, held cards 180).
-      hand = spot(f, y + 2, 0, -9, 0, { gap * 7, 5, 4 }),
+      hand = area(f, "hand", 5, 0),
     }
     local hand = result.seats[seat].hand
     hand.cardRotation = { 0, (yaw + f.yaw) % 360, 0 }
@@ -94,22 +130,43 @@ function Zones.layout(rules, fixedIds, count)
     hand.landing = { hand.position[1] + f.forward.x * 3.5, y, hand.position[3] + f.forward.z * 3.5 }
   end
 
-  -- The market runs along the x axis through the table centre, read by seat 1.
+  -- The market runs along the x axis through the table centre, read by
+  -- seat 1. rules.layout.areas.market = { x, z } moves all of it;
+  -- marketDeck and scrap take { along, out } from that centre, or false to
+  -- leave them off the table. A market with rowSize 0 has no row and no deck.
+  local over = rules.layout and rules.layout.areas or {}
+  local mo = type(over.market) == "table" and over.market or {}
   local centre = seatFrame(1, 1, 0, 0)
-  local n = rules.market.rowSize
+  centre.origin = { x = mo.x or 0, z = mo.z or 0 }
+  local n = rules.market.rowSize or 0
   local first = -(n - 1) / 2 * gap
   for i = 1, n do
     result.market.row[i] = spot(centre, y, first + (i - 1) * gap, 0, yaw)
   end
-  result.market.deck = spot(centre, y, first - gap * 1.5, 0, yaw)
+  local function piece(name, along)
+    local o = over[name]
+    local s = spot(centre, y, type(o) == "table" and o.along or along, type(o) == "table" and o.out or 0, yaw)
+    s.hidden = o == false or nil
+    return s
+  end
+  result.market.deck = piece("marketDeck", first - gap * 1.5)
+  if n == 0 then result.market.deck.hidden = true end
   local x = first + (n - 1) * gap + gap * 1.5
+  if n == 0 then x = 0 end
   for _, id in ipairs(fixedIds or {}) do
     result.market.fixed[id] = spot(centre, y, x, 0, yaw)
     x = x + gap
   end
-  result.market.scrap = spot(centre, y, x + gap * 0.5, 0, yaw)
+  result.market.scrap = piece("scrap", x + gap * 0.5)
   result.market.area = spot(centre, y, 0, 0, yaw, { n * gap + 1, 3, 4.5 })
   return result
+end
+
+-- How thick the play mats are (rules.layout.mats), so outlines lie on top.
+function Zones.matThickness(rules)
+  local mats = rules.layout and rules.layout.mats
+  if not mats then return 0 end
+  return mats.thickness or 0.1
 end
 
 -- Is table point (x, z) inside a sized spot (plus `margin`)? Height is
@@ -126,7 +183,7 @@ end
 -- The seat whose play or bases area holds table point (x, z), if any.
 function Zones.playSeatAt(layout, x, z)
   for seat, s in ipairs(layout.seats) do
-    if Zones.contains(s.play, x, z, 0.5) or Zones.contains(s.bases, x, z, 0.5) then return seat end
+    if Zones.contains(s.play, x, z, 0.5) or (not s.bases.hidden and Zones.contains(s.bases, x, z, 0.5)) then return seat end
   end
   return nil
 end
@@ -134,6 +191,7 @@ end
 -- Is table point (x, z) on the scrap pile (a card's footprint, generously)?
 function Zones.onScrap(layout, x, z)
   local s = layout.market.scrap
+  if s.hidden then return false end
   return Zones.contains({ position = s.position, right = s.right, forward = s.forward, size = { 4, 0, 5 } }, x, z, 0)
 end
 
@@ -164,11 +222,12 @@ local GOLD = { 0.91, 0.72, 0.29 }
 -- turns them off.
 function Zones.outlines(rules, layout, colors)
   if rules.outlines == false then return {} end
-  local y = layoutValue(rules, "surfaceY") + 0.02
+  local y = layoutValue(rules, "surfaceY") + 0.02 + Zones.matThickness(rules)
   local scale = layoutValue(rules, "cardScale")
   local card = { 2.4 * scale, 3.4 * scale }
   local lines = {}
   local function box(s, rgb, thickness, pad)
+    if s.hidden then return end
     lines[#lines + 1] = {
       points = Zones.corners(s, y, pad or 0.15, card),
       color = rgb, thickness = thickness or 0.08, loop = true, square = true,
@@ -195,10 +254,10 @@ function Zones.zoneSpots(layout)
   local list = {}
   for seat, s in ipairs(layout.seats) do
     for _, name in ipairs({ "play", "bases", "deck", "discard" }) do
-      list[#list + 1] = { key = seat .. "." .. name, spot = s[name] }
+      if not s[name].hidden then list[#list + 1] = { key = seat .. "." .. name, spot = s[name] } end
     end
   end
-  list[#list + 1] = { key = "market.row", spot = layout.market.area }
+  if #layout.market.row > 0 then list[#list + 1] = { key = "market.row", spot = layout.market.area } end
   return list
 end
 
@@ -279,6 +338,7 @@ function Zones.build(game, layout)
   local colors = {}
   for seat, p in ipairs(game.state.players) do colors[seat] = p.color end
   Global.setVectorLines(Zones.outlines(game.rules, layout, colors))
+  require("engine.mats").build(game)
 end
 
 -- Returns the zone key ("1.play", "market.row") for a scripting zone GUID.

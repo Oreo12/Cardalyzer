@@ -157,7 +157,9 @@ function Board.piles(game)
   local gap = (game.rules.layout and game.rules.layout.cardSpacing) or 2.8
   local cardWidth = 2.4 * ((game.rules.layout and game.rules.layout.cardScale) or 1)
   local list = {}
+  -- Areas turned off in rules.layout.areas (spot.hidden) show no cards.
   local function add(key, uids, spot, style, faceUp, buyable, source)
+    if spot.hidden then return end
     list[#list + 1] = { key = key, uids = uids, spot = spot, style = style, faceUp = faceUp, gap = gap,
       buyable = buyable, source = source, cardWidth = cardWidth }
   end
@@ -165,8 +167,16 @@ function Board.piles(game)
     local s = layout.seats[seat]
     add(seat .. ".deck", p.deck, s.deck, "stack", false)
     add(seat .. ".discard", p.discard, s.discard, "stack", true)
-    add(seat .. ".play", p.play, s.play, "row", true)
-    add(seat .. ".bases", p.bases, s.bases, "row", true)
+    if s.bases.hidden then
+      -- no bases area: cards that stay in play sit at the end of the play row
+      local both = {}
+      for _, uid in ipairs(p.play) do both[#both + 1] = uid end
+      for _, uid in ipairs(p.bases) do both[#both + 1] = uid end
+      add(seat .. ".play", both, s.play, "row", true)
+    else
+      add(seat .. ".play", p.play, s.play, "row", true)
+      add(seat .. ".bases", p.bases, s.bases, "row", true)
+    end
     add(seat .. ".hand", p.hand, s.hand, "hand", true, nil, s.deck.position)
   end
   -- The market's cards face the player whose turn it is, so they always read
@@ -175,7 +185,8 @@ function Board.piles(game)
   local m = state.market
   local yaw = Board.marketYaw(game)
   local function facing(spot)
-    return { position = spot.position, rotation = { 0, yaw, 0 }, right = spot.right, forward = spot.forward, size = spot.size }
+    return { position = spot.position, rotation = { 0, yaw, 0 }, right = spot.right, forward = spot.forward, size = spot.size,
+      hidden = spot.hidden }
   end
   local first = #list + 1
   add("market.deck", m.deck, facing(layout.market.deck), "stack", false)
