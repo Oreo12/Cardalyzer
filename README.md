@@ -25,6 +25,7 @@ Guilds**, a small original sample game with placeholder art:
 - [Card spreadsheet reference](#card-spreadsheet-reference)
 - [Rules file reference](#rules-file-reference)
 - [Customising the UI](#customising-the-ui)
+- [Customising the table](#customising-the-table)
 - [Using card art you already have](#using-card-art-you-already-have)
 - [Custom effects](#custom-effects)
 - [When something is wrong](#when-something-is-wrong)
@@ -487,7 +488,7 @@ These are the fields in `games/<yours>/rules.lua`:
 | `openingHand` | `{3, 5}` or `5` | First hand per player in turn order (the last number repeats); one number means everyone draws that many. `{players = {[2] = {3, 5}}, otherwise = {3, 4, 5}}` depends on the number of players |
 | `openingHands` | `{ {label="Rulebook", hands={3, 5}}, {label="Everyone 5", hands=5} }` | Several opening-hand rules to choose from in the New Game menu (the first is the default; the choice is remembered). Each `hands` takes any `openingHand` form; an optional `about` explains the option in plain words (its tooltip, and the tutorial's setup page). `openingLabel` renames the row (default "Starting hands"). Overrides `openingHand` |
 | `firstSeat` | `1` | Which seat goes first |
-| `market.rowSize` | `5` | Face-up market slots |
+| `market.rowSize` | `5` | Face-up market slots. `0` for a game with no market row (and no market deck on the table) |
 | `market.buyTo` | `"discard"` or `"deck_top"` | Where bought cards go |
 | `deal` | `{count=2}` | How many `dealt` cards each player gets at the start |
 | `objectives` | `{count=3, perTurn=1, toWin=3, label="Missions"}` | Secret goals (`objective` cards): how many each player gets, how many can be completed per turn, and how many completed win the game |
@@ -503,6 +504,9 @@ These are the fields in `games/<yours>/rules.lua`:
 | `win` | `{type="stat_depleted", stat="health", atOrBelow=0}` | Attacks lower this stat. A player who drops to it is out (no more turns, can't be attacked); the last player left wins |
 | `art.baseUrl` | `"https://…/games/sample/"` | Where the card images are hosted (see [Using card art you already have](#using-card-art-you-already-have)) |
 | `layout` | `{seatDistance=10, cardSpacing=2.8, seatSpread=28}` | Table spacing; adjust if piles overlap your table's edge. `seatSpread` is how far apart two seats on the same side sit (default 10 × `cardSpacing`) |
+| `layout.areas` | `{ play = {out=3}, bases = false, scrap = false, market = {z=4} }` | Move, resize or turn off the areas on the table (see [Customising the table](#customising-the-table)) |
+| `layout.mats` | `{ seat = {image="https://…"}, market = {image="https://…"} }` | Play mats: pictures under each player's areas, the market, or anywhere (see [Customising the table](#customising-the-table)) |
+| `layout.tableImage` | `"https://…/table.jpg"` | The table's picture, when the save uses TTS's custom table |
 | `tutorial` | `false` | Leave out to show the Tutorial button; `false` removes it for everyone |
 | `animate` | `false` | Leave out to animate cards: each card flies to its new pile (dealt one after another; face down into a hand). `false` makes piles change instantly. Tidy table is always instant |
 | `ui.iconBaseUrl` | `"https://…/icons/"` | Where the counter symbols are: a folder with `coin.png`, `reticle.png`, `heart.png` and `shield.png` (draw them with `tools/make_icons.py`). Defaults to the ones in this repo. The buy resource shows as a coin, the attack resource as a reticle and the win stat as a heart; set `icon = "coin"` (or a full image URL) on any resource or stat to choose, and anything without one shows as text |
@@ -593,6 +597,68 @@ buttons = {
   { label = "Quick game", onClick = function(game, color) game.state.view.quick = not game.state.view.quick end },
 },
 ```
+
+## Customising the table
+
+Every area has a place and a size you can change in `rules.layout.areas`.
+A seat's areas are measured in that seat's own frame: `along` runs along its
+row (to the player's right) and `out` toward the middle of the table, in
+table units. `width` is measured along and `depth` out. Each seat is turned
+to face the middle, so one setting fits every seat.
+
+| Area | Default | Can be turned off? |
+| --- | --- | --- |
+| `play` | `{along=0, out=2, width=6 × cardSpacing, depth=4}` | no |
+| `bases` | `{along=4.5 × cardSpacing, out=2, width=2.5 × cardSpacing, depth=4}` | yes: cards that stay in play then sit at the end of the play row |
+| `deck` | `{along=-2 × cardSpacing, out=-3, width=2.6, depth=3.6}` | no |
+| `discard` | `{along=2 × cardSpacing, out=-3, width=2.6, depth=3.6}` | no |
+| `hand` | `{along=0, out=-9, width=7 × cardSpacing, depth=4}` | no |
+| `market` | `{x=0, z=0}`: where the middle of the market goes | set `market.rowSize = 0` for no row |
+| `marketDeck` | left of the row | yes: the market deck isn't shown |
+| `scrap` | right of the fixed piles | yes: scrapped cards leave the table (nothing can be dropped there) |
+
+`marketDeck` and `scrap` take `{along, out}` from the middle of the market.
+An area turned off has no outline and no zone. Its cards still follow the
+rules, they just aren't shown on the table.
+
+```lua
+layout = {
+  areas = {
+    play = { out = 3, width = 20 },  -- a wider play area, a little further in
+    bases = false,                   -- no separate bases area
+    market = { z = 4 },              -- the market a little toward the far seats
+  },
+},
+```
+
+**Play mats** are pictures laid flat under the areas. They're locked, so they
+can't be knocked around, and the outlines are drawn on top of them.
+
+```lua
+layout = {
+  mats = {
+    seat = { image = { White = "https://…/white.png", default = "https://…/mat.png" } },
+    market = { image = "https://…/market.png" },
+    extra = { { image = "https://…/logo.png", x = 0, z = 25, width = 12, depth = 6, yaw = 0 } },
+    thickness = 0.1,
+  },
+  tableImage = "https://…/table.jpg",
+},
+```
+
+- **`seat`:** one mat under each player's play area, bases, deck and discard
+  pile, plus `margin` (1) all round. It turns with the seat, so its picture
+  reads upright for that player. `image` is one picture for everyone, or one
+  per seat colour with a `default` for the rest. `width`, `depth`, `along`
+  and `out` change its size and place.
+- **`market`:** one mat under the market row, market deck, fixed piles and
+  scrap pile. `x`, `z`, `width`, `depth` and `yaw` change it.
+- **`extra`:** any number of other mats anywhere on the table.
+- **`tableImage`:** the table's own picture. It only applies when the save
+  uses TTS's custom table.
+
+Mats are re-laid when the number of players changes. Only web links
+(`https://`) are used, since every player's TTS loads them.
 
 ## Using card art you already have
 

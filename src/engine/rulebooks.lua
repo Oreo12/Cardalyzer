@@ -22,6 +22,7 @@ local function farthestX(rules)
   local layout = Zones.layout(rules, nil, #rules.seats)
   local most = 0
   local function reach(s)
+    if s.hidden then return end
     local half = s.size and math.max(s.size[1], s.size[3]) / 2 or 2
     most = math.max(most, math.abs(s.position[1]) + half)
   end
