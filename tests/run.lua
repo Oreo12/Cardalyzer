@@ -989,5 +989,140 @@ test("a card can copy another in play for the turn, with both cards' factions", 
   eq(game:cardOf(mimic).id, "veil_cutpurse", "back to itself next turn")
 end)
 
+---------------------------------------------------------------------------
+-- Dropping, animation and outlines
+---------------------------------------------------------------------------
+
+test("a card dropped while still lifted above the play area is played", function()
+  local game, put = blank()
+  local uid = put(1, "hand", "apprentice")
+  game:tidy()
+  local obj = getObjectFromGUID(game.state.view.piles["1.hand"][1])
+  local area = game.layout.seats[1].play.position
+  obj.position = { area[1] + 3, area[2] + 6, area[3] + 1 } -- high above the zone; TTS reports no zones
+  obj.zones = {}
+  onObjectDrop("White", obj)
+  local p = game.state.players[1]
+  assert(has(p.play, uid), "in play")
+  eq(p.resources.gold, 1, "its effect applied")
+  -- Dropped on the table outside the play area: nothing happens.
+  local other = put(1, "hand", "squire")
+  game:tidy()
+  local stray = getObjectFromGUID(game.state.view.piles["1.hand"][1])
+  stray.position = { 0, 2, 0 } -- the market, at the centre
+  onObjectDrop("White", stray)
+  assert(has(p.hand, other), "still in hand")
+end)
+
+local function liveCards() return count(function(o) return o.tags.cz_card end) end
+local function ghosts() return tts.live(function(o) return o.tags.cz_card and o.locked end) end
+
+test("New Game deals the market row and hands from their decks, one card after another", function()
+  local game = boot()
+  tts.deferTimers = true
+  DBE_start()
+  local layout = game.layout
+  eq(game.state.view.piles["market.row.1"], nil, "row slot waits for its card to land")
+  assert(#ghosts() > 0, "cards are in flight")
+  tts.runTimers()
+  eq(#ghosts(), 0, "flying cards removed when they land")
+  local function to(f, p) return math.abs(f.to[1] - p[1]) < 1e-9 and math.abs(f.to[3] - p[3]) < 1e-9 end
+  local slot1, last, handFlights, toSlot1 = layout.market.row[1].position, -1, 0, nil
+  for _, f in ipairs(tts.flights) do
+    eq(f.locked, true, "flying cards are locked")
+    eq(f.interactable, false, "and can't be picked up")
+    assert(f.at > last, "cards are dealt one after another")
+    last = f.at
+    if to(f, slot1) then toSlot1 = f end
+    if to(f, layout.seats[1].hand.landing) then
+      handFlights = handFlights + 1
+      eq(f.rotation[3], 180, "a card dealt to a hand flies face down")
+    end
+  end
+  eq(handFlights, 3, "three cards dealt to seat 1")
+  assert(toSlot1, "a card flies to market slot 1")
+  eq(toSlot1.uid, game.state.market.row[1], "the slot's own card")
+  for i = 1, 5 do eq(#game.state.view.piles["market.row." .. i], 1, "row slot " .. i .. " drawn") end
+  local tracked = 0
+  for _, guids in pairs(game.state.view.piles) do tracked = tracked + #guids end
+  eq(liveCards(), tracked, "nothing left over")
+end)
+
+test("a bought card flies from its slot to the discard pile, and a new one is dealt in", function()
+  local game, _, putRow, putMarketDeck = blank()
+  local bought = putRow(1, "tide_runner")
+  putMarketDeck("seed_vault")
+  game:tidy()
+  game.state.players[1].resources.gold = 5
+  tts.deferTimers, tts.flights = true, {}
+  local slotAt = game.layout.market.row[1].position
+  game:buy(1, bought)
+  eq(#(game.state.view.piles["1.discard"] or {}), 0, "discard pile waits for the card to land")
+  tts.runTimers()
+  local discard = game.layout.seats[1].discard.position
+  local toDiscard, toSlot = false, false
+  for _, f in ipairs(tts.flights) do
+    if math.abs(f.to[1] - discard[1]) < 1e-9 and math.abs(f.to[3] - discard[3]) < 1e-9 then toDiscard = f.uid == bought end
+    if math.abs(f.to[1] - slotAt[1]) < 1e-9 and math.abs(f.to[3] - slotAt[3]) < 1e-9 then toSlot = f.uid == game.state.market.row[1] end
+  end
+  assert(toDiscard, "bought card flies to the discard pile")
+  assert(toSlot, "replacement flies into the empty slot")
+  eq(#game.state.view.piles["1.discard"], 1, "discard drawn after landing")
+  eq(#game.state.view.piles["market.row.1"], 1, "slot refilled")
+end)
+
+test("a dropped card animates from where it was dropped, and Tidy table doesn't animate", function()
+  local game, put = blank()
+  local uid = put(1, "hand", "apprentice")
+  game:tidy()
+  local obj = getObjectFromGUID(game.state.view.piles["1.hand"][1])
+  local area = game.layout.seats[1].play.position
+  obj.position = { area[1] + 4, area[2] + 3, area[3] }
+  tts.deferTimers, tts.flights = true, {}
+  onObjectDrop("White", obj)
+  local ghost = getObjectFromGUID(tts.flights[1].guid)
+  eq(ghost.position[1], area[1], "lands on the play row")
+  tts.runTimers()
+  eq(#game.state.view.piles["1.play"], 1, "played card drawn")
+  tts.flights = {}
+  game:tidy()
+  eq(#tts.flights, 0, "Tidy table draws instantly")
+  assert(uid)
+end)
+
+test("a newer change to a pile cancels a draw still waiting on a flight", function()
+  local game, put = blank()
+  for _ = 1, 3 do put(1, "deck", "apprentice") end
+  game:tidy()
+  tts.deferTimers = true
+  game:draw(1, 1)
+  local Board = Cardalyzer.require("engine.board")
+  Board.sync(game)
+  game:draw(1, 1)
+  Board.sync(game)
+  tts.runTimers()
+  eq(#game.state.view.piles["1.hand"], 2, "hand shows both cards, not the stale one-card draw")
+  eq(#ghosts(), 0, "no flying cards left")
+end)
+
+test("play areas, decks, discards, the market and the scrap pile are outlined", function()
+  local game = boot()
+  local lines = tts.lines
+  assert(lines, "vector lines set")
+  -- 4 per seat, the market area, 5 row slots, market deck, 1 fixed pile, scrap
+  eq(#lines, 2 * 4 + 1 + 5 + 1 + 1 + 1, "outlines")
+  for _, l in ipairs(lines) do
+    eq(#l.points, 4, "a rectangle")
+    eq(l.loop, true, "closed")
+  end
+  eq(lines[1].color[1], 1, "White's play area in white")
+  eq(lines[5].color[1], 0.9, "Red's in red")
+  click(HOST, "cz-players-4")
+  eq(#tts.lines, 4 * 4 + 9, "redrawn for four seats")
+  game.rules.outlines = false
+  click(HOST, "cz-players-2")
+  eq(#tts.lines, 0, "rules.outlines = false turns them off")
+end)
+
 print(string.format("\n%d passed, %d failed", passed, failed))
 if failed > 0 then os.exit(1) end

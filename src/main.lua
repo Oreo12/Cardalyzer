@@ -112,16 +112,22 @@ function Cardalyzer_onBuy(obj, color)
   run(color, game.buyObject, seat, obj.getGUID(), obj.getGMNotes())
 end
 
--- Dropping a card from your hand into your play or bases zone plays it.
+-- Dropping a card from your hand onto your play or bases area plays it. The
+-- area is checked across the table only (Zones.playSeatAt): a card being
+-- dropped is still lifted, often above the scripting zone's top.
 function onObjectDrop(color, obj)
   if not game or not game.state.started then return end
   local seat = game:seatOfColor(color)
   local uid = obj.getGMNotes()
   if not seat or uid == nil or uid == "" then return end
   if not Util.indexOf(game.state.players[seat].hand, uid) then return end
+  local p = obj.getPosition()
+  local onArea = game:playSeatAt(p.x, p.z) == seat
   for _, zone in ipairs(obj.getZones()) do
-    if game:playZoneSeat(zone.getGUID()) == seat then
-      return run(color, game.play, seat, uid)
-    end
+    if game:playZoneSeat(zone.getGUID()) == seat then onArea = true end
+  end
+  if onArea then
+    game:cardDroppedAt(uid, { p.x, p.y, p.z }) -- the card animates from where it was dropped
+    return run(color, game.play, seat, uid)
   end
 end

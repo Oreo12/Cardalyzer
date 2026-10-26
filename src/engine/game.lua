@@ -195,8 +195,10 @@ function Game:clearNotice(color)
   end
 end
 
+-- Deals a new game; hands and the market row are dealt out from their decks.
 function Game:newGame()
   Board.sweep(self)
+  Board.forgetPlaces(self)
   self:setupState()
   self:relayout()
   Zones.build(self, self.layout)
@@ -229,7 +231,7 @@ end
 -- dragged somewhere the engine doesn't read.
 function Game:tidy()
   Board.sweep(self)
-  Board.sync(self)
+  Board.sync(self, { instant = true })
   self:refreshUI()
   return true
 end
@@ -267,6 +269,18 @@ function Game:buyObject(seat, guid, uid)
   end
   if not uid then return false, "That card can't be bought." end
   return self:buy(seat, uid)
+end
+
+-- The seat whose play or bases area holds table point (x, z), if any.
+function Game:playSeatAt(x, z)
+  return Zones.playSeatAt(self.layout, x, z)
+end
+
+-- Records where a player dropped a card, so it animates from there.
+function Game:cardDroppedAt(uid, position)
+  local view = self.state.view
+  view.at = view.at or {}
+  view.at[uid] = position
 end
 
 -- The seat whose play or bases zone has this GUID, if any.

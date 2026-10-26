@@ -1,7 +1,7 @@
 -- Fake TTS globals: enough of the API for the engine to run headless.
 local json = dofile("tests/json.lua")
 
-local tts = { objects = {}, order = {}, nextGuid = 1, broadcasts = {}, ui = { values = {} } }
+local tts = { objects = {}, order = {}, nextGuid = 1, broadcasts = {}, ui = { values = {} }, flights = {}, timers = {} }
 
 local function newObject(kind, extra)
   local guid = string.format("%06x", tts.nextGuid)
@@ -11,6 +11,18 @@ local function newObject(kind, extra)
   obj.getGUID = function() return guid end
   obj.destruct = function() tts.objects[guid] = nil end
   obj.setPosition = function(p) obj.position = p end
+  obj.getPosition = function()
+    local p = obj.position or { 0, 0, 0 }
+    return { x = p[1], y = p[2], z = p[3] }
+  end
+  obj.setPositionSmooth = function(p)
+    obj.position = p
+    tts.flights[#tts.flights + 1] = {
+      guid = guid, to = p, at = tts.now or 0, rotation = obj.rotation,
+      uid = obj.data and obj.data.GMNotes, locked = obj.locked, interactable = obj.interactable,
+    }
+  end
+  obj.setLock = function(v) obj.locked = v end
   obj.setRotation = function(r) obj.rotation = r end
   obj.setScale = function(s) obj.scale = s end
   obj.setName = function(n) obj.name = n end
@@ -31,6 +43,21 @@ tts.newObject = newObject
 
 function tts.reset()
   tts.objects, tts.order, tts.broadcasts, tts.ui = {}, {}, {}, { values = {} }
+  tts.flights, tts.timers, tts.deferTimers, tts.lines = {}, {}, false, nil
+end
+
+-- Wait.time runs at once unless tts.deferTimers is set; then callbacks wait
+-- in tts.timers until tts.runTimers() runs them in time order.
+function tts.runTimers()
+  local now = 0
+  while #tts.timers > 0 do
+    table.sort(tts.timers, function(a, b) return a.at < b.at end)
+    local t = table.remove(tts.timers, 1)
+    now = t.at
+    tts.now = now
+    t.fn()
+  end
+  tts.now = 0
 end
 
 function tts.live(filter)
@@ -67,8 +94,14 @@ UI = {
   setXml = function(xml) tts.ui.xml = xml end,
   setValue = function(id, v) tts.ui.values[id] = v end,
 }
-Wait = { frames = function(fn) fn() end }
-Global = { name = "Global" }
+Wait = {
+  frames = function(fn) fn() end,
+  time = function(fn, delay)
+    if not tts.deferTimers then return fn() end
+    tts.timers[#tts.timers + 1] = { at = (tts.now or 0) + delay, fn = fn }
+  end,
+}
+Global = { name = "Global", setVectorLines = function(lines) tts.lines = lines end }
 JSON = { encode = json.encode, decode = json.decode }
 
 return tts

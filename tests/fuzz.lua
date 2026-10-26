@@ -5,6 +5,9 @@
 local tts = dofile("tests/tts_stub.lua")
 for seed = 1, 200 do
   tts.reset(); math.randomseed(seed)
+  -- Every other game holds animation timers back and lets them run at random
+  -- moments, so piles change again while cards are still in flight.
+  tts.deferTimers = seed % 2 == 0
   dofile("build/Global.lua"); onLoad("")
   -- 2, 3 and 4 players in turn
   Cardalyzer_onUI({color="White", host=true}, "-1", "cz-players-" .. (2 + seed % 3))
@@ -24,6 +27,18 @@ for seed = 1, 200 do
     -- buy something affordable sometimes
     for i, uid in ipairs(g.state.market.row) do
       if uid ~= "" and math.random() < 0.3 then g:buy(seat, uid) end
+    end
+    if tts.deferTimers and math.random() < 0.3 then tts.runTimers() end
+  end
+  tts.runTimers()
+  -- every pile is drawn with exactly its cards, once all flights have landed
+  for _, pile in ipairs(Cardalyzer.require("engine.board").piles(g)) do
+    local guids = g.state.view.piles[pile.key] or {}
+    if pile.style == "stack" then
+      assert(#guids == (#pile.uids > 0 and 1 or 0), "pile "..pile.key.." drawn seed "..seed)
+    else
+      assert(#guids == #pile.uids, "row "..pile.key.." has "..#guids.." objects for "..#pile.uids.." cards seed "..seed)
+      for i, gd in ipairs(guids) do assert(tts.objects[gd].data.GMNotes == pile.uids[i], "row "..pile.key.." order seed "..seed) end
     end
   end
   for _, b in ipairs(tts.broadcasts) do if b:find("%[Cardalyzer%]") then print("seed", seed, b) os.exit(1) end end
