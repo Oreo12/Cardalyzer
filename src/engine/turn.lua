@@ -31,9 +31,18 @@ function Turn.openingRule(rules, choice)
 end
 
 -- `opening` is the opening-hand rule (see Turn.openingRule); default rules.openingHand.
-function Turn.setup(state, rules, cards, random, opening)
+-- `sets` ({ [key] = true }) limits the cards to those sets; a card with no
+-- set is always in. nil means every card.
+function Turn.setup(state, rules, cards, random, opening, sets)
+  local function inDeck(deck)
+    local out = {}
+    for _, card in ipairs(cards:inDeck(deck)) do
+      if not sets or not card.set or sets[card.set] then out[#out + 1] = card end
+    end
+    return out
+  end
   for _, player in ipairs(state.players) do
-    for _, card in ipairs(cards:inDeck("starter")) do
+    for _, card in ipairs(inDeck("starter")) do
       for _ = 1, card.copies do
         player.deck[#player.deck + 1] = State.newCard(state, card.id)
       end
@@ -41,14 +50,14 @@ function Turn.setup(state, rules, cards, random, opening)
     Util.shuffle(player.deck, random)
   end
 
-  for _, card in ipairs(cards:inDeck("market")) do
+  for _, card in ipairs(inDeck("market")) do
     for _ = 1, card.copies do
       state.market.deck[#state.market.deck + 1] = State.newCard(state, card.id)
     end
   end
   Util.shuffle(state.market.deck, random)
 
-  for _, card in ipairs(cards:inDeck("fixed")) do
+  for _, card in ipairs(inDeck("fixed")) do
     local pile = {}
     for _ = 1, card.copies do pile[#pile + 1] = State.newCard(state, card.id) end
     state.market.fixed[card.id] = pile

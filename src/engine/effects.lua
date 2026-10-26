@@ -71,6 +71,58 @@ function Effects.new(rules)
     end,
     text = function(amount) return "Scrap " .. amount .. " from hand or discard" end,
   })
+  -- Scraps from one place only, optional ("you may") or required.
+  for _, from in ipairs({ "hand", "discard" }) do
+    local where = from == "hand" and "hand" or "discard pile"
+    self:register("scrap_from_" .. from, {
+      apply = function(game, seat, amount)
+        game:prompt(seat, { kind = "scrap", count = amount, optional = true, from = { from } })
+      end,
+      text = function(amount) return "You may scrap up to " .. amount .. " from your " .. where end,
+    })
+    self:register("scrap_from_" .. from .. "_required", {
+      apply = function(game, seat, amount)
+        game:prompt(seat, { kind = "scrap", count = amount, optional = false, from = { from } })
+      end,
+      text = function(amount) return "Scrap " .. amount .. " from your " .. where end,
+    })
+  end
+  self:register("discard", {
+    apply = function(game, seat, amount)
+      game:prompt(seat, { kind = "discard", count = amount, optional = false })
+    end,
+    text = function(amount) return "Discard " .. amount end,
+  })
+  self:register("cycle", {
+    apply = function(game, seat, amount)
+      game:prompt(seat, { kind = "discard", count = amount, optional = true, drawPerPick = 1 })
+    end,
+    text = function(amount) return "Discard up to " .. amount .. ", then draw that many" end,
+  })
+  -- Free buys up to a cost (the amount): to the discard pile, the hand, or
+  -- the top of the deck (any card, or ships only).
+  local freeBuys = {
+    free_buy = { "", {} },
+    free_buy_hand = { ", into your hand", { toHand = true } },
+    free_buy_top = { ", onto your deck", { toTop = true } },
+    free_ship_top = { " (a ship), onto your deck", { toTop = true, cardType = "ship" } },
+  }
+  for key, def in pairs(freeBuys) do
+    self:register(key, {
+      apply = function(game, seat, amount)
+        local prompt = { kind = "free_buy", maxCost = amount, optional = true }
+        for k, v in pairs(def[2]) do prompt[k] = v end
+        game:prompt(seat, prompt)
+      end,
+      text = function(amount) return "Take a card costing " .. amount .. " or less for free" .. def[1] end,
+    })
+  end
+  self:register("bounce_base", {
+    apply = function(game, seat, amount)
+      game:prompt(seat, { kind = "destroy_base", bounce = true, count = amount, optional = true })
+    end,
+    text = function(amount) return "You may return " .. amount .. " base to its owner's hand" end,
+  })
   self:register("scrap_row", {
     apply = function(game, seat, amount)
       game:prompt(seat, { kind = "scrap_row", count = amount, optional = true })
@@ -167,7 +219,7 @@ end
 function Effects:validate(cards)
   local problems = {}
   for _, card in ipairs(cards.list) do
-    for _, list in ipairs({ card.effects, card.allyEffects, card.scrapEffects }) do
+    for _, list in ipairs({ card.effects, card.allyEffects, card.scrapEffects, card.doubleAllyEffects or {} }) do
       local flat = {}
       for _, effect in ipairs(list) do
         if effect.key == "choice" then

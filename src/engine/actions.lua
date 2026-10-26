@@ -12,7 +12,11 @@ local function fail(msg) return false, msg end
 
 -- Sends a scrapped card to the scrap pile. With rules.market.returnScrapped,
 -- a card from a fixed pile (Star Realms' Explorers) goes back to its pile instead.
-function Actions.toScrap(game, uid)
+-- `from` says where it came from ("play", "hand", "discard", "row"): the
+-- player's own scraps this turn are counted in state.turn.scrapped
+-- ({ total, handOrDiscard }), and scraps from hand or discard pile trigger
+-- whenYouScrap on their cards in play.
+function Actions.toScrap(game, uid, seat, from)
   local market = game.state.market
   local id = State.cardId(game.state, uid)
   local pile = game.rules.market.returnScrapped and market.fixed[id]
@@ -20,6 +24,29 @@ function Actions.toScrap(game, uid)
     pile[#pile + 1] = uid
   else
     market.scrap[#market.scrap + 1] = uid
+  end
+  if seat and from and from ~= "row" then
+    local turn = game.state.turn
+    turn.scrapped = turn.scrapped or { total = 0, handOrDiscard = 0 }
+    turn.scrapped.total = turn.scrapped.total + 1
+    if from == "hand" or from == "discard" then
+      turn.scrapped.handOrDiscard = turn.scrapped.handOrDiscard + 1
+      Actions.trigger(game, seat, "whenYouScrap", { uid = uid, card = game:cardOf(uid), from = from })
+    end
+  end
+end
+
+-- Runs a hook (a function field of a custom effect, e.g. whenYouScrap) on
+-- every card the seat has in play, except `except`.
+function Actions.trigger(game, seat, hook, event, except)
+  for _, other in ipairs(Actions.inPlay(game.state.players[seat])) do
+    if other ~= except then
+      local oc = game:cardOf(other)
+      for _, effect in ipairs(oc.effects) do
+        local def = effect.key == "custom" and game.effects.custom[effect.fn]
+        if def and def[hook] then def[hook](game, seat, { uid = other, card = oc }, event) end
+      end
+    end
   end
 end
 
@@ -62,21 +89,23 @@ end
 
 -- Is another card in play an ally for this group? A group with no faction of
 -- its own needs a card sharing any of the owner's factions.
+-- group.need other cards are needed (1, or 2 for a double ally). Counted per
+-- faction: a double ally needs two other cards of the same faction.
 local function allyMet(game, uid, c, group, cardsInPlay)
-  for _, other in ipairs(cardsInPlay) do
-    if other ~= uid then
-      local oc = card(game, other)
-      if group.faction then
-        if hasFaction(oc, group.faction) then return true end
-      else
-        for _, f in ipairs(c.factions) do
-          if f ~= "none" and hasFaction(oc, f) then return true end
-        end
+  local need = group.need or 1
+  local factions = group.faction and { group.faction } or c.factions
+  for _, f in ipairs(factions) do
+    if f ~= "none" then
+      local found = 0
+      for _, other in ipairs(cardsInPlay) do
+        if other ~= uid and hasFaction(card(game, other), f) then found = found + 1 end
       end
+      if found >= need then return true end
     end
   end
   return false
 end
+Actions.allyMet = allyMet
 
 -- Fires every ally group whose condition is met and that hasn't fired yet
 -- this turn. Runs until nothing new fires, since an effect may change play.
@@ -120,17 +149,7 @@ end
 -- Cards in play whose custom effects have a whenYouPlay handler react to
 -- their owner playing another card ("whenever you play a ship, gain 1 combat").
 local function triggerPlayed(game, seat, uid, c)
-  for _, other in ipairs(Actions.inPlay(game.state.players[seat])) do
-    if other ~= uid then
-      local oc = card(game, other)
-      for _, effect in ipairs(oc.effects) do
-        local def = effect.key == "custom" and game.effects.custom[effect.fn]
-        if def and def.whenYouPlay then
-          def.whenYouPlay(game, seat, { uid = other, card = oc }, { uid = uid, card = c })
-        end
-      end
-    end
-  end
+  Actions.trigger(game, seat, "whenYouPlay", { uid = uid, card = c }, uid)
 end
 
 -- Plays a card from hand. state.turn.played lists the uids played this turn,
@@ -142,6 +161,15 @@ function Actions.play(game, seat, uid)
   if waiting then return fail("First: " .. Actions.promptText(game, waiting) .. ".") end
   local player = game.state.players[seat]
   if not Util.removeValue(player.hand, uid) then return fail("That card isn't in your hand.") end
+  Actions.enterPlay(game, seat, uid)
+  return true
+end
+
+-- Puts a card into play (from hand, or straight from the market): onto the
+-- bases row if persistent, else the play row; records it in turn.played,
+-- applies its effects, triggers whenYouPlay and checks allies.
+function Actions.enterPlay(game, seat, uid)
+  local player = game.state.players[seat]
   local c = card(game, uid)
   if Turn.isPersistent(game.rules, c) then
     player.bases[#player.bases + 1] = uid
@@ -154,7 +182,19 @@ function Actions.play(game, seat, uid)
   game.effects:apply(game, seat, c.effects, { uid = uid, card = c })
   triggerPlayed(game, seat, uid, c)
   Actions.checkAllies(game, seat)
-  return true
+end
+
+-- Does a type filter match this card? true (any), a type ("ship") or a list
+-- of types ({ "base", "outpost" }). Used by flags and prompt filters.
+function Actions.typeMatches(filter, c)
+  if filter == true then return true end
+  if type(filter) == "string" then return c.type == filter end
+  if type(filter) == "table" then
+    for _, t in ipairs(filter) do
+      if t == c.type then return true end
+    end
+  end
+  return false
 end
 
 function Actions.playAll(game, seat)
@@ -181,11 +221,16 @@ local function locate(market, uid)
 end
 
 -- Buys a card from the market row or a fixed pile (always its top card).
--- `free` skips the cost, for effects like "take a card for free", and
--- `toTop` puts it on top of the deck. So does flags.buyToTop: true for the
--- next card bought this turn, or a card type ("ship") for the next of that type.
--- flags.mayBuyToTop works the same way but asks the player (a place_bought prompt).
-function Actions.buy(game, seat, uid, free, toTop)
+-- `free` skips the cost, for effects like "take a card for free"; `toTop`
+-- puts it on top of the deck and `toHand` into the hand. Turn flags send the
+-- next matching card bought (see Actions.typeMatches: true, a type or a list
+-- of types) somewhere else, and are used up when they apply:
+--   flags.buyToHand    into the hand
+--   flags.buyToPlay    straight into play (its effects apply)
+--   flags.buyToTop     on top of the deck
+--   flags.mayBuyToTop  asks: top of the deck or the discard pile (place_bought prompt)
+-- Afterwards a custom effect's onAcquire(game, seat, ctx) runs for the card.
+function Actions.buy(game, seat, uid, free, toTop, toHand)
   local ok, why = isActive(game, seat)
   if not ok then return fail(why) end
   local market = game.state.market
@@ -205,21 +250,31 @@ function Actions.buy(game, seat, uid, free, toTop)
   end
 
   if where == "row" then market.row[slot] = State.EMPTY else table.remove(market.fixed[slot]) end
-  local flag = player.flags.buyToTop
-  local flagged = flag == true or (flag ~= nil and flag == c.type)
-  if flagged then player.flags.buyToTop = nil end
-  if toTop or flagged or game.rules.market.buyTo == "deck_top" then
+  local function take(flag)
+    if player.flags[flag] ~= nil and Actions.typeMatches(player.flags[flag], c) then
+      player.flags[flag] = nil
+      return true
+    end
+    return false
+  end
+  if toHand or take("buyToHand") then
+    player.hand[#player.hand + 1] = uid
+  elseif take("buyToPlay") then
+    Turn.fillMarket(game.state)
+    Actions.enterPlay(game, seat, uid)
+  elseif toTop or take("buyToTop") or game.rules.market.buyTo == "deck_top" then
     player.deck[#player.deck + 1] = uid
   else
     player.discard[#player.discard + 1] = uid
-    -- "You MAY put the next ship you acquire on top of your deck": ask.
-    local may = player.flags.mayBuyToTop
-    if may == true or (may ~= nil and may == c.type) then
-      player.flags.mayBuyToTop = nil
+    if take("mayBuyToTop") then
       Actions.prompt(game, seat, { kind = "place_bought", uid = uid, optional = false })
     end
   end
   Turn.fillMarket(game.state)
+  for _, effect in ipairs(c.effects) do
+    local def = effect.key == "custom" and game.effects.custom[effect.fn]
+    if def and def.onAcquire then def.onAcquire(game, seat, { uid = uid, card = c }) end
+  end
   return true
 end
 
@@ -230,11 +285,26 @@ function Actions.scrapFromPlay(game, seat, uid)
   local player = game.state.players[seat]
   local c = card(game, uid)
   if #c.scrapEffects == 0 then return fail(c.name .. " has no scrap ability.") end
+  if not Actions.canScrap(game, seat, uid) then return fail(c.name .. " can only be scrapped with an ally in play.") end
   if not (Util.removeValue(player.play, uid) or Util.removeValue(player.bases, uid)) then
     return fail("That card isn't in play.")
   end
-  Actions.toScrap(game, uid)
+  Actions.toScrap(game, uid, seat, "play")
   game.effects:apply(game, seat, c.scrapEffects, { uid = uid, card = c })
+  return true
+end
+
+-- Can this card in play use its scrap ability now? A scrap ability written
+-- with a faction prefix ("blob=combat:8", from "Ally: scrap this card from
+-- play...") needs an ally of that faction in play.
+function Actions.canScrap(game, seat, uid)
+  local c = card(game, uid)
+  if #c.scrapEffects == 0 then return false end
+  for _, effect in ipairs(c.scrapEffects) do
+    if effect.ally and not allyMet(game, uid, c, { faction = effect.ally }, Actions.inPlay(game.state.players[seat])) then
+      return false
+    end
+  end
   return true
 end
 
@@ -356,23 +426,47 @@ function Actions.promptText(game, prompt)
   if prompt.text then return prompt.text end
   local n, kind = prompt.count, prompt.kind
   if kind == "choice" then return "Choose one" end
-  if kind == "scrap" then return "Scrap up to " .. plural(n, "card") .. " from your hand or discard pile" end
-  if kind == "discard" then return "Discard " .. plural(n, "card") end
+  if kind == "scrap" then
+    local from = prompt.from or { "hand", "discard" }
+    local names = { hand = "your hand", discard = "your discard pile", row = "the market row" }
+    local list = {}
+    for _, f in ipairs(from) do list[#list + 1] = names[f] or f end
+    return (prompt.optional and "Scrap up to " or "Scrap ") .. plural(n, "card") .. " from " .. table.concat(list, " or ")
+  end
+  if kind == "discard" then return (prompt.optional and "Discard up to " or "Discard ") .. plural(n, "card") end
   if kind == "scrap_row" then return "Scrap up to " .. plural(n, "card") .. " from the market row" end
-  if kind == "destroy_base" then return "Destroy up to " .. plural(n, "base") end
+  if kind == "destroy_base" then
+    return (prompt.bounce and "Return up to " or "Destroy up to ") .. plural(n, "base") .. (prompt.bounce and " to its owner's hand" or "")
+  end
   if kind == "free_buy" then
-    return "Take " .. (prompt.cardType and ("a " .. prompt.cardType) or "a card")
+    return "Take " .. (prompt.cardType and ("a " .. (type(prompt.cardType) == "table" and table.concat(prompt.cardType, " or ") or prompt.cardType)) or "a card")
       .. (prompt.maxCost and (" costing " .. prompt.maxCost .. " or less") or "")
       .. (prompt.includeFixed and " from the market" or " from the market row") .. " for free"
-      .. (prompt.toTop and ", onto your deck" or "")
+      .. (prompt.toTop and ", onto your deck" or prompt.toHand and ", into your hand" or "")
   end
-  if kind == "pick" then return "Choose a card you have in play" end
+  if kind == "pick" then return "Choose a card" end
   if kind == "place_bought" then return "Where should " .. card(game, prompt.uid).name .. " go?" end
   if kind == "opponent" then
     local owed = prompt.owe and prompt.owe.discard
     return owed and ("Choose an opponent to discard " .. plural(owed, "card") .. " next turn") or "Choose an opponent"
   end
   return kind
+end
+
+-- Does a card pass a prompt's filters? cardType (see Actions.typeMatches),
+-- maxCost, and factions (a list; the card needs one of them).
+local function passes(prompt, c)
+  if prompt.cardType and not Actions.typeMatches(prompt.cardType, c) then return false end
+  if prompt.maxCost and c.cost > prompt.maxCost then return false end
+  if prompt.factions then
+    for _, f in ipairs(prompt.factions) do
+      for _, cf in ipairs(c.factions) do
+        if cf == f then return true end
+      end
+    end
+    return false
+  end
+  return true
 end
 
 -- What the first prompt can be answered with right now: { {value, label}, ... }
@@ -383,37 +477,50 @@ function Actions.targets(game, seat, prompt)
   local function add(uid, where)
     out[#out + 1] = { value = uid, label = card(game, uid).name .. (where and (" (" .. where .. ")") or "") }
   end
+  local function addIf(uid, where)
+    if uid == State.EMPTY or uid == prompt.exclude then return end
+    if prompt.only and not Util.indexOf(prompt.only, uid) then return end -- limited to these uids
+    if passes(prompt, card(game, uid)) then add(uid, where) end
+  end
   local kind = prompt.kind
   if kind == "choice" then
     for i, option in ipairs(prompt.options) do
       out[#out + 1] = { value = tostring(i), label = game.effects:describe({ option }) }
     end
   elseif kind == "scrap" then
+    -- from: any of "hand", "discard", "row" (the market row)
     for _, from in ipairs(prompt.from or { "hand", "discard" }) do
-      for _, uid in ipairs(player[from]) do add(uid, from) end
+      for _, uid in ipairs(from == "row" and state.market.row or player[from]) do addIf(uid, from) end
     end
   elseif kind == "discard" then
     for _, uid in ipairs(player.hand) do add(uid) end
-  elseif kind == "scrap_row" or kind == "free_buy" then
-    local function fits(uid)
-      if kind == "scrap_row" then return true end
-      local c = card(game, uid)
-      return c.cost <= (prompt.maxCost or math.huge) and (not prompt.cardType or c.type == prompt.cardType)
-    end
-    for _, uid in ipairs(state.market.row) do
-      if uid ~= State.EMPTY and fits(uid) then add(uid) end
-    end
-    if kind == "free_buy" and prompt.includeFixed then
+  elseif kind == "scrap_row" then
+    for _, uid in ipairs(state.market.row) do addIf(uid) end
+  elseif kind == "free_buy" then
+    for _, uid in ipairs(state.market.row) do addIf(uid) end
+    if prompt.includeFixed then
       for _, id in ipairs(game.fixedIds) do
         local pile = state.market.fixed[id]
         local top = pile and pile[#pile]
-        if top and fits(top) then add(top, "pile") end
+        if top then addIf(top, "pile") end
       end
     end
   elseif kind == "pick" then
-    for _, uid in ipairs(Actions.inPlay(player)) do
-      local c = card(game, uid)
-      if uid ~= prompt.exclude and (not prompt.cardType or c.type == prompt.cardType) then add(uid) end
+    -- scope: "play" (your cards in play, the default), "bases" (every base in
+    -- play), "discard" (your discard pile), "opponentDiscard"
+    local scope = prompt.scope or "play"
+    if scope == "play" then
+      for _, uid in ipairs(Actions.inPlay(player)) do addIf(uid) end
+    elseif scope == "bases" then
+      for s, p in ipairs(state.players) do
+        for _, uid in ipairs(p.bases) do addIf(uid, s ~= seat and p.name or nil) end
+      end
+    elseif scope == "discard" then
+      for _, uid in ipairs(player.discard) do addIf(uid) end
+    elseif scope == "opponentDiscard" then
+      for _, other in ipairs(game:opponentsOf(seat)) do
+        for _, uid in ipairs(state.players[other].discard) do addIf(uid, state.players[other].name) end
+      end
     end
   elseif kind == "destroy_base" then
     for _, other in ipairs(game:opponentsOf(seat)) do
@@ -432,13 +539,24 @@ function Actions.targets(game, seat, prompt)
   return out
 end
 
+-- The custom effect a prompt names (prompt.custom), if it has `hook`.
+local function promptHook(game, prompt, hook)
+  local def = prompt.custom and game.effects.custom[prompt.custom]
+  return def and def[hook]
+end
+
 -- Removes the first prompt. One with drawPerPick then draws for each card
--- picked ("scrap up to two cards, then draw a card for each").
+-- picked ("scrap up to two cards, then draw a card for each"), and the
+-- custom effect it names gets afterPrompt(game, seat, prompt) (prompt.picked
+-- says how many were picked).
 local function finish(game, seat)
   local prompt = table.remove(game.state.players[seat].prompts, 1)
-  if prompt and prompt.drawPerPick and (prompt.picked or 0) > 0 then
+  if not prompt then return end
+  if prompt.drawPerPick and (prompt.picked or 0) > 0 then
     game:draw(seat, prompt.drawPerPick * prompt.picked)
   end
+  local after = promptHook(game, prompt, "afterPrompt")
+  if after then after(game, seat, prompt) end
 end
 
 -- Drops prompts at the front that have nothing left to pick, such as a
@@ -450,7 +568,9 @@ function Actions.settle(game, seat)
   end
 end
 
--- Answers the first prompt with one of its targets' values.
+-- Answers the first prompt with one of its targets' values. A prompt naming
+-- a custom effect (prompt.custom) calls its afterPick(game, seat, uid,
+-- prompt) after each card picked (the card's cost, faction, etc. are known).
 function Actions.pick(game, seat, value)
   local state = game.state
   local player = state.players[seat]
@@ -477,19 +597,35 @@ function Actions.pick(game, seat, value)
     Actions.settle(game, seat)
     return true
   elseif kind == "scrap" then
-    if not Util.removeValue(player.hand, value) then Util.removeValue(player.discard, value) end
-    Actions.toScrap(game, value)
+    local from
+    if Util.removeValue(player.hand, value) then
+      from = "hand"
+    elseif Util.removeValue(player.discard, value) then
+      from = "discard"
+    else
+      state.market.row[Util.indexOf(state.market.row, value)] = State.EMPTY
+      from = "row"
+    end
+    Actions.toScrap(game, value, seat, from)
+    if from == "row" then Turn.fillMarket(state) end
   elseif kind == "discard" then
     Util.removeValue(player.hand, value)
     player.discard[#player.discard + 1] = value
   elseif kind == "scrap_row" then
     state.market.row[Util.indexOf(state.market.row, value)] = State.EMPTY
-    Actions.toScrap(game, value)
+    Actions.toScrap(game, value, seat, "row")
     Turn.fillMarket(state)
   elseif kind == "free_buy" then
-    Actions.buy(game, seat, value, true, prompt.toTop)
+    Actions.buy(game, seat, value, true, prompt.toTop, prompt.toHand)
   elseif kind == "destroy_base" then
-    for _, other in ipairs(game:opponentsOf(seat)) do Actions.destroyBase(game, other, value) end
+    for _, other in ipairs(game:opponentsOf(seat)) do
+      if prompt.bounce then
+        local owner = state.players[other]
+        if Util.removeValue(owner.bases, value) then owner.hand[#owner.hand + 1] = value end
+      else
+        Actions.destroyBase(game, other, value)
+      end
+    end
   elseif kind == "opponent" then
     local owed = state.players[tonumber(value)].owed
     for key, n in pairs(prompt.owe or {}) do owed[key] = (owed[key] or 0) + n end
@@ -499,6 +635,8 @@ function Actions.pick(game, seat, value)
   end
 
   prompt.picked = (prompt.picked or 0) + 1
+  local after = promptHook(game, prompt, "afterPick")
+  if after then after(game, seat, value, prompt) end
   prompt.count = prompt.count - 1
   if prompt.count <= 0 then finish(game, seat) end
   Actions.settle(game, seat)
@@ -529,6 +667,7 @@ function Actions.startTurn(game, seat)
   local player = game.state.players[seat]
   local turn = game.state.turn
   turn.allyFired, turn.played, turn.copies = {}, {}, {}
+  turn.factions, turn.atEnd, turn.scrapped = {}, {}, { total = 0, handOrDiscard = 0 }
   if (player.owed.discard or 0) > 0 then
     Actions.prompt(game, seat, { kind = "discard", count = player.owed.discard, optional = false })
     player.owed.discard = 0
@@ -552,7 +691,30 @@ function Actions.endTurn(game, seat)
   end
   while player.prompts[1] do finish(game, seat) end
   player.flags = {}
+
+  -- End-of-turn hooks: jobs queued this turn (game:atTurnEnd), then cards in
+  -- play whose custom effect's whenTurnEnds returns "hand": they're set aside
+  -- instead of discarded and go back to the hand after the new hand is drawn.
+  local turn = game.state.turn
+  for _, job in ipairs(turn.atEnd or {}) do
+    local def = game.effects.custom[job.custom]
+    if def and def.atTurnEnd then def.atTurnEnd(game, seat, job) end
+  end
+  local keep = {}
+  for _, uid in ipairs(player.play) do
+    local c = card(game, uid)
+    for _, effect in ipairs(c.effects) do
+      local def = effect.key == "custom" and game.effects.custom[effect.fn]
+      if def and def.whenTurnEnds and def.whenTurnEnds(game, seat, { uid = uid, card = c }) == "hand" then
+        keep[#keep + 1] = uid
+        break
+      end
+    end
+  end
+  for _, uid in ipairs(keep) do Util.removeValue(player.play, uid) end
+
   Turn.endTurn(game.state, game.rules, game.random)
+  for _, uid in ipairs(keep) do player.hand[#player.hand + 1] = uid end
   Actions.startTurn(game, game.state.turn.active)
   return true
 end

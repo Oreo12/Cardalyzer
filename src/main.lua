@@ -93,6 +93,12 @@ function Cardalyzer_onUI(player, _, id)
     end
     return run(player.color, game.setPlayers, tonumber(arg))
   end
+  if action == "set" then
+    if not player.host and not player.promoted then
+      return tell(player.color, "Only the host can choose the sets.")
+    end
+    return run(player.color, game.toggleSet, arg)
+  end
   if action == "opening" then
     if not player.host and not player.promoted then
       return tell(player.color, "Only the host can change how many cards are dealt.")
