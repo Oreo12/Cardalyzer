@@ -51,7 +51,7 @@ local function assertConserved(game)
     end
   end
   for _, p in ipairs(game.state.players) do
-    visit(p.deck); visit(p.hand); visit(p.discard); visit(p.play); visit(p.bases)
+    visit(p.deck); visit(p.hand); visit(p.discard); visit(p.play); visit(p.bases); visit(p.objectives or {}); visit(p.completed or {})
   end
   local m = game.state.market
   visit(m.deck); visit(m.row); visit(m.scrap)
@@ -1919,6 +1919,49 @@ test("whenAttacked lets the defender's cards reduce the damage", function()
   game.state.players[1].resources.might = 5
   click(WHITE, "cz-attack-2")
   eq(game.state.players[2].stats.health, before - 4, "5 Might, 1 blocked")
+end)
+
+test("objectives: dealt face down, completed when met for a reward, enough of them wins", function()
+  local game = boot()
+  for _, id in ipairs({ "oracle", "wild_shrine", "storm_caller", "night_queen" }) do
+    local c = game.cards:get(id)
+    c.deck, c.condition = "objective", "richEnough"
+  end
+  game.cards:get("oracle").effects = { { key = "gold", amount = 3 } } -- its reward
+  game.effects:registerCustom("richEnough", { check = function(g, seat) return (g.state.turn.gained.gold or 0) >= 2 end })
+  game.rules.objectives = { count = 2, perTurn = 1, toWin = 2, label = "Missions" }
+  Cardalyzer_onStartGame(HOST)
+  local p = game.state.players[1]
+  eq(#p.objectives, 2, "two each")
+  eq(#game.state.players[2].objectives, 2, "for both players")
+  game:refreshUI()
+  assert(tts.ui.xml:find("Your missions:", 1, true), "the active player sees their missions on their bar")
+  assert(tts.ui.xml:find("Missions 0/2", 1, true), "progress in the info panel")
+  assert(not tts.ui.xml:find("cz-goal-", 1, true), "nothing completable yet")
+  game.effects:apply(game, 1, { { key = "gold", amount = 2 } })
+  game:refreshUI()
+  local first = p.objectives[1]
+  assert(tts.ui.xml:find("cz-goal-" .. first, 1, true), "Complete button once met")
+  click(WHITE, "cz-goal-" .. first)
+  eq(#p.completed, 1, "completed")
+  assert(tts.ui.xml:find("completed", 1, true), "announced")
+  eq(game:completeObjective(1, p.objectives[1]), false, "only one per turn")
+  -- next turn, the second one wins the game
+  game.state.turn.completed = 0
+  game.effects:apply(game, 1, { { key = "gold", amount = 2 } })
+  click(WHITE, "cz-goal-" .. p.objectives[1])
+  eq(game.state.winner, 1, "two completed: White wins")
+  game.rules.objectives = nil
+end)
+
+test("turn records: what was gained, and which factions' allies fired", function()
+  local game, put = blank()
+  game:play(1, put(1, "hand", "ember_smith"))
+  game:play(1, put(1, "hand", "ember_smith"))
+  local turn = game.state.turn
+  eq(turn.gained.might, 2 + 2 + 2 + 2, "might gained this turn")
+  eq(turn.allyFactions.forge, true, "Forge allies fired")
+  eq(turn.allyFactions.grove, nil, "no Grove")
 end)
 
 test("any player's waiting choice shows on their own screen", function()

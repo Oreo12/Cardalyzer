@@ -223,6 +223,10 @@ function Game:loadState(saved)
   if not ok or type(data) ~= "table" or data.version ~= State.VERSION then return false end
   local players = type(data.players) == "table" and #data.players or 0
   if players < 1 or players > #self.rules.seats then return false end
+  -- Fields added since older saves were made.
+  for _, p in ipairs(data.players) do
+    p.objectives, p.completed = p.objectives or {}, p.completed or {}
+  end
   self.state = data
   self:relayout()
   return true
@@ -409,6 +413,7 @@ function Game:attack(seat, target, baseUid) return self:act(Actions.attack, seat
 function Game:pick(seat, value) return self:act(Actions.pick, seat, value) end
 function Game:done(seat) return self:act(Actions.done, seat) end
 function Game:endTurn(seat) return self:act(Actions.endTurn, seat) end
+function Game:completeObjective(seat, uid) return self:act(Actions.completeObjective, seat, uid) end
 
 -- A Buy button was clicked on a market card or a fixed pile's deck object.
 function Game:buyObject(seat, guid, uid)

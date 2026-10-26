@@ -7,7 +7,8 @@ local Cards = {}
 Cards.__index = Cards
 
 -- dealt: each player is dealt rules.deal.count of these at setup, into play.
-Cards.DECKS = { starter = true, market = true, fixed = true, dealt = true }
+-- objective: each player is dealt rules.objectives.count face down (secret goals).
+Cards.DECKS = { starter = true, market = true, fixed = true, dealt = true, objective = true }
 
 -- Effects with no amount. Everything else needs "keyword:amount".
 Cards.BARE = { reminder = true }
@@ -78,7 +79,7 @@ local function parseRow(row, index)
   local function fail(msg) error("card '" .. id .. "': " .. msg, 0) end
 
   local deck = blank(row.deck) and "market" or row.deck
-  if not Cards.DECKS[deck] then fail("deck must be starter, market, fixed or dealt, got '" .. deck .. "'") end
+  if not Cards.DECKS[deck] then fail("deck must be starter, market, fixed, dealt or objective, got '" .. deck .. "'") end
 
   local ok, effects = pcall(Cards.parseEffects, row.effects)
   if not ok then fail(effects) end
@@ -111,6 +112,7 @@ local function parseRow(row, index)
     factions = factions, -- "blob/machine_cult" is in both; "any" counts as every faction
     allyGroups = groups,
     doubleAllyEffects = double,
+    condition = not blank(row.condition) and row.condition or nil, -- objective: custom effect whose check() says it's met
     type = blank(row.type) and "unit" or row.type,
     cost = tonumber(row.cost) or 0,
     copies = tonumber(row.copies) or 1,

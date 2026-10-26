@@ -19,9 +19,9 @@ COLUMNS = ["id", "name", "deck", "faction", "type", "cost", "copies",
            "effects", "ally_effects", "scrap_effects", "defense", "text"]
 # Optional columns: double_ally_effects (need two other cards of the faction)
 # and set (which expansion a card is from, toggled in the New Game menu).
-OPTIONAL = ["double_ally_effects", "set"]
+OPTIONAL = ["double_ally_effects", "set", "condition"]
 REQUIRED = ["id", "name", "cost", "copies", "effects"]
-DECKS = {"starter", "market", "fixed", "dealt"}
+DECKS = {"starter", "market", "fixed", "dealt", "objective"}
 # One effect: keyword:amount, custom:name or a bare keyword like reminder,
 # optionally prefixed by a faction (blob=combat:2, ally effects only).
 SINGLE = re.compile(r"^(?:[\w]+\s*:\s*-?\d+|custom\s*:\s*[\w-]+|reminder)$")
@@ -83,6 +83,7 @@ def convert(rows):
             "scrap_effects": check_effects(row.get("scrap_effects"), "scrap_effects", card_id, errors),
             "double_ally_effects": check_effects(row.get("double_ally_effects"), "double_ally_effects", card_id, errors) or None,
             "set": row.get("set") or None,
+            "condition": row.get("condition") or None,
             "defense": parse_int(row.get("defense"), "defense", card_id, errors, allow_blank=True),
             "text": row.get("text", ""),
         }

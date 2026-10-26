@@ -411,6 +411,7 @@ One row per card. The column order doesn't matter, but the names do.
 | `ally_effects` | no | Extra effects when another card sharing a faction is in play; once per turn | `draw:1` |
 | `double_ally_effects` | no | Like `ally_effects`, but needs two other cards of the faction in play | `might:3` |
 | `scrap_effects` | no | Effects when you scrap it (remove it from the game). A faction prefix (`forge=might:8`) means it can only be scrapped while that ally is in play | `might:2` |
+| `condition` | no | For `objective` cards: the custom effect whose `check` says the goal is met | `sevenShips` |
 | `set` | no | Which set the card belongs to (a `key` from `rules.sets`); players choose sets in the New Game menu | `expansion1` |
 | `defense` | no | Damage needed to destroy a persistent card | `5` |
 | `text` | no | Extra rules text shown on the card | `Ally: take a free card.` |
@@ -423,6 +424,11 @@ The `deck` values work like this:
   The sample's Hireling works this way.
 - **`dealt`**: at the start, each player is dealt `rules.deal.count` of these
   at random, straight into play (Star Realms' Gambits).
+- **`objective`**: secret goals. Each player is dealt `rules.objectives.count`
+  face down. The card's `condition` column names a custom effect whose
+  `check(game, seat, ctx)` says the goal is met; a Complete button then
+  appears on that player's action bar, and completing it applies the card's
+  `effects` as the reward.
 
 ### Writing effects
 
@@ -480,6 +486,7 @@ These are the fields in `games/<yours>/rules.lua`:
 | `market.rowSize` | `5` | Face-up market slots |
 | `market.buyTo` | `"discard"` or `"deck_top"` | Where bought cards go |
 | `deal` | `{count=2}` | How many `dealt` cards each player gets at the start |
+| `objectives` | `{count=3, perTurn=1, toWin=3, label="Missions"}` | Secret goals (`objective` cards): how many each player gets, how many can be completed per turn, and how many completed win the game |
 | `market.returnScrapped` | `true` | A scrapped card from a fixed pile goes back to its pile instead of the scrap pile (Star Realms' Explorers) |
 | `sets` | `{ {key="base", label="Base Game", always=true}, {key="exp1", label="Expansion", default=true} }` | Sets of cards (named in the `set` column) the host switches in or out in the New Game menu. `always` sets can't be switched off; `default` ones start on. Cards with no `set` are always in |
 | `market.faceActive` | `false` | Leave out to turn the market's cards to face the player whose turn it is; `false` keeps them facing seat 1 |
@@ -624,6 +631,10 @@ count as met for the rest of the turn ("you may use all your Blob ally
 abilities"). A prompt can be queued for any player, not just the one whose
 turn it is (an event asking everyone); it shows on that player's screen.
 `pick` prompts also take `scope = "hand"` or `"deck"`.
+
+`game.state.turn.gained` holds what the active player gained this turn, per
+resource or stat (`gained.trade`), and `game.state.turn.allyFactions` which
+factions' ally abilities fired (`allyFactions.blob`).
 
 `game.state.turn.scrapped` counts the active player's cards scrapped this
 turn (`total`, and `handOrDiscard`). `game:addFaction(seat, uid, faction)`

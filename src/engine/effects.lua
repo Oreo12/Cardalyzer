@@ -23,6 +23,7 @@ function Effects.new(rules)
       apply = function(game, seat, amount)
         local pools = game.state.players[seat].resources
         pools[key] = (pools[key] or 0) + amount
+        Effects.noteGain(game, seat, key, amount)
       end,
       text = function(amount) return signed(amount) .. " " .. label end,
     })
@@ -34,6 +35,7 @@ function Effects.new(rules)
       apply = function(game, seat, amount)
         local stats = game.state.players[seat].stats
         stats[key] = (stats[key] or 0) + amount
+        Effects.noteGain(game, seat, key, amount)
       end,
       text = function(amount) return signed(amount) .. " " .. label end,
     })
@@ -162,6 +164,15 @@ function Effects.new(rules)
     self:registerCustom(name, def)
   end
   return self
+end
+
+-- What the active player gained this turn, per resource or stat key
+-- (state.turn.gained), for goals like "gain 4 Trade in a single turn".
+function Effects.noteGain(game, seat, key, amount)
+  local turn = game.state.turn
+  if amount <= 0 or seat ~= turn.active then return end
+  turn.gained = turn.gained or {}
+  turn.gained[key] = (turn.gained[key] or 0) + amount
 end
 
 function Effects:register(key, handler)

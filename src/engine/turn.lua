@@ -50,6 +50,20 @@ function Turn.setup(state, rules, cards, random, opening, sets)
     Util.shuffle(player.deck, random)
   end
 
+  -- Objectives: each player gets rules.objectives.count at random, face down.
+  local goals = {}
+  for _, card in ipairs(inDeck("objective")) do
+    for _ = 1, card.copies do goals[#goals + 1] = card.id end
+  end
+  if #goals > 0 and rules.objectives then
+    Util.shuffle(goals, random)
+    for _, player in ipairs(state.players) do
+      for _ = 1, rules.objectives.count or 3 do
+        if #goals > 0 then player.objectives[#player.objectives + 1] = State.newCard(state, table.remove(goals)) end
+      end
+    end
+  end
+
   -- Cards dealt into play: each player gets rules.deal.count at random.
   local pool = {}
   for _, card in ipairs(inDeck("dealt")) do

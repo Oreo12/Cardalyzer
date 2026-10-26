@@ -180,6 +180,12 @@ function Actions.checkAllies(game, seat)
         local key = uid .. ":" .. i
         if not fired[key] and allyMet(game, uid, c, group, cardsInPlay) then
           fired[key] = true
+          -- which factions' ally abilities fired this turn (turn.allyFactions)
+          local turnRec = game.state.turn
+          turnRec.allyFactions = turnRec.allyFactions or {}
+          for _, f in ipairs(group.faction and { group.faction } or c.factions) do
+            if f ~= "none" then turnRec.allyFactions[f] = true end
+          end
           if game.notify then
             game:notify(c.name .. " ally: " .. game.effects:describe(group.effects, c.text))
           end
@@ -720,6 +726,50 @@ function Actions.done(game, seat)
 end
 
 ---------------------------------------------------------------------------
+-- Objectives: secret per-player goals (deck = objective). Each card names a
+-- custom effect in its condition column whose check(game, seat) says the
+-- goal is met; completing it applies the card's effects as the reward.
+-- rules.objectives = { count, perTurn, toWin, label }.
+---------------------------------------------------------------------------
+
+-- Is objective `uid` met for this seat right now?
+function Actions.objectiveMet(game, seat, uid)
+  local c = card(game, uid)
+  local def = c.condition and game.effects.custom[c.condition]
+  return def and def.check and def.check(game, seat, { uid = uid, card = c }) and true or false
+end
+
+-- The seat's objectives that can be completed now (met, and the turn's
+-- allowance not used up).
+function Actions.completable(game, seat)
+  local out = {}
+  local rules = game.rules.objectives or {}
+  if game.state.turn.active ~= seat or (game.state.turn.completed or 0) >= (rules.perTurn or 1) then return out end
+  for _, uid in ipairs(game.state.players[seat].objectives) do
+    if Actions.objectiveMet(game, seat, uid) then out[#out + 1] = uid end
+  end
+  return out
+end
+
+function Actions.completeObjective(game, seat, uid)
+  local ok, why = isActive(game, seat)
+  if not ok then return fail(why) end
+  local player = game.state.players[seat]
+  if not Util.indexOf(player.objectives, uid) then return fail("That isn't one of your goals.") end
+  if not Util.indexOf(Actions.completable(game, seat), uid) then return fail("You can't complete that yet.") end
+  Util.removeValue(player.objectives, uid)
+  player.completed[#player.completed + 1] = uid
+  local turn = game.state.turn
+  turn.completed = (turn.completed or 0) + 1
+  local c = card(game, uid)
+  if game.notify then game:notify(player.name .. " completed " .. c.name .. ".") end
+  game.effects:apply(game, seat, c.effects, { uid = uid, card = c })
+  local rules = game.rules.objectives or {}
+  if rules.toWin and #player.completed >= rules.toWin then game.state.winner = seat end
+  return true
+end
+
+---------------------------------------------------------------------------
 -- Turn start and end
 ---------------------------------------------------------------------------
 
@@ -731,7 +781,7 @@ function Actions.startTurn(game, seat)
   local turn = game.state.turn
   turn.allyFired, turn.played, turn.copies = {}, {}, {}
   turn.factions, turn.atEnd, turn.scrapped = {}, {}, { total = 0, handOrDiscard = 0 }
-  turn.granted = {}
+  turn.granted, turn.gained, turn.allyFactions, turn.completed = {}, {}, {}, 0
   if (player.owed.discard or 0) > 0 then
     Actions.prompt(game, seat, { kind = "discard", count = player.owed.discard, optional = false })
     player.owed.discard = 0
