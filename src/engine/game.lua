@@ -71,8 +71,11 @@ function Game.playerRange(rules)
 end
 
 -- Positions every pile for the number of seats in the current state.
+-- With rules.market.turnsWithPlayer the market is laid out facing the
+-- player whose turn it is.
 function Game:relayout()
-  self.layout = Zones.layout(self.rules, self.fixedIds, #self.state.players)
+  local facing = self.rules.market.turnsWithPlayer and self.state.started and self.state.turn.active or nil
+  self.layout = Zones.layout(self.rules, self.fixedIds, #self.state.players, facing)
 end
 
 function Game:draw(seat, n)
@@ -471,11 +474,17 @@ end
 -- the player just dropped isn't destroyed inside its own drop event).
 -- Players knocked out, and the winner, are announced.
 function Game:act(action, ...)
-  local wasOut, hadWinner = {}, self.state.winner
+  local wasOut, hadWinner, wasActive = {}, self.state.winner, self.state.turn.active
   for seat, p in ipairs(self.state.players) do wasOut[seat] = p.out end
   local ok, why = action(self, ...)
   if ok then
     Actions.settle(self, self.state.turn.active)
+    -- a new turn: the market turns to face its player (the cards glide over
+    -- in Board.sync; zones and outlines move here)
+    if self.rules.market.turnsWithPlayer and self.state.turn.active ~= wasActive then
+      self:relayout()
+      Zones.build(self, self.layout)
+    end
     for seat, p in ipairs(self.state.players) do
       if p.out and not wasOut[seat] and seat ~= self.state.winner then self:notify(Words.say(self.rules, "isOut", { name = p.name })) end
     end

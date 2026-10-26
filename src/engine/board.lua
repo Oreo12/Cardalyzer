@@ -426,6 +426,23 @@ function Board.sync(game, opts)
     local key = pile.key
     local sig = signature(pile.uids)
     local old = view.sig[key]
+    -- Same cards, but the pile itself moved (the market turning to face a new
+    -- player): glide its objects to the new spot.
+    view.spotAt = view.spotAt or {}
+    local where = string.format("%.2f,%.2f", pile.spot.position[1], pile.spot.position[3])
+    local moved = old == sig and view.spotAt[key] and view.spotAt[key] ~= where
+    view.spotAt[key] = where
+    if moved then
+      local targets = places(pile, pile.uids)
+      for _, guid in ipairs(view.piles[key] or {}) do
+        local obj = getObjectFromGUID(guid)
+        if obj then
+          local to = targets[#targets] or pile.spot.position
+          obj.setPositionSmooth({ to[1], to[2], to[3] }, false, false)
+        end
+      end
+      for i, uid in ipairs(pile.uids) do view.at[uid] = targets[i] end
+    end
     if old == sig and pile.facing and view.facing[key] ~= pile.facing then
       -- Same cards, new reader: turn them in place.
       for _, guid in ipairs(view.piles[key] or {}) do

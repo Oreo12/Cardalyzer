@@ -498,6 +498,7 @@ These are the fields in `games/<yours>/rules.lua`:
 | `market.returnScrapped` | `true` | A scrapped card from a fixed pile goes back to its pile instead of the scrap pile (Star Realms' Explorers) |
 | `sets` | `{ {key="base", label="Base Game", always=true}, {key="exp1", label="Expansion", default=true} }` | Sets of cards (named in the `set` column) the host switches in or out in the New Game menu. `always` sets can't be switched off; `default` ones start on. Cards with no `set` are always in. `about` is the set's tooltip in the menu |
 | `market.faceActive` | `false` | Leave out to turn the market's cards to face the player whose turn it is; `false` keeps them facing seat 1 |
+| `market.turnsWithPlayer` | `true` | The whole market (row, piles, outlines) turns to face the player whose turn it is, with its cards gliding to their new places. Best with `layout.seating = "around"` |
 | `factions` | `forge = {label="Forge", color="#C8502D"}` | Faction labels and frame colours |
 | `cardTypes` | `wall = {persistent=true, guard=true}` | Types. Persistent ones stay in play and apply their effects again each turn; guard ones must be destroyed before their owner or other buildings can be attacked. `replay = false`: a persistent card doesn't apply its effects again each turn. `target = false`: it can't be attacked or destroyed (a hero that stays until you scrap it). `event = true`: revealed into the market row, it resolves at once for the player whose turn it is, then goes to the scrap pile and the slot refills |
 | `mechanics` | `{allies=true, persistent=true, scrap=true}` | Turn whole mechanics on or off |
@@ -723,6 +724,8 @@ layout = {
 
 Each seat's areas, hand and outlines turn with it, and so do the market's
 cards on that seat's turn.
+With `market.turnsWithPlayer = true` the whole market turns to face whoever's
+turn it is: its row, piles and outlines, not just its cards.
 
 **Play mats** are pictures laid flat under the areas. They're locked, so they
 can't be knocked around, and the outlines are drawn on top of them.

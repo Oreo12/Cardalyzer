@@ -132,7 +132,9 @@ end
 --           market = { deck, row = {...}, fixed = { [id] = spot }, scrap, area } }
 -- `fixedIds` lists the fixed-pile card ids in display order; `count` is how
 -- many seats are playing (default Zones.defaultCount).
-function Zones.layout(rules, fixedIds, count)
+-- `facing` is the seat the market faces (rules.market.turnsWithPlayer: the
+-- player whose turn it is); default seat 1.
+function Zones.layout(rules, fixedIds, count, facing)
   local y = layoutValue(rules, "surfaceY") + 0.4
   local gap = layoutValue(rules, "cardSpacing")
   local yaw = layoutValue(rules, "cardYaw")
@@ -174,8 +176,11 @@ function Zones.layout(rules, fixedIds, count)
   -- leave them off the table. A market with rowSize 0 has no row and no deck.
   local over = rules.layout and rules.layout.areas or {}
   local mo = type(over.market) == "table" and over.market or {}
-  local centre = seatFrame(1, 1, 0, 0)
-  centre.origin = { x = mo.x or 0, z = mo.z or 0 }
+  -- built in the facing seat's frame, so the whole market (row, piles and
+  -- outlines) reads for that player
+  local facingYaw = 0
+  if facing and facing > 1 then facingYaw = seatFrame(facing, count, distance, spread, rules).yaw end
+  local centre = frameAt(mo.x or 0, mo.z or 0, facingYaw)
   local n = rules.market.rowSize or 0
   local first = -(n - 1) / 2 * gap
   for i = 1, n do
