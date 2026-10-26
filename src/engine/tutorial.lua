@@ -30,17 +30,19 @@ function Tutorial.pages(game)
       .. buy .. ", " .. attack .. ", draws and other effects happen on their own, and the totals are always "
       .. "up to date. You just choose what to play, buy and attack.\n\n" .. win },
     { "The info panel (right side)",
-      "Everyone sees this panel. It shows whose turn it is and a block for each player, in their seat colour: "
-      .. "their resources, stats, and how many cards are in their deck and discard pile. The active player's "
-      .. "name is bold.\n\nMessages appear here too, including each ally ability as it fires. The last three are "
+      "Everyone sees this panel. It shows whose turn it is and each player in their seat colour, with their "
+      .. "stats as symbols (and a shield in front for each of their bases, showing its defense) and how many "
+      .. "cards are in their deck and discard pile. The active player's name is bold. Below the players are the "
+      .. "active player's " .. buy .. " and " .. attack .. " for this turn.\n\n"
+      .. "Messages appear here too, including each ally ability as it fires. The last three are "
       .. "shown to everyone, and a message just for you (like \"It's not your turn\") appears just above the "
       .. "panel. All messages are also in chat." },
-    { "Your turn (top right)",
-      "On your turn an action panel appears at the top right. Only you can see it.\n\n"
+    { "Your turn (above your hand)",
+      "On your turn a row of buttons appears just above your hand. Only you can see it.\n\n"
       .. "- Play cards by dragging them from your hand onto your play area, or press Play all.\n"
       .. "- Buy a card by pressing the Buy button on it in the market.\n"
       .. "- Spend " .. attack .. " with the Attack and Destroy buttons.\n"
-      .. "- When a card asks you to choose, the question and its options appear at the top of this panel.\n"
+      .. "- When a card asks you to choose, the question and its options appear in the middle of the screen.\n"
       .. "- Press End Turn when you're done. Your cards are discarded and you draw a new hand." },
     { "The table",
       "Your hand is at the edge of the table in front of you. In front of it are your play area (cards played "

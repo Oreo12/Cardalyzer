@@ -19,7 +19,7 @@ for seed = 1, 200 do
     if g.state.winner then break end
     local seat = g.state.turn.active
     local color = g.state.players[seat].color
-    local acts = UI.actions(g).buttons
+    local acts = UI.actions(g).all
     local b = acts[math.random(#acts)]
     -- End Turn less often, so turns get played out
     if b.id == "cz-end" and math.random() < 0.7 and #acts > 1 then b = acts[math.random(#acts)] end

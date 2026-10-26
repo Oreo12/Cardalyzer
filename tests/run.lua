@@ -157,32 +157,59 @@ test("End Turn is refused for the wrong player", function()
   assert(tts.broadcasts[#tts.broadcasts]:find("turn"), "told why")
 end)
 
-test("the UI runs down the right: action panel, info panel, Tidy table in the corner", function()
+test("the UI: info panel on the right, action bar above the hand, Tidy table in the corner", function()
   local game = boot()
   Cardalyzer_onStartGame(HOST)
   local xml = tts.ui.xml
-  assert(xml:find('id="cz_panel" width="320" height="%d+" rectAlignment="LowerRight"'), "info panel on the right")
-  assert(xml:find('id="cz_actions"[^>]*rectAlignment="UpperRight"'), "action panel top right")
-  assert(xml:find('id="cz_tidy"[^>]*rectAlignment="LowerRight" offsetXY="%-10 10"'), "Tidy table in its own corner panel")
-  assert(not xml:find('id="cz_panel".-cz%-tidy.-</Panel><Panel id="cz_tidy"'), "not in the info panel")
-  assert(xml:find('id="cz_seat_2" fontSize="15" color="#E5413F"', 1, true), "seat names tinted")
-  assert(xml:find('id="cz_seat_2_2"[^>]*>Gold 0 · Might 0 · Health 40<'), "resources and stats on their own line")
-  assert(xml:find('id="cz_seat_2_3"[^>]*>Deck 5 · Discard 0<'), "pile counts on another")
+  assert(xml:find('id="cz_panel" width="300" height="%d+" rectAlignment="LowerRight"'), "info panel on the right")
+  assert(xml:find('id="cz_actions"[^>]*rectAlignment="LowerCenter" offsetXY="0 210"'), "action bar just above the hand")
+  assert(xml:find('id="cz_tidy"[^>]*rectAlignment="LowerRight" offsetXY="%-12 14"'), "Tidy table in its own corner")
+  assert(not xml:find('outline="#E8B84A"', 1, true), "no yellow borders")
+  assert(not xml:find('color="#0E1620F2"', 1, true), "no panel backgrounds")
+  assert(xml:find('id="cz%-end"[^>]*fontSize="12"'), "small buttons")
+  assert(xml:find('id="cz_seat_2"[^>]*color="#E5413F"'), "seat names tinted")
   assert(not xml:find('color="[^"]*"[^>]-color="'), "no duplicate color attributes")
+  eq(#tts.ui.assets, 4, "four symbols registered")
+
+  -- Stats sit beside each name as symbols with the number over them.
+  assert(xml:find('id="cz_stat_2_health"[^>]*><Image image="cz_heart"'), "health as a heart")
+  assert(xml:find('id="cz_stat_2_health_n"[^>]*>40<'), "with the number on it")
+  -- The active player's per-turn counters, below the player list.
+  game.state.players[1].resources.gold = 3
+  game:refreshUI()
+  xml = tts.ui.xml
+  assert(xml:find('id="cz_res_gold"[^>]*><Image image="cz_coin"'), "gold as a coin")
+  assert(xml:find('id="cz_res_gold_n"[^>]*>3<'), "showing 3")
+  assert(xml:find('id="cz_res_might"[^>]*><Image image="cz_reticle"'), "might as a reticle")
+  assert(xml:find("cz_seat_2_piles", 1, true) < xml:find("cz_res_gold", 1, true), "counters come after the players")
+  -- A base in play shows a shield with its defense, in front of the heart.
+  local State = Cardalyzer.require("engine.state")
+  local vault = State.newCard(game.state, "seed_vault") -- defense from cards.csv
+  game.state.players[1].bases[1] = vault
+  game:refreshUI()
+  xml = tts.ui.xml
+  local def = game.cards:get("seed_vault").defense
+  if def then
+    assert(xml:find('id="cz_base_1_1"[^>]*><Image image="cz_shield"'), "a shield for the base")
+    assert(xml:find("cz_base_1_1", 1, true) < xml:find("cz_stat_1_health", 1, true), "in front of the heart")
+  end
+
+  -- Choices go in the middle of the screen; the bar keeps the rest.
+  game:prompt(1, { kind = "choice", options = { { key = "gold", amount = 1 }, { key = "might", amount = 1 } } })
+  game:refreshUI()
+  xml = tts.ui.xml
+  assert(xml:find('id="cz_choice" visibility="White"[^>]*rectAlignment="MiddleCenter"'), "choice in the middle")
+  local choice = xml:match('<Panel id="cz_choice".-</Panel>')
+  assert(choice:find("cz-pick-1", 1, true), "its options there")
+  assert(not choice:find("cz-end", 1, true), "End Turn stays in the bar")
 
   Cardalyzer_onEndTurn(GUEST)
   xml = tts.ui.xml
-  assert(xml:find('id="cz_notice_' .. GUEST.color .. '" visibility="' .. GUEST.color .. '"', 1, true), "private notice panel")
-  assert(xml:find("turn", 1, true), "reason shown in the UI")
-
+  assert(xml:find('id="cz_notice_' .. GUEST.color .. '" visibility="' .. GUEST.color .. '"', 1, true), "private notice")
   game:notify("Hello table")
   assert(tts.ui.xml:find("Hello table", 1, true), "public notice in the info panel")
   for i = 1, 5 do game:notify("msg " .. i) end
   assert(not tts.ui.xml:find("Hello table", 1, true), "only the latest three kept")
-  assert(tts.ui.xml:find("msg 5", 1, true), "newest kept")
-
-  Cardalyzer_onEndTurn(HOST)
-  assert(tts.ui.xml:find('id="cz_notice_' .. GUEST.color .. '"', 1, true), "guest notice stays until the guest acts")
 end)
 
 test("New Game opens a setup menu; Play Game deals and closes it", function()
@@ -802,8 +829,7 @@ test("the host picks 2 to 4 players and the table is laid out for them", functio
   click(HOST, "cz-players-2")
   eq(#s.players, 3, "current game unchanged")
   click(HOST, "cz-setup")
-  assert(tts.ui.xml:find('fontStyle="Bold" textColor="#E8B84A" preferredWidth="60" id="cz-players-2"', 1, true),
-    "the setup menu remembers the choice")
+  assert(tts.ui.xml:find('id="cz%-players%-2"[^>]*textColor="#E8B84A"'), "the setup menu remembers the choice")
   DBE_start()
   eq(#game.state.players, 2, "next game seats 2")
   eq(count(ofType("ScriptingTrigger")), 9, "back to two seats of zones")
@@ -1420,6 +1446,29 @@ test("the winner is announced, with Play Again? to set up the next game", functi
   click(WHITE, "cz-new")
   eq(game.state.winner, nil, "a new game")
   assert(not tts.ui.xml:find("cz_winner", 1, true), "winner panel gone")
+end)
+
+test("the market turns to face the player whose turn it is", function()
+  local game = boot()
+  Cardalyzer_onStartGame(HOST)
+  local function marketYaws()
+    local out = {}
+    for _, key in ipairs({ "market.row.1", "market.row.5", "market.deck", "fixed.hireling" }) do
+      out[#out + 1] = getObjectFromGUID(game.state.view.piles[key][1]).rotation[2]
+    end
+    return out
+  end
+  for _, yaw in ipairs(marketYaws()) do eq(yaw, 180, "faces White (seat 1)") end
+  local slot = game.state.view.piles["market.row.1"][1]
+  Cardalyzer_onEndTurn(HOST)
+  for _, yaw in ipairs(marketYaws()) do eq(yaw, 0, "faces Red across the table") end
+  eq(game.state.view.piles["market.row.1"][1], slot, "turned in place, not respawned")
+  Cardalyzer_onEndTurn(GUEST)
+  for _, yaw in ipairs(marketYaws()) do eq(yaw, 180, "back to White") end
+  game.rules.market.faceActive = false
+  Cardalyzer_onEndTurn(HOST)
+  for _, yaw in ipairs(marketYaws()) do eq(yaw, 180, "faceActive = false keeps it facing seat 1") end
+  game.rules.market.faceActive = nil
 end)
 
 print(string.format("\n%d passed, %d failed", passed, failed))

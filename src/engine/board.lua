@@ -169,17 +169,34 @@ function Board.piles(game)
     add(seat .. ".bases", p.bases, s.bases, "row", true)
     add(seat .. ".hand", p.hand, s.hand, "hand", true, nil, s.deck.position)
   end
+  -- The market's cards face the player whose turn it is, so they always read
+  -- the right way up for them (rules.market.faceActive = false keeps them
+  -- facing seat 1).
   local m = state.market
-  add("market.deck", m.deck, layout.market.deck, "stack", false)
+  local yaw = Board.marketYaw(game)
+  local function facing(spot)
+    return { position = spot.position, rotation = { 0, yaw, 0 }, right = spot.right, forward = spot.forward, size = spot.size }
+  end
+  local first = #list + 1
+  add("market.deck", m.deck, facing(layout.market.deck), "stack", false)
   for i, uid in ipairs(m.row) do
-    add("market.row." .. i, uid == State.EMPTY and {} or { uid }, layout.market.row[i], "stack", true, true,
+    add("market.row." .. i, uid == State.EMPTY and {} or { uid }, facing(layout.market.row[i]), "stack", true, true,
       layout.market.deck.position)
   end
   for _, id in ipairs(game.fixedIds) do
-    add("fixed." .. id, m.fixed[id] or {}, layout.market.fixed[id], "stack", true, true)
+    add("fixed." .. id, m.fixed[id] or {}, facing(layout.market.fixed[id]), "stack", true, true)
   end
-  add("market.scrap", m.scrap, layout.market.scrap, "stack", true)
+  add("market.scrap", m.scrap, facing(layout.market.scrap), "stack", true)
+  for i = first, #list do list[i].facing = yaw end
   return list
+end
+
+-- The yaw the market's cards use: the card yaw of the active player's seat.
+function Board.marketYaw(game)
+  local seat = 1
+  if game.rules.market.faceActive ~= false and game.state.started then seat = game.state.turn.active end
+  local s = game.layout.seats[seat] or game.layout.seats[1]
+  return s.play.rotation[2]
 end
 
 -- Positions for n cards laid side by side, centred on the spot.
@@ -374,10 +391,19 @@ function Board.sync(game, opts)
   view.at, view.gen = view.at or {}, view.gen or {}
   local animate = game.rules.animate ~= false and not (opts and opts.instant)
   local dealt = 0
+  view.facing = view.facing or {}
   for _, pile in ipairs(Board.piles(game)) do
     local key = pile.key
     local sig = signature(pile.uids)
     local old = view.sig[key]
+    if old == sig and pile.facing and view.facing[key] ~= pile.facing then
+      -- Same cards, new reader: turn them in place.
+      for _, guid in ipairs(view.piles[key] or {}) do
+        local obj = getObjectFromGUID(guid)
+        if obj then obj.setRotationSmooth(rotation(pile.spot, pile.faceUp), false, false) end
+      end
+    end
+    view.facing[key] = pile.facing
     if old ~= sig then
       -- Bumping the pile's generation cancels a draw still waiting on an earlier flight.
       view.gen[key] = (view.gen[key] or 0) + 1

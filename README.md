@@ -186,18 +186,20 @@ To play:
    [TTS Editor extension](https://marketplace.visualstudio.com/items?itemName=sebaestschjin.tts-editor)
    can push it for you.
 3. Click **Save & Play**. The info panel appears on the right of the screen,
-   with a block for each player in their seat colour, and **Tidy table** sits
-   on its own in the bottom right corner:
+   with no background: each player's name in their seat colour, their Health
+   as a heart with the number on it (and, once they have buildings in play, a
+   shield in front of it for each one, showing its defense), and their deck
+   and discard counts. Below the players are the active player's Gold (a
+   coin) and Might (a reticle) for this turn. **Tidy table** is a lone button
+   in the bottom right corner:
    ```
-   Ember Guilds
-   Press New Game to set up a game.
-   White
-   Gold 0 · Might 0 · Health 40
-   Deck 0 · Discard 0
-   Red
-   Gold 0 · Might 0 · Health 40
-   Deck 0 · Discard 0
-   [New Game]
+                     Ember Guilds
+          Press New Game to set up a game.
+                White        [♥ 40]
+                       Deck 0 · Discard 0
+                  Red        [♥ 40]
+                       Deck 0 · Discard 0
+                          [New Game]
    ```
    Messages, such as "It's not your turn" or "Ember Smith ally: +2 Might",
    appear inside this panel (the last three for everyone, plus a private line
@@ -216,16 +218,18 @@ To play:
    its starter deck, the first player draws 3 cards and everyone else draws
    5, and five cards are dealt into the market row. The menu remembers your
    choices for next time.
-5. Play your turn. A second panel at the top right shows only to the
-   player whose turn it is:
+5. Play your turn. A row of small buttons appears just above your hand,
+   only for the player whose turn it is, and when a card asks you something
+   the question and its options appear in the middle of the screen:
    ```
-   Choose one                        <- a card asked you something
-   [+3 Gold or +3 Might]
-   [Play all (3)]
-   [Attack Red (4 Might)]
-   [Scrap Hireling: +2 Might]
-   [End Turn]
+                 Choose one                     <- middle of the screen
+          [+3 Gold] [+3 Might]
+
+   [Play all (3)] [Attack Red (4 Might)] [Scrap Hireling: +2 Might] [End Turn]
+                                                <- just above your hand
    ```
+   The market turns to face whoever's turn it is, so its cards always read
+   the right way up.
    - **Play a card** by dragging it from your hand into your play area (the
      row in front of you), or press **Play all**. Its effects apply at once,
      and the info panel shows your new totals.
@@ -449,13 +453,14 @@ These are the fields in `games/<yours>/rules.lua`:
 | `name` | `"Ember Guilds"` | Title shown on the panel |
 | `seats` | `{ {color="White"}, {color="Red"} }` | Player colours in turn order; optional `name` per seat. Seats sit along the bottom of the table from left to right, then back along the top. A game for fewer players uses the first ones |
 | `players` | `{min=2, default=2}` | How many of the seats can play. The host picks from `min` to the number of seats in the info panel. Leave out to always use every seat |
-| `resources` | `{ {key="gold", label="Gold", spend="buy"} }` | Per-turn pools, reset at end of turn. `spend = "buy"` pays for cards, `spend = "attack"` powers attacks |
-| `stats` | `{ {key="health", label="Health", start=40} }` | Values that persist between turns |
+| `resources` | `{ {key="gold", label="Gold", spend="buy"} }` | Per-turn pools, reset at end of turn. `spend = "buy"` pays for cards, `spend = "attack"` powers attacks. Optional `icon` (see `ui.iconBaseUrl`) |
+| `stats` | `{ {key="health", label="Health", start=40} }` | Values that persist between turns. Optional `icon` |
 | `handSize` | `5` | Cards drawn at the end of each turn |
 | `openingHand` | `{3, 5}` or `5` | First hand per player in turn order; one number means everyone draws that many |
 | `firstSeat` | `1` | Which seat goes first |
 | `market.rowSize` | `5` | Face-up market slots |
 | `market.buyTo` | `"discard"` or `"deck_top"` | Where bought cards go |
+| `market.faceActive` | `false` | Leave out to turn the market's cards to face the player whose turn it is; `false` keeps them facing seat 1 |
 | `factions` | `forge = {label="Forge", color="#C8502D"}` | Faction labels and frame colours |
 | `cardTypes` | `wall = {persistent=true, guard=true}` | Types. Persistent ones stay in play and apply their effects again each turn; guard ones must be destroyed before their owner or other buildings can be attacked |
 | `mechanics` | `{allies=true, persistent=true, scrap=true}` | Turn whole mechanics on or off |
@@ -464,6 +469,7 @@ These are the fields in `games/<yours>/rules.lua`:
 | `layout` | `{seatDistance=10, cardSpacing=2.8, seatSpread=28}` | Table spacing; adjust if piles overlap your table's edge. `seatSpread` is how far apart two seats on the same side sit (default 10 × `cardSpacing`) |
 | `tutorial` | `false` | Leave out to show the Tutorial button; `false` removes it for everyone |
 | `animate` | `false` | Leave out to animate cards: each card flies to its new pile (dealt one after another; face down into a hand). `false` makes piles change instantly. Tidy table is always instant |
+| `ui.iconBaseUrl` | `"https://…/icons/"` | Where the counter symbols are: a folder with `coin.png`, `reticle.png`, `heart.png` and `shield.png` (draw them with `tools/make_icons.py`). Defaults to the ones in this repo. The buy resource shows as a coin, the attack resource as a reticle and the win stat as a heart; set `icon = "coin"` (or a full image URL) on any resource or stat to choose, and anything without one shows as text |
 | `outlines` | `false` | Leave out to outline every play area, deck, discard pile, the market row, market deck, fixed piles and scrap pile on the table (in seat colours and gold). Outlines are drawn at `layout.surfaceY`; set that to your table's surface height if they float. `false` turns them off |
 | `customEffects` | see below | Lua for unusual cards |
 
@@ -673,7 +679,8 @@ games/sample/
   rules.lua          everything game-specific (edit this)
   cards.json         generated by csv2json.py
   art/, art.json     generated by make_sheets.py
-tools/               csv2json.py, make_sheets.py, bundle.py
+tools/               csv2json.py, make_sheets.py, bundle.py, make_icons.py
+assets/icons/        the UI's counter symbols (coin, reticle, heart, shield)
 tests/               run.lua + fake TTS API
 ```
 

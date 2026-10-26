@@ -22,6 +22,7 @@ local function newObject(kind, extra)
       uid = obj.data and obj.data.GMNotes, locked = obj.locked, interactable = obj.interactable,
     }
   end
+  obj.setRotationSmooth = function(r) obj.rotation = r end
   obj.setLock = function(v) obj.locked = v end
   obj.getLock = function() return obj.locked == true end
   obj.setRotation = function(r) obj.rotation = r end
@@ -97,6 +98,7 @@ function printToColor(msg, color) tts.broadcasts[#tts.broadcasts + 1] = color ..
 UI = {
   setXml = function(xml) tts.ui.xml = xml end,
   setValue = function(id, v) tts.ui.values[id] = v end,
+  setCustomAssets = function(list) tts.ui.assets = list end,
 }
 Wait = {
   frames = function(fn) fn() end,
