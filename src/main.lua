@@ -102,10 +102,25 @@ function Cardalyzer_onUI(player, _, id)
     return run(player.color, game.toggleSet, arg)
   end
   if action == "kits" then
+    -- The kit option: the host turns kits on (and gets their own kit menu);
+    -- once they're on, anyone pressing it opens their own kit menu.
+    if arg ~= "off" and game:kitsOn() then return run(player.color, game.kitMenu, player.color, true) end
     if not player.host and not player.promoted then
       return tell(player.color, "Only the host can choose the starting decks.")
     end
-    return run(player.color, game.setKits, arg)
+    run(player.color, game.setKits, arg)
+    if arg ~= "off" then run(player.color, game.kitMenu, player.color, true) end
+    return
+  end
+  -- Each player's own kit menu: anyone may open it and change only their own choice.
+  if action == "kitmenu" then return run(player.color, game.kitMenu, player.color, true) end
+  if action == "kitcancel" then return run(player.color, game.kitMenu, player.color, false) end
+  if action == "kitsave" then return run(player.color, game.kitSave, player.color) end
+  if action == "kitmode" then return run(player.color, game.kitEdit, player.color, "mode", arg) end
+  if action == "kitpick" then return run(player.color, game.kitEdit, player.color, "kit", arg) end
+  if action == "kitpart" then
+    local i, value = arg:match("^(%d+)%-(.+)$")
+    return run(player.color, game.kitEdit, player.color, i, value)
   end
   if action == "opening" then
     if not player.host and not player.promoted then

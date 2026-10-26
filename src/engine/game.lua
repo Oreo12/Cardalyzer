@@ -11,6 +11,7 @@ local Board = require("engine.board")
 local UI_ = require("engine.ui")
 local Tutorial = require("engine.tutorial")
 local Rulebooks = require("engine.rulebooks")
+local Kits = require("engine.kits")
 
 local Game = {}
 Game.__index = Game
@@ -186,27 +187,64 @@ function Game:setsInPlay()
   return out
 end
 
--- Kits for the next game, { [seat] = kit }: with the setup menu's kit
--- choice on "random", each player gets a different kit from rules.kits.
-function Game:kitsFor(count)
-  local kits = self.rules.kits
-  if not kits or #kits == 0 or self:setupChoice("kits") ~= "random" then return nil end
-  local order = {}
-  for i = 1, #kits do order[i] = i end
-  for i = #order, 2, -1 do
-    local j = math.floor(self.random() * i) + 1
-    order[i], order[j] = order[j], order[i]
-  end
-  local out = {}
-  for seat = 1, count do out[seat] = kits[order[(seat - 1) % #kits + 1]] end
-  return out
+-- Are kits on for the next game? ("random" is how older saves said so.)
+function Game:kitsOn()
+  local mode = self:setupChoice("kits")
+  return mode == "on" or mode == "random"
 end
 
--- Turns kits on ("random") or off for the next New Game (host only).
+-- Kits for the next game, { [seat] = kit }, from each seat's choice in the
+-- kit menu (engine/kits.lua). nil when kits are off.
+function Game:kitsFor(count)
+  if not self:kitsOn() then return nil end
+  return Kits.forSeats(self, count)
+end
+
+-- Switches on sets the kits need (rules.kitRequires, a kit's `requires`).
+function Game:requireSets(keys)
+  if not self.rules.sets or #keys == 0 then return end
+  local current = self:setsInPlay()
+  for _, key in ipairs(keys) do current[key] = true end
+  self.state.view.setup = self.state.view.setup or {}
+  self.state.view.setup.sets = current
+end
+
+-- Turns kits "on" or "off" for the next New Game (host only). Turning them
+-- on switches on any sets they need.
 function Game:setKits(mode)
-  if mode ~= "random" and mode ~= "off" then return false, "Kits are random or off." end
+  if mode == "random" then mode = "on" end
+  if mode ~= "on" and mode ~= "off" then return false, "Kits are on or off." end
   self.state.view.setup = self.state.view.setup or {}
   self.state.view.setup.kits = mode
+  if mode == "on" then self:requireSets(self.rules.kitRequires or {}) end
+  self:refreshUI()
+  return true
+end
+
+-- The kit menu, for one player: open it (on their saved choice), change the
+-- draft, then save it (back to the New Game menu) or cancel.
+function Game:kitMenu(color, open)
+  if open then
+    if not self.rules.kits or #self.rules.kits == 0 then return false, "These rules have no kits." end
+    Kits.open(self, color)
+  else
+    Kits.close(self, color)
+  end
+  self:refreshUI()
+  return true
+end
+
+function Game:kitEdit(color, what, value)
+  local ok, why = Kits.edit(self, color, what, value)
+  if ok then self:refreshUI() end
+  return ok, why
+end
+
+function Game:kitSave(color)
+  local draft = Kits.draft(self, color)
+  if not draft then return false, "Open the menu first." end
+  Kits.save(self, color)
+  self:requireSets(Kits.requiredSets(self, draft))
   self:refreshUI()
   return true
 end
