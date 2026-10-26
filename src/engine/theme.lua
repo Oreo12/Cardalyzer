@@ -54,7 +54,7 @@ Theme.DEFAULT = {
   },
   -- Button ids drawn with the primary look.
   primary = { ["cz-playall"] = true, ["cz-end"] = true, ["cz-new"] = true, ["cz-again"] = true, ["cz-setup"] = true,
-    ["cz-kitsave"] = true },
+    ["cz-kitsave"] = true, ["cz-phase"] = true },
 }
 
 -- Copies `over` onto a copy of `base`, table by table. A false in `over`

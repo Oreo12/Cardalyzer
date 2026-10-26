@@ -235,13 +235,92 @@ end
 
 -- Plays a card from hand. state.turn.played lists the uids played this turn,
 -- in order, for effects like "draw a card for each Blob card you've played".
+---------------------------------------------------------------------------
+-- Turn structure (rules.turn): phases, and costs for playing and buying.
+--   phases = { { key = "action", label = "Action", play = { "action" }, buy = false, attack = false },
+--              { key = "buy", label = "Buy", play = { "treasure" } } }
+--     A phase allows playing `play` (true or left out: any card; a type or
+--     list of types; false: none), buying unless buy = false, attacking
+--     unless attack = false. A Next button moves on; End Turn ends it at any phase.
+--   playCost = { action = { key = "actions", amount = 1 } }: playing a card of
+--     that type spends that resource (and needs it).
+--   buyCost = { key = "buys", amount = 1 }: so does each card bought.
+---------------------------------------------------------------------------
+
+-- The phase the turn is in (nil: a game without phases).
+function Actions.phase(game)
+  local phases = game.rules.turn and game.rules.turn.phases
+  return phases and phases[game.state.turn.phase or 1]
+end
+
+-- May `what` ("buy", "attack", or a card for "play") happen in this phase?
+function Actions.phaseAllows(game, what, c)
+  local phase = Actions.phase(game)
+  if not phase then return true end
+  if what == "play" then
+    if phase.play == nil or phase.play == true then return true end
+    if phase.play == false then return false end
+    return Actions.typeMatches(phase.play, c)
+  end
+  return phase[what] ~= false
+end
+
+local function notThisPhase(game)
+  local phase = Actions.phase(game)
+  return fail(say(game, "notThisPhase", { phase = phase.label or phase.key }))
+end
+
+-- A play or buy cost (rules.turn.playCost / buyCost): can the player pay it?
+local function canPay(game, player, cost)
+  if not cost then return true end
+  return (player.resources[cost.key] or 0) >= (cost.amount or 1)
+end
+local function pay(player, cost)
+  if cost then player.resources[cost.key] = (player.resources[cost.key] or 0) - (cost.amount or 1) end
+end
+local function playCost(game, c)
+  local costs = game.rules.turn and game.rules.turn.playCost
+  return costs and costs[c.type]
+end
+local function resourceLabel(game, key)
+  for _, r in ipairs(game.rules.resources or {}) do
+    if r.key == key then return r.label or Util.titleCase(key) end
+  end
+  return key
+end
+
+-- Can this card be played now (phase and play cost)?
+function Actions.playable(game, seat, uid)
+  local c = card(game, uid)
+  return Actions.phaseAllows(game, "play", c) and canPay(game, game.state.players[seat], playCost(game, c))
+end
+
+-- Moves the turn on to its next phase.
+function Actions.nextPhase(game, seat)
+  local ok, why = isActive(game, seat)
+  if not ok then return fail(why) end
+  local phases = game.rules.turn and game.rules.turn.phases or {}
+  local turn = game.state.turn
+  if (turn.phase or 1) >= #phases then return fail(say(game, "cantUse")) end
+  turn.phase = (turn.phase or 1) + 1
+  return true
+end
+
 function Actions.play(game, seat, uid)
   local ok, why = isActive(game, seat)
   if not ok then return fail(why) end
   local waiting = Actions.handBlocked(game, seat)
   if waiting then return fail(say(game, "firstDo", { what = Actions.promptText(game, waiting) })) end
   local player = game.state.players[seat]
-  if not Util.removeValue(player.hand, uid) then return fail(say(game, "notInHand")) end
+  if not Util.indexOf(player.hand, uid) then return fail(say(game, "notInHand")) end
+  local c = card(game, uid)
+  if not Actions.phaseAllows(game, "play", c) then return notThisPhase(game) end
+  local cost = playCost(game, c)
+  if not canPay(game, player, cost) then
+    return fail(say(game, "notEnough", { resource = resourceLabel(game, cost.key), card = c.name, n = cost.amount or 1 }))
+  end
+  pay(player, cost)
+  Util.removeValue(player.hand, uid)
   Actions.enterPlay(game, seat, uid)
   return true
 end
@@ -285,8 +364,21 @@ function Actions.playAll(game, seat)
   if waiting then return fail(say(game, "firstDo", { what = Actions.promptText(game, waiting) })) end
   local hand = game.state.players[seat].hand
   if #hand == 0 then return fail(say(game, "handEmpty")) end
-  -- Stops early if a card played asks for a card from the hand first.
-  while #hand > 0 and Actions.play(game, seat, hand[1]) do end
+  -- Plays every card it can, in hand order, again and again (a card played
+  -- may draw more or pay for the next); stops early if a card played asks
+  -- for a card from the hand first.
+  -- (capped, in case a card keeps coming back to the hand)
+  local played, plays = true, 0
+  while played and plays < 200 do
+    played, plays = false, plays + 1
+    for _, uid in ipairs(hand) do
+      if Actions.playable(game, seat, uid) then
+        if not Actions.play(game, seat, uid) then return true end
+        played = true
+        break
+      end
+    end
+  end
   return true
 end
 
@@ -314,6 +406,11 @@ end
 function Actions.buy(game, seat, uid, free, toTop, toHand)
   local ok, why = isActive(game, seat)
   if not ok then return fail(why) end
+  local buyCost = not free and game.rules.turn and game.rules.turn.buyCost
+  if not free and not Actions.phaseAllows(game, "buy") then return notThisPhase(game) end
+  if not canPay(game, game.state.players[seat], buyCost) then
+    return fail(say(game, "notEnough", { resource = resourceLabel(game, buyCost.key), card = card(game, uid).name, n = buyCost.amount or 1 }))
+  end
   local market = game.state.market
   local where, slot, rowMarket = locate(game.state, uid)
   if not where then return fail(say(game, "cantBuy")) end
@@ -334,6 +431,7 @@ function Actions.buy(game, seat, uid, free, toTop, toHand)
     end
     player.resources[key] = player.resources[key] - cost
     if discounted then player.flags.discount = nil end
+    pay(player, buyCost)
   end
 
   if where == "row" then rowMarket.row[slot] = State.EMPTY else table.remove(market.fixed[slot]) end
@@ -553,6 +651,7 @@ end
 function Actions.attack(game, seat, target, baseUid)
   local ok, why = isActive(game, seat)
   if not ok then return fail(why) end
+  if not Actions.phaseAllows(game, "attack") then return notThisPhase(game) end
   local victim = game.state.players[target]
   if target == seat or not victim then return fail(say(game, "pickOpponent")) end
   if victim.out then return fail(say(game, "alreadyOut", { name = victim.name })) end
@@ -956,6 +1055,9 @@ function Actions.startTurn(game, seat)
   turn.factions, turn.atEnd, turn.scrapped = {}, {}, { total = 0, handOrDiscard = 0 }
   turn.granted, turn.gained, turn.allyFactions, turn.completed = {}, {}, {}, 0
   turn.activated = {}
+  turn.phase = 1
+  local hooks = game.rules.turn
+  if hooks and hooks.onStart then hooks.onStart(game, seat) end
   if (player.owed.discard or 0) > 0 then
     Actions.prompt(game, seat, { kind = "discard", count = player.owed.discard, optional = false })
     player.owed.discard = 0
@@ -981,6 +1083,8 @@ function Actions.endTurn(game, seat)
   end
   while player.prompts[1] do finish(game, seat) end
   player.flags = {}
+  local hooks = game.rules.turn
+  if hooks and hooks.onEnd then hooks.onEnd(game, seat) end
 
   -- End-of-turn hooks: jobs queued this turn (game:atTurnEnd), then cards in
   -- play whose custom effect's whenTurnEnds returns "hand": they're set aside
