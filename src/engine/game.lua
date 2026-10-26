@@ -246,10 +246,19 @@ end
 
 -- Runs an action, then redraws the piles that changed (next frame, so a card
 -- the player just dropped isn't destroyed inside its own drop event).
+-- Players knocked out, and the winner, are announced.
 function Game:act(action, ...)
+  local wasOut, hadWinner = {}, self.state.winner
+  for seat, p in ipairs(self.state.players) do wasOut[seat] = p.out end
   local ok, why = action(self, ...)
   if ok then
     Actions.settle(self, self.state.turn.active)
+    for seat, p in ipairs(self.state.players) do
+      if p.out and not wasOut[seat] and seat ~= self.state.winner then self:notify(p.name .. " is out.") end
+    end
+    if self.state.winner and not hadWinner then
+      self:notify(self.state.players[self.state.winner].name .. " wins!")
+    end
     Wait.frames(function()
       Board.sync(self)
       self:refreshUI()

@@ -70,7 +70,7 @@ function Cardalyzer_onUI(player, _, id)
   if not game then return end
   local action, arg = id:match("^cz%-(%a+)%-?(.*)$")
   if action == "new" then return Cardalyzer_onStartGame(player) end
-  if action == "setup" then
+  if action == "setup" or action == "again" then -- New Game, or Play Again? after a win
     if not player.host and not player.promoted then
       return tell(player.color, "Only the host can start a new game.")
     end

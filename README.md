@@ -544,7 +544,13 @@ Prompts take a few extra fields:
 Setting `game.state.players[seat].flags.buyToTop = true` puts the next card
 that player buys on top of their deck. Set it to a card type, such as
 `"ship"`, to wait for the next card of that type, as in "put the next ship you
-acquire on top of your deck". Flags clear at the end of the turn.
+acquire on top of your deck". For "you *may* put the next ship...", set
+`flags.mayBuyToTop = "ship"` instead: when they buy one, the player picks the
+top of their deck or their discard pile. Flags clear at the end of the turn.
+
+While a required choice takes cards from the hand (an owed discard, or "scrap
+a card from your hand"), no card can be played until it's answered, so Play
+all can't play the cards away first.
 
 Besides `apply`, a custom effect can have:
 

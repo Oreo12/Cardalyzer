@@ -155,10 +155,11 @@ end
 function Board.piles(game)
   local state, layout = game.state, game.layout
   local gap = (game.rules.layout and game.rules.layout.cardSpacing) or 2.8
+  local cardWidth = 2.4 * ((game.rules.layout and game.rules.layout.cardScale) or 1)
   local list = {}
   local function add(key, uids, spot, style, faceUp, buyable, source)
     list[#list + 1] = { key = key, uids = uids, spot = spot, style = style, faceUp = faceUp, gap = gap,
-      buyable = buyable, source = source }
+      buyable = buyable, source = source, cardWidth = cardWidth }
   end
   for seat, p in ipairs(state.players) do
     local s = layout.seats[seat]
@@ -182,12 +183,20 @@ function Board.piles(game)
 end
 
 -- Positions for n cards laid side by side, centred on the spot.
-function Board.rowPositions(spot, n, gap)
+-- With `cardWidth`, a row that would run past its spot's width closes up to
+-- fit: the cards overlap, each a little higher than the last so they rest on
+-- one another instead of colliding.
+function Board.rowPositions(spot, n, gap, cardWidth)
+  if cardWidth and spot.size and n > 1 then
+    local fit = (spot.size[1] - cardWidth) / (n - 1)
+    if fit < gap then gap = math.max(fit, cardWidth * 0.2) end
+  end
+  local rise = (cardWidth and gap < cardWidth) and 0.05 or 0
   local rx, rz = spot.right[1], spot.right[2]
   local out = {}
   for i = 1, n do
     local along = (i - (n + 1) / 2) * gap
-    out[i] = { spot.position[1] + rx * along, spot.position[2], spot.position[3] + rz * along }
+    out[i] = { spot.position[1] + rx * along, spot.position[2] + (i - 1) * rise, spot.position[3] + rz * along }
   end
   return out
 end
@@ -215,10 +224,10 @@ local function addBuyButton(obj, cost)
   })
 end
 
-local function spawn(game, data, position, rot, buyCost)
+-- onReady(obj) runs once TTS has finished spawning the object.
+local function spawn(game, data, position, rot, onReady)
   local obj = spawnObjectData({
-    data = data, position = position, rotation = rot,
-    callback_function = buyCost and function(o) addBuyButton(o, buyCost) end or nil,
+    data = data, position = position, rotation = rot, callback_function = onReady,
   })
   return obj.getGUID()
 end
@@ -259,7 +268,7 @@ local function places(pile, uids)
   elseif pile.style == "hand" then
     for i = 1, #uids do out[i] = pile.spot.landing or pile.spot.position end
   else
-    out = Board.rowPositions(pile.spot, #uids, rowGap(pile))
+    out = Board.rowPositions(pile.spot, #uids, rowGap(pile), pile.cardWidth)
   end
   return out
 end
@@ -267,26 +276,53 @@ end
 -- Spawns the objects for `uids` in a pile's spot, replacing the pile's old
 -- objects, and remembers where each card now is (view.at) so its next move
 -- can start from there.
+--
+-- The old objects stay until every new one has finished spawning (TTS takes a
+-- few frames to show a new object), so a pile never blinks out while it is
+-- redrawn. Outside a hand the new objects spawn locked, so they don't knock
+-- into the old ones while both are there, and unlock once those are gone.
+-- (Hand cards spawn unlocked: a hand zone may not take in a locked card.)
 local function draw(game, pile, uids)
-  destroyObjects(game, pile.key)
   local view = game.state.view
-  local guids = {}
-  local n = #uids
-  if n > 0 then
-    local rot = rotation(pile.spot, pile.faceUp)
-    if pile.style == "stack" then
-      local top = game.cards:get(State.cardId(game.state, uids[n]))
-      local cost = pile.buyable and top.cost or nil
-      guids[1] = spawn(game, Board.stackData(game, uids), pile.spot.position, rot, cost)
-    else
-      local positions = Board.rowPositions(pile.spot, n, rowGap(pile))
-      for i, uid in ipairs(uids) do
-        guids[i] = spawn(game, Board.cardData(game, uid), positions[i], rot)
-      end
+  local old = view.piles[pile.key] or {}
+  local function removeOld()
+    for _, guid in ipairs(old) do
+      local obj = getObjectFromGUID(guid)
+      if obj then obj.destruct() end
     end
   end
+  local n = #uids
+  view.piles[pile.key] = {}
   for i, at in ipairs(places(pile, uids)) do view.at[uids[i]] = at end
-  view.piles[pile.key] = guids
+  if n == 0 then return removeOld() end
+
+  local lock = pile.style ~= "hand"
+  local cost
+  if pile.buyable and pile.style == "stack" then cost = game.cards:get(State.cardId(game.state, uids[n])).cost end
+  local waiting, readied = (pile.style == "stack") and 1 or n, {}
+  local function ready(obj)
+    if cost then addBuyButton(obj, cost) end
+    readied[#readied + 1] = obj
+    if #readied == waiting then
+      removeOld()
+      if lock then for _, o in ipairs(readied) do o.setLock(false) end end
+    end
+  end
+  local function data(d)
+    d.Locked = lock
+    return d
+  end
+
+  local guids = view.piles[pile.key]
+  local rot = rotation(pile.spot, pile.faceUp)
+  if pile.style == "stack" then
+    guids[1] = spawn(game, data(Board.stackData(game, uids)), pile.spot.position, rot, ready)
+  else
+    local positions = Board.rowPositions(pile.spot, n, rowGap(pile), pile.style == "row" and pile.cardWidth or nil)
+    for i, uid in ipairs(uids) do
+      guids[i] = spawn(game, data(Board.cardData(game, uid)), positions[i], rot, ready)
+    end
+  end
 end
 
 function Board.renderPile(game, pile)
@@ -298,6 +334,7 @@ end
 -- Animation timing in seconds. rules.animate = false turns animation off.
 Board.TRAVEL = 0.45 -- one card's flight
 Board.STAGGER = 0.12 -- gap between cards dealt one after another
+Board.LINGER = 0.4 -- a landed card stays this long, until the real card has appeared under it
 local LIFT = 1.2 -- cards fly this far above the table
 
 -- Runs fn after `delay` seconds (straight away for no delay).
@@ -306,8 +343,8 @@ local function after(delay, fn)
 end
 
 -- A short-lived copy of a card that flies from one place to another. It's
--- locked and can't be picked up, and is destroyed when it lands, where the
--- pile then draws the real card.
+-- locked and can't be picked up. When it lands the pile draws the real card
+-- beneath it, and the copy is removed a moment later, once that has appeared.
 local function fly(game, uid, from, to, rot, delay)
   after(delay, function()
     local obj = spawnObjectData({
@@ -319,7 +356,7 @@ local function fly(game, uid, from, to, rot, delay)
     obj.interactable = false
     obj.setPositionSmooth({ to[1], to[2] + LIFT * 0.4, to[3] }, false, true)
     local guid = obj.getGUID()
-    after(Board.TRAVEL, function()
+    after(Board.TRAVEL + Board.LINGER, function()
       local landed = getObjectFromGUID(guid)
       if landed then landed.destruct() end
     end)

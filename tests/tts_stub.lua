@@ -48,14 +48,17 @@ function tts.reset()
 end
 
 -- Wait.time runs at once unless tts.deferTimers is set; then callbacks wait
--- in tts.timers until tts.runTimers() runs them in time order.
-function tts.runTimers()
-  local now = 0
+-- in tts.timers until tts.runTimers() runs them in time order. runTimers(t)
+-- stops at time t, leaving later callbacks waiting (and the clock at t).
+function tts.runTimers(untilTime)
   while #tts.timers > 0 do
     table.sort(tts.timers, function(a, b) return a.at < b.at end)
+    if untilTime and tts.timers[1].at > untilTime then
+      tts.now = untilTime
+      return
+    end
     local t = table.remove(tts.timers, 1)
-    now = t.at
-    tts.now = now
+    tts.now = t.at
     t.fn()
   end
   tts.now = 0
@@ -76,7 +79,7 @@ end
 
 function spawnObjectData(params)
   local data = params.data
-  local obj = newObject(data.Name, { data = data, position = params.position, rotation = params.rotation })
+  local obj = newObject(data.Name, { data = data, position = params.position, rotation = params.rotation, locked = data.Locked == true })
   for _, t in ipairs(data.Tags or {}) do obj.tags[t] = true end
   if params.callback_function then params.callback_function(obj) end
   return obj

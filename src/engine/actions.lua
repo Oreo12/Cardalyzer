@@ -92,6 +92,18 @@ function Actions.checkAllies(game, seat)
   end
 end
 
+-- A required choice that takes cards from the hand (an owed discard, "scrap a
+-- card from your hand") must be answered before any card is played, or Play
+-- all would play the cards away. Returns that prompt, if one is waiting.
+function Actions.handBlocked(game, seat)
+  for _, prompt in ipairs(game.state.players[seat].prompts) do
+    local fromHand = prompt.kind == "discard"
+      or (prompt.kind == "scrap" and Util.indexOf(prompt.from or { "hand", "discard" }, "hand"))
+    if fromHand and not prompt.optional and #Actions.targets(game, seat, prompt) > 0 then return prompt end
+  end
+  return nil
+end
+
 -- Cards in play whose custom effects have a whenYouPlay handler react to
 -- their owner playing another card ("whenever you play a ship, gain 1 combat").
 local function triggerPlayed(game, seat, uid, c)
@@ -113,6 +125,8 @@ end
 function Actions.play(game, seat, uid)
   local ok, why = isActive(game, seat)
   if not ok then return fail(why) end
+  local waiting = Actions.handBlocked(game, seat)
+  if waiting then return fail("First: " .. Actions.promptText(game, waiting) .. ".") end
   local player = game.state.players[seat]
   if not Util.removeValue(player.hand, uid) then return fail("That card isn't in your hand.") end
   local c = card(game, uid)
@@ -133,9 +147,12 @@ end
 function Actions.playAll(game, seat)
   local ok, why = isActive(game, seat)
   if not ok then return fail(why) end
+  local waiting = Actions.handBlocked(game, seat)
+  if waiting then return fail("First: " .. Actions.promptText(game, waiting) .. ".") end
   local hand = game.state.players[seat].hand
   if #hand == 0 then return fail("Your hand is empty.") end
-  while #hand > 0 do Actions.play(game, seat, hand[1]) end
+  -- Stops early if a card played asks for a card from the hand first.
+  while #hand > 0 and Actions.play(game, seat, hand[1]) do end
   return true
 end
 
@@ -154,6 +171,7 @@ end
 -- `free` skips the cost, for effects like "take a card for free", and
 -- `toTop` puts it on top of the deck. So does flags.buyToTop: true for the
 -- next card bought this turn, or a card type ("ship") for the next of that type.
+-- flags.mayBuyToTop works the same way but asks the player (a place_bought prompt).
 function Actions.buy(game, seat, uid, free, toTop)
   local ok, why = isActive(game, seat)
   if not ok then return fail(why) end
@@ -181,6 +199,12 @@ function Actions.buy(game, seat, uid, free, toTop)
     player.deck[#player.deck + 1] = uid
   else
     player.discard[#player.discard + 1] = uid
+    -- "You MAY put the next ship you acquire on top of your deck": ask.
+    local may = player.flags.mayBuyToTop
+    if may == true or (may ~= nil and may == c.type) then
+      player.flags.mayBuyToTop = nil
+      Actions.prompt(game, seat, { kind = "place_bought", uid = uid, optional = false })
+    end
   end
   Turn.fillMarket(game.state)
   return true
@@ -297,6 +321,7 @@ end
 --     cardType?, includeFixed?, toTop?, drawPerPick?, custom?, exclude? }
 -- kinds: choice, scrap, discard, scrap_row, destroy_base, free_buy, reminder,
 -- opponent (pick an opponent; `owe` such as { discard = 1 } is added to theirs),
+-- place_bought (put the bought card `uid` on top of the deck or leave it in the discard pile),
 -- pick (pick a card you have in play; rules.customEffects[custom].onPick runs)
 --
 -- free_buy: maxCost and cardType limit it, includeFixed adds the fixed piles,
@@ -329,6 +354,7 @@ function Actions.promptText(game, prompt)
       .. (prompt.toTop and ", onto your deck" or "")
   end
   if kind == "pick" then return "Choose a card you have in play" end
+  if kind == "place_bought" then return "Where should " .. card(game, prompt.uid).name .. " go?" end
   if kind == "opponent" then
     local owed = prompt.owe and prompt.owe.discard
     return owed and ("Choose an opponent to discard " .. plural(owed, "card") .. " next turn") or "Choose an opponent"
@@ -383,6 +409,11 @@ function Actions.targets(game, seat, prompt)
   elseif kind == "opponent" then
     for _, other in ipairs(game:opponentsOf(seat)) do
       out[#out + 1] = { value = tostring(other), label = state.players[other].name }
+    end
+  elseif kind == "place_bought" then
+    if Util.indexOf(player.discard, prompt.uid) then
+      out[1] = { value = "top", label = "Top of your deck" }
+      out[2] = { value = "discard", label = "Your discard pile" }
     end
   end
   return out
@@ -449,6 +480,9 @@ function Actions.pick(game, seat, value)
   elseif kind == "opponent" then
     local owed = state.players[tonumber(value)].owed
     for key, n in pairs(prompt.owe or {}) do owed[key] = (owed[key] or 0) + n end
+  elseif kind == "place_bought" and value == "top" then
+    Util.removeValue(player.discard, prompt.uid)
+    player.deck[#player.deck + 1] = prompt.uid
   end
 
   prompt.picked = (prompt.picked or 0) + 1

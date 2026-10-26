@@ -1284,5 +1284,143 @@ test("each ally ability that fires is announced", function()
   assert(tts.ui.xml:find("Ember Smith ally: +2 Might", 1, true), "shown in the info panel")
 end)
 
+---------------------------------------------------------------------------
+-- No blinking, full play areas, "may" choices, blocked plays, game over
+---------------------------------------------------------------------------
+
+test("a landed card stays until the real one is drawn under it; redrawn piles never blink", function()
+  local game, put = blank()
+  local played = put(1, "hand", "apprentice")
+  game:tidy()
+  tts.deferTimers, tts.flights = true, {}
+  game:play(1, played)
+  local Board = Cardalyzer.require("engine.board")
+  tts.runTimers(Board.TRAVEL + 0.01) -- just after landing
+  eq(#game.state.view.piles["1.play"], 1, "the play row is drawn on landing")
+  local ghost = getObjectFromGUID(tts.flights[1].guid)
+  assert(ghost, "the flying copy is still there, covering the moment the real card takes to appear")
+  tts.runTimers()
+  eq(getObjectFromGUID(tts.flights[1].guid), nil, "then removed")
+  local card = getObjectFromGUID(game.state.view.piles["1.play"][1])
+  eq(card.locked, false, "the real card is unlocked once its pile is ready")
+  eq(card.data.Locked, true, "it spawned locked, so it couldn't knock the old objects about")
+
+  -- The old objects of a redrawn pile go only once the new ones are ready.
+  local p = game.state.players[1]
+  put(1, "discard", "squire")
+  game:tidy()
+  local oldPile = game.state.view.piles["1.discard"][1]
+  p.discard[#p.discard + 1] = Cardalyzer.require("engine.state").newCard(game.state, "squire")
+  local held = {}
+  local real = spawnObjectData
+  spawnObjectData = function(params) -- hold back TTS's "finished spawning" callbacks
+    local cb = params.callback_function
+    params.callback_function = function(o) held[#held + 1] = function() cb(o) end end
+    return real(params)
+  end
+  Board.sync(game, { instant = true })
+  spawnObjectData = real
+  local newPile = game.state.view.piles["1.discard"][1]
+  assert(newPile ~= oldPile, "a new discard pile was spawned")
+  assert(getObjectFromGUID(oldPile), "the old pile stays while the new one is still appearing")
+  eq(getObjectFromGUID(newPile).locked, true, "the new pile waits locked")
+  for _, fire in ipairs(held) do fire() end
+  eq(getObjectFromGUID(oldPile), nil, "the old pile goes once the new one is ready")
+  eq(getObjectFromGUID(newPile).locked, false, "and the new one unlocks")
+end)
+
+test("a full play area closes up so every card stays inside it", function()
+  local game, put = blank()
+  for _ = 1, 10 do game:play(1, put(1, "hand", "apprentice")) end
+  local spot = game.layout.seats[1].play
+  local half = spot.size[1] / 2
+  local lastY = -math.huge
+  for _, guid in ipairs(game.state.view.piles["1.play"]) do
+    local p = getObjectFromGUID(guid).position
+    local along = (p[1] - spot.position[1]) * spot.right[1] + (p[3] - spot.position[3]) * spot.right[2]
+    assert(math.abs(along) + 1.2 <= half + 1e-9, "card at " .. along .. " runs past the play area")
+    assert(p[2] > lastY, "overlapping cards rest one above the next")
+    lastY = p[2]
+  end
+  -- Five cards still sit side by side at the normal spacing.
+  local game2, put2 = blank()
+  for _ = 1, 5 do game2:play(1, put2(1, "hand", "apprentice")) end
+  local a = getObjectFromGUID(game2.state.view.piles["1.play"][1]).position
+  local b = getObjectFromGUID(game2.state.view.piles["1.play"][2]).position
+  eq(math.abs(b[1] - a[1]) > 2.7, true, "normal spacing when there's room")
+  eq(a[2], b[2], "and flat")
+end)
+
+test("flags.mayBuyToTop asks where the bought card goes", function()
+  local game, _, putRow = blank()
+  local first, second = putRow(1, "tide_runner"), putRow(2, "harbor_broker")
+  local p = game.state.players[1]
+  p.resources.gold = 10
+  p.flags.mayBuyToTop = "unit"
+  game:buy(1, first)
+  game:refreshUI()
+  assert(tts.ui.xml:find("Where should Tide Runner go?", 1, true), "asks")
+  assert(tts.ui.xml:find("Top of your deck", 1, true) and tts.ui.xml:find("Your discard pile", 1, true), "both options")
+  click(WHITE, "cz-pick-top")
+  eq(p.deck[#p.deck], first, "on top of the deck")
+  game:buy(1, second)
+  eq(p.discard[#p.discard], second, "only the next one asks")
+  eq(#p.prompts, 0, "no question for the second")
+  -- Choosing the discard pile leaves it there.
+  local g2, _, row2 = blank()
+  local c = row2(1, "tide_runner")
+  local p2 = g2.state.players[1]
+  p2.resources.gold, p2.flags.mayBuyToTop = 5, "unit"
+  g2:buy(1, c)
+  click(WHITE, "cz-pick-discard")
+  eq(p2.discard[#p2.discard], c, "left in the discard pile")
+  eq(#p2.prompts, 0, "answered")
+end)
+
+test("an owed discard must be made before any card is played", function()
+  local game, put = blank()
+  local red = game.state.players[2]
+  local a, b = put(2, "hand", "apprentice"), put(2, "hand", "squire")
+  red.owed.discard = 1
+  for _ = 1, 5 do put(1, "deck", "apprentice") end
+  click(WHITE, "cz-end")
+  eq(game.state.turn.active, 2, "Red's turn")
+  assert(not tts.ui.xml:find("cz-playall", 1, true), "no Play all while the discard waits")
+  click(RED, "cz-playall")
+  eq(#red.hand, 2, "Play all refused")
+  game:tidy()
+  local area = game.layout.seats[2].play.position
+  dropAt(game, "Red", a, area[1], area[3])
+  assert(has(red.hand, a), "dragging a card into play is refused too")
+  assert(lastBroadcast():find("First: Discard 1 card", 1, true), "told why")
+  click(RED, "cz-pick-" .. b)
+  assert(tts.ui.xml:find("cz-playall", 1, true), "Play all is back")
+  click(RED, "cz-playall")
+  assert(has(red.play, a), "and works")
+end)
+
+test("the winner is announced, with Play Again? to set up the next game", function()
+  local game = blank()
+  game.state.players[2].stats.health = 3
+  game.state.players[1].resources.might = 5
+  click(WHITE, "cz-attack-2")
+  local xml = tts.ui.xml
+  assert(xml:find('id="cz_winner"[^>]*rectAlignment="MiddleCenter"'), "winner panel in the middle")
+  assert(xml:find(">White wins!<", 1, true), "names the winner")
+  assert(xml:find('id="cz%-again"[^>]*>Play Again%?<'), "Play Again? button")
+  local said = false
+  for _, b in ipairs(tts.broadcasts) do if b == "White wins!" then said = true end end
+  assert(said, "announced in chat too")
+  click(RED, "cz-again")
+  assert(not tts.ui.xml:find("cz_setup_", 1, true), "only the host can set up the next game")
+  click(WHITE, "cz-again")
+  xml = tts.ui.xml
+  assert(xml:find('id="cz_setup_White"', 1, true), "Play Again? opens the setup menu")
+  assert(not xml:find('id="cz_winner" visibility="White', 1, true), "the winner panel steps aside for it")
+  click(WHITE, "cz-new")
+  eq(game.state.winner, nil, "a new game")
+  assert(not tts.ui.xml:find("cz_winner", 1, true), "winner panel gone")
+end)
+
 print(string.format("\n%d passed, %d failed", passed, failed))
 if failed > 0 then os.exit(1) end

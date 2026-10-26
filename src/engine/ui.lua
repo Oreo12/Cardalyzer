@@ -4,7 +4,8 @@
 -- setup menu in the middle (player count, Play Game, Tutorial).
 -- The whole XML is rebuilt on every refresh. Every button calls
 -- Cardalyzer_onUI in main.lua, which reads the action from the button id:
---   cz-setup  cz-setupclose  cz-new (Play Game)  cz-tidy  cz-end  cz-playall  cz-done  cz-players-<n>
+--   cz-setup  cz-setupclose  cz-new (Play Game)  cz-again (Play Again?)  cz-tidy  cz-end  cz-playall
+--   cz-done  cz-players-<n>
 --   cz-pick-<value>  cz-attack-<seat>  cz-hit-<seat>-<uid>  cz-scrap-<uid>
 local Util = require("engine.util")
 local State = require("engine.state")
@@ -71,7 +72,7 @@ function UI_.actions(game)
     if prompt.optional then add("cz-done", prompt.kind == "reminder" and "Done" or "Skip / done") end
   end
 
-  if #p.hand > 0 then add("cz-playall", "Play all (" .. #p.hand .. ")") end
+  if #p.hand > 0 and not Actions.handBlocked(game, seat) then add("cz-playall", "Play all (" .. #p.hand .. ")") end
 
   local key, label = Actions.resourceFor(game.rules, "attack")
   local pool = key and p.resources[key] or 0
@@ -220,6 +221,23 @@ function UI_.xml(game)
   for color in pairs(game.setupOpen or {}) do setup[#setup + 1] = color end
   table.sort(setup)
   for _, color in ipairs(setup) do parts[#parts + 1] = UI_.setupPanel(game, color) end
+
+  -- Game over: the winner, in the middle of the screen for everyone (except
+  -- whoever has the setup menu open there), with Play Again? to set up the next.
+  if state.winner then
+    local who = {}
+    for _, color in ipairs(Tutorial.allColors) do
+      if not (game.setupOpen or {})[color] then who[#who + 1] = color end
+    end
+    local winner = state.players[state.winner]
+    parts[#parts + 1] = '<Panel id="cz_winner" visibility="' .. table.concat(who, "|") .. '" width="420" height="150"'
+      .. ' rectAlignment="MiddleCenter"' .. PANEL .. '><VerticalLayout spacing="10" childForceExpandHeight="false">'
+      .. text("cz_winner_text", winner.name .. " wins!", 30,
+        'fontStyle="Bold" alignment="MiddleCenter" preferredHeight="44" color="' .. (UI_.seatColors[winner.color] or ACCENT) .. '"')
+      .. '<HorizontalLayout preferredHeight="34" childForceExpandWidth="false" childAlignment="MiddleCenter">'
+      .. button("cz-again", "Play Again?"):gsub("<Button ", '<Button preferredWidth="200" ')
+      .. '</HorizontalLayout></VerticalLayout></Panel>'
+  end
 
   -- The tutorial, in the middle of the screen, for each player reading it.
   local open = game.tutorialOpen or {}
