@@ -1,5 +1,5 @@
 -- In-game tutorial: a few pages, opened per player from the Tutorial button in
--- the info panel. Each player can hide that button; typing !tutorial in chat
+-- the setup menu. Each player can hide that button; typing !tutorial in chat
 -- brings it back. Page text is built from the game's rules (resource names,
 -- win condition), so it fits any game.
 local Util = require("engine.util")
@@ -29,11 +29,12 @@ function Tutorial.pages(game)
       "Cardalyzer reads every card's effects and applies them for you. Play a card and its "
       .. buy .. ", " .. attack .. ", draws and other effects happen on their own, and the totals are always "
       .. "up to date. You just choose what to play, buy and attack.\n\n" .. win },
-    { "The info panel (top centre)",
-      "Everyone sees this panel. It shows whose turn it is and one line per player, in their seat colour: "
+    { "The info panel (right side)",
+      "Everyone sees this panel. It shows whose turn it is and a block for each player, in their seat colour: "
       .. "their resources, stats, and how many cards are in their deck and discard pile. The active player's "
-      .. "line is bold.\n\nMessages appear here too. The last three are shown to everyone, and a message just "
-      .. "for you (like \"It's not your turn\") appears on a line under the panel. All messages are also in chat." },
+      .. "name is bold.\n\nMessages appear here too, including each ally ability as it fires. The last three are "
+      .. "shown to everyone, and a message just for you (like \"It's not your turn\") appears just above the "
+      .. "panel. All messages are also in chat." },
     { "Your turn (top right)",
       "On your turn an action panel appears at the top right. Only you can see it.\n\n"
       .. "- Play cards by dragging them from your hand onto your play area, or press Play all.\n"
@@ -45,11 +46,12 @@ function Tutorial.pages(game)
       "Your hand is at the edge of the table in front of you. In front of it are your play area (cards played "
       .. "this turn), your bases (cards that stay in play), and your deck and discard pile.\n\n"
       .. "The market is in the middle: the market deck, the row of cards for sale, any piles that are always "
-      .. "for sale, and the scrap pile for removed cards." },
+      .. "for sale, and the scrap pile for removed cards. Every area is outlined.\n\n"
+      .. "Dragging a card from the market row, or one you have in play, onto the scrap pile scraps it." },
     { "Tips",
-      "- If cards get knocked around, press Tidy table. The game is tracked in the script, not by where cards "
-      .. "sit, so nothing is lost.\n"
-      .. "- New Game deals a fresh game (host only).\n"
+      "- If cards get knocked around, press Tidy table (bottom right). The game is tracked in the script, not "
+      .. "by where cards sit, so nothing is lost. A card dropped somewhere it can't go returns on its own.\n"
+      .. "- New Game opens the setup menu (host only): pick the number of players and press Play Game.\n"
       .. "- Don't want the Tutorial button? Press Hide button below. Type !tutorial in chat to bring it back." },
   }
 end

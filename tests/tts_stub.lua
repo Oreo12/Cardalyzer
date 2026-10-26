@@ -23,6 +23,7 @@ local function newObject(kind, extra)
     }
   end
   obj.setLock = function(v) obj.locked = v end
+  obj.getLock = function() return obj.locked == true end
   obj.setRotation = function(r) obj.rotation = r end
   obj.setScale = function(s) obj.scale = s end
   obj.setName = function(n) obj.name = n end

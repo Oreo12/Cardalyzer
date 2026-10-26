@@ -131,6 +131,12 @@ function Zones.playSeatAt(layout, x, z)
   return nil
 end
 
+-- Is table point (x, z) on the scrap pile (a card's footprint, generously)?
+function Zones.onScrap(layout, x, z)
+  local s = layout.market.scrap
+  return Zones.contains({ position = s.position, right = s.right, forward = s.forward, size = { 4, 0, 5 } }, x, z, 0)
+end
+
 -- The four corners of a spot on the table (for outlines), `pad` wider all round.
 -- A spot with no size is one card.
 function Zones.corners(s, y, pad, cardSize)

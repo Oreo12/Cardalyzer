@@ -1,7 +1,6 @@
 -- Global script entry point. tools/bundle.py bundles this file, the engine
 -- modules and the chosen game's rules and data into build/Global.lua.
 local Game = require("engine.game")
-local Util = require("engine.util")
 
 local game
 
@@ -48,11 +47,13 @@ function onSave()
   return game:save()
 end
 
+-- Play Game in the setup menu: deals a new game and closes the menu.
 function Cardalyzer_onStartGame(player)
   if not game then return end
   if not player.host and not player.promoted then
     return tell(player.color, "Only the host can start a new game.")
   end
+  game:setup(player.color, false)
   local ok, err = pcall(game.newGame, game)
   if not ok then report(err) end
 end
@@ -69,6 +70,13 @@ function Cardalyzer_onUI(player, _, id)
   if not game then return end
   local action, arg = id:match("^cz%-(%a+)%-?(.*)$")
   if action == "new" then return Cardalyzer_onStartGame(player) end
+  if action == "setup" then
+    if not player.host and not player.promoted then
+      return tell(player.color, "Only the host can start a new game.")
+    end
+    return game:setup(player.color, true)
+  end
+  if action == "setupclose" then return game:setup(player.color, false) end
   if action == "tidy" then return run(player.color, game.tidy) end
   if action == "end" then return Cardalyzer_onEndTurn(player) end
   if action == "players" then
@@ -112,22 +120,23 @@ function Cardalyzer_onBuy(obj, color)
   run(color, game.buyObject, seat, obj.getGUID(), obj.getGMNotes())
 end
 
--- Dropping a card from your hand onto your play or bases area plays it. The
--- area is checked across the table only (Zones.playSeatAt): a card being
--- dropped is still lifted, often above the scripting zone's top.
+-- A player dropped something. Engine cards are handled by Game:dropped: a
+-- hand card on your play area is played, a card dropped on the scrap pile is
+-- scrapped, and anything else goes back where it belongs.
 function onObjectDrop(color, obj)
-  if not game or not game.state.started then return end
-  local seat = game:seatOfColor(color)
-  local uid = obj.getGMNotes()
-  if not seat or uid == nil or uid == "" then return end
-  if not Util.indexOf(game.state.players[seat].hand, uid) then return end
+  if not game or not game.state.started or not obj.hasTag("cz_card") then return end
   local p = obj.getPosition()
-  local onArea = game:playSeatAt(p.x, p.z) == seat
+  local inOwnPlayZone = false
+  local seat = game:seatOfColor(color)
   for _, zone in ipairs(obj.getZones()) do
-    if game:playZoneSeat(zone.getGUID()) == seat then onArea = true end
+    if seat and game:playZoneSeat(zone.getGUID()) == seat then inOwnPlayZone = true end
   end
-  if onArea then
-    game:cardDroppedAt(uid, { p.x, p.y, p.z }) -- the card animates from where it was dropped
-    return run(color, game.play, seat, uid)
-  end
+  run(color, game.dropped, color, obj.getGUID(), obj.getGMNotes() or "", { p.x, p.y, p.z }, inOwnPlayZone)
+end
+
+-- Engine cards never merge into decks with each other: the engine draws its
+-- piles itself, and a merged deck would hide cards from it.
+function tryObjectEnterContainer(container, obj)
+  if container.hasTag("cz_card") or obj.hasTag("cz_card") then return false end
+  return true
 end

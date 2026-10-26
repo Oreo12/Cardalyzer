@@ -405,6 +405,26 @@ function Board.sweep(game)
   game.state.view.sig = {}
 end
 
+-- Draws one pile again from the state, straight away, and removes stray
+-- copies of its cards: a card pulled off one of its decks by hand, or the
+-- last card TTS leaves behind when a two-card deck is split.
+function Board.redraw(game, key)
+  for _, pile in ipairs(Board.piles(game)) do
+    if pile.key == key then
+      local mine, tracked = {}, {}
+      for _, uid in ipairs(pile.uids) do mine[uid] = true end
+      for _, guids in pairs(game.state.view.piles) do
+        for _, g in ipairs(guids) do tracked[g] = true end
+      end
+      for _, obj in ipairs(getObjectsWithTag("cz_card")) do
+        if not tracked[obj.getGUID()] and not obj.getLock() and mine[obj.getGMNotes()] then obj.destruct() end
+      end
+      Board.renderPile(game, pile)
+      return
+    end
+  end
+end
+
 -- Forgets where cards were drawn, for a new game whose uids start again.
 function Board.forgetPlaces(game)
   game.state.view.at = {}

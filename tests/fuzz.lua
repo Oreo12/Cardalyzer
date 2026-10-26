@@ -29,6 +29,18 @@ for seed = 1, 200 do
       if uid ~= "" and math.random() < 0.3 then g:buy(seat, uid) end
     end
     if tts.deferTimers and math.random() < 0.3 then tts.runTimers() end
+    -- drop a random engine card somewhere: a play area, the scrap pile, a hand, or anywhere
+    if math.random() < 0.25 then
+      local objs = tts.live(function(o) return o.tags.cz_card and not o.locked end)
+      if #objs > 0 then
+        local o = objs[math.random(#objs)]
+        local L = g.layout
+        local spots = { L.market.scrap.position, L.seats[seat].play.position, L.seats[seat].hand.position, { math.random(-30, 30), 0, math.random(-20, 20) } }
+        local at = spots[math.random(#spots)]
+        o.position, o.zones = { at[1], 4, at[3] }, {}
+        onObjectDrop(math.random() < 0.8 and color or "Red", o)
+      end
+    end
   end
   tts.runTimers()
   -- every pile is drawn with exactly its cards, once all flights have landed

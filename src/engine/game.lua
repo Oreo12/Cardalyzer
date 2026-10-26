@@ -187,6 +187,14 @@ function Game:tutorial(color, action)
   return true
 end
 
+-- Opens or closes the setup menu (New Game) for one player. Not saved.
+function Game:setup(color, open)
+  self.setupOpen = self.setupOpen or {}
+  self.setupOpen[color] = open or nil
+  self:refreshUI()
+  return true
+end
+
 -- Clears a colour's private message once that player does something that works.
 function Game:clearNotice(color)
   if self.notices.byColor[color] then
@@ -215,7 +223,7 @@ function Game:setPlayers(n)
   end
   if self.state.started then
     self.state.nextPlayers = n ~= #self.state.players and n or nil
-    self:notify("The next New Game deals for " .. n .. " players.")
+    self:refreshUI()
     return true
   end
   local view = self.state.view
@@ -274,6 +282,76 @@ end
 -- The seat whose play or bases area holds table point (x, z), if any.
 function Game:playSeatAt(x, z)
   return Zones.playSeatAt(self.layout, x, z)
+end
+
+-- The key of the pile that holds this uid ("1.hand", "market.row.3"), if any.
+function Game:pileHolding(uid)
+  if uid == nil or uid == "" then return nil end
+  for _, pile in ipairs(Board.piles(self)) do
+    for _, u in ipairs(pile.uids) do
+      if u == uid then return pile.key end
+    end
+  end
+  return nil
+end
+
+-- Puts a pile back the way the state says (next frame, outside the drop
+-- event): the dropped object is removed and the pile drawn again.
+function Game:putBack(key, guid)
+  Wait.frames(function()
+    local obj = getObjectFromGUID(guid)
+    if obj then obj.destruct() end
+    Board.redraw(self, key)
+  end, 1)
+end
+
+-- A player dropped an engine card (or a whole pile) at `pos`. Moves the
+-- engine understands become actions:
+--   a card from your hand on your play or bases area -> played
+--   a card dropped on the scrap pile -> scrapped (see Game:scrapDropped)
+--   a card rearranged within your hand -> left alone
+-- Anything else, or a move that's refused, goes back where it belongs.
+function Game:dropped(color, guid, uid, pos, inOwnPlayZone)
+  local key = self:pileHolding(uid) or Board.pileOf(self, guid)
+  if not key then return false end
+  local seat = self:seatOfColor(color)
+  local x, z = pos[1], pos[3]
+  local ok, why = false, nil
+  local fromHand = seat and key == seat .. ".hand"
+  if fromHand and (inOwnPlayZone or self:playSeatAt(x, z) == seat) then
+    self:cardDroppedAt(uid, pos) -- the card animates from where it was dropped
+    ok, why = self:play(seat, uid)
+  elseif seat and Zones.onScrap(self.layout, x, z) then
+    ok, why = self:scrapDropped(seat, uid, key)
+  elseif fromHand and Zones.contains(self.layout.seats[seat].hand, x, z, 1) then
+    return false
+  end
+  if ok then return true end
+  self:putBack(key, guid)
+  return false, why
+end
+
+-- A card dropped on the scrap pile by `seat`, on their turn:
+--   from the market row -> answers a "scrap from the market row" choice if one
+--     is waiting, otherwise scraps it (announced) and the slot refills
+--   from your play area or bases -> uses its scrap ability
+--   from your hand or discard pile -> answers a waiting scrap choice
+function Game:scrapDropped(seat, uid, key)
+  local player = self.state.players[seat]
+  local prompt = player.prompts[1]
+  local c = uid ~= "" and self:cardOf(uid)
+  if not c then return false, "Drop one card at a time on the scrap pile." end
+  if key:match("^market%.row%.") then
+    if prompt and prompt.kind == "scrap_row" then return self:pick(seat, uid) end
+    local ok, why = self:act(Actions.scrapFromRow, seat, uid)
+    if ok then self:notify(player.name .. " scrapped " .. c.name .. " from the market row.") end
+    return ok, why
+  elseif key == seat .. ".play" or key == seat .. ".bases" then
+    return self:scrapFromPlay(seat, uid)
+  elseif (key == seat .. ".hand" or key == seat .. ".discard") and prompt and prompt.kind == "scrap" then
+    return self:pick(seat, uid)
+  end
+  return false, c.name .. " can't be scrapped now."
 end
 
 -- Records where a player dropped a card, so it animates from there.

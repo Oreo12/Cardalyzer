@@ -81,6 +81,9 @@ function Actions.checkAllies(game, seat)
         local key = uid .. ":" .. i
         if not fired[key] and allyMet(game, uid, c, group, cardsInPlay) then
           fired[key] = true
+          if game.notify then
+            game:notify(c.name .. " ally: " .. game.effects:describe(group.effects, c.text))
+          end
           game.effects:apply(game, seat, group.effects, { uid = uid, card = c })
           again = true
         end
@@ -195,6 +198,21 @@ function Actions.scrapFromPlay(game, seat, uid)
   end
   game.state.market.scrap[#game.state.market.scrap + 1] = uid
   game.effects:apply(game, seat, c.scrapEffects, { uid = uid, card = c })
+  return true
+end
+
+-- Scraps a card from the market row by hand (a player dragged it onto the
+-- scrap pile); the slot refills from the market deck.
+function Actions.scrapFromRow(game, seat, uid)
+  local ok, why = isActive(game, seat)
+  if not ok then return fail(why) end
+  if game.rules.mechanics and game.rules.mechanics.scrap == false then return fail("Scrapping is off in these rules.") end
+  local market = game.state.market
+  local slot = Util.indexOf(market.row, uid)
+  if not slot then return fail("That card isn't in the market row.") end
+  market.row[slot] = State.EMPTY
+  market.scrap[#market.scrap + 1] = uid
+  Turn.fillMarket(game.state)
   return true
 end
 

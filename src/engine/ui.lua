@@ -1,8 +1,10 @@
--- XML UI: an info panel everyone sees (top centre), and an action panel only the active
--- player sees (prompts, Play all, attacks, scrap abilities, End Turn).
+-- XML UI, down the right of the screen: an action panel only the active player
+-- sees (prompts, Play all, attacks, scrap abilities, End Turn) at the top, an
+-- info panel everyone sees, and Tidy table in the corner. New Game opens a
+-- setup menu in the middle (player count, Play Game, Tutorial).
 -- The whole XML is rebuilt on every refresh. Every button calls
 -- Cardalyzer_onUI in main.lua, which reads the action from the button id:
---   cz-new  cz-tidy  cz-end  cz-playall  cz-done  cz-players-<n>
+--   cz-setup  cz-setupclose  cz-new (Play Game)  cz-tidy  cz-end  cz-playall  cz-done  cz-players-<n>
 --   cz-pick-<value>  cz-attack-<seat>  cz-hit-<seat>-<uid>  cz-scrap-<uid>
 local Util = require("engine.util")
 local State = require("engine.state")
@@ -27,23 +29,6 @@ local function button(id, label)
   return string.format('<Button id="%s" onClick="Cardalyzer_onUI" preferredHeight="28">%s</Button>', id, escape(label))
 end
 
--- One status line per seat, e.g. "▶ White: Gold 3 · Might 1 · Health 40 · Deck 5 · Discard 2".
-function UI_.seatLine(game, seat)
-  local p = game.state.players[seat]
-  local parts = {}
-  for _, res in ipairs(game.rules.resources or {}) do
-    parts[#parts + 1] = (res.label or Util.titleCase(res.key)) .. " " .. (p.resources[res.key] or 0)
-  end
-  for _, stat in ipairs(game.rules.stats or {}) do
-    parts[#parts + 1] = (stat.label or Util.titleCase(stat.key)) .. " " .. (p.stats[stat.key] or 0)
-  end
-  parts[#parts + 1] = "Deck " .. #p.deck
-  parts[#parts + 1] = "Discard " .. #p.discard
-  local marker = (game.state.started and game.state.turn.active == seat) and "▶ " or "   "
-  if p.out then return marker .. p.name .. ": out" end
-  return marker .. p.name .. ": " .. table.concat(parts, " · ")
-end
-
 -- Player-count buttons (cz-players-<n>) for games that seat more than one
 -- number of players. Only the host's clicks count (see main.lua).
 function UI_.playersRow(game)
@@ -51,8 +36,7 @@ function UI_.playersRow(game)
   if range.min >= range.max then return nil end
   local state = game.state
   local current = state.nextPlayers or #state.players
-  local label = state.started and state.nextPlayers and ("Next game: " .. current .. " players") or "Players"
-  local xml = text("cz_players", label, 14, 'preferredWidth="190"')
+  local xml = text("cz_players", "Players", 15, 'preferredWidth="110"')
   for n = range.min, range.max do
     local id = "cz-players-" .. n
     local b = button(id, tostring(n)):gsub("<Button ", '<Button preferredWidth="60" ')
@@ -65,7 +49,7 @@ end
 
 function UI_.turnLine(game)
   local state = game.state
-  if not state.started then return "Press New Game to deal." end
+  if not state.started then return "Press New Game to set up a game." end
   if state.winner then return state.players[state.winner].name .. " wins!" end
   local active = state.players[state.turn.active]
   return "Turn " .. state.turn.number .. " · " .. active.name .. " to play"
@@ -126,38 +110,87 @@ UI_.seatColors = {
 local ACCENT = "#E8B84A"
 local PANEL = ' color="#0E1620F2" outline="' .. ACCENT .. '" outlineSize="2 -2" padding="14 14 12 12"'
 
--- The info panel sits alone at the top centre, below the TTS menu bar. Messages
--- are shown inside it (see Game:notify) instead of as broadcasts, which TTS
--- draws behind custom UI. Returns its XML and its height in pixels.
+-- The right-hand column: the action panel at the top (engine/ui actions), the
+-- info panel above the Tidy table button at the bottom, and a private
+-- message for one player just above the info panel.
+UI_.INFO_WIDTH = 320
+local INFO_BOTTOM = 66 -- the info panel's bottom edge, in pixels above the screen's
+local TIDY_HEIGHT = 48
+
+-- Rough pixel height of a message wrapped to the info panel's width.
+local function wrappedHeight(msg, size)
+  local perLine = math.floor((UI_.INFO_WIDTH - 28) / (size * 0.52))
+  return math.max(1, math.ceil(#msg / perLine)) * (size + 6)
+end
+
+-- A seat's block in the info panel: its name, then its resources and stats,
+-- then its deck and discard counts (or "out").
+function UI_.seatLines(game, seat)
+  local p = game.state.players[seat]
+  local marker = (game.state.started and game.state.turn.active == seat) and "▶ " or ""
+  if p.out then return { marker .. p.name .. ": out" } end
+  local parts = {}
+  for _, res in ipairs(game.rules.resources or {}) do
+    parts[#parts + 1] = (res.label or Util.titleCase(res.key)) .. " " .. (p.resources[res.key] or 0)
+  end
+  for _, stat in ipairs(game.rules.stats or {}) do
+    parts[#parts + 1] = (stat.label or Util.titleCase(stat.key)) .. " " .. (p.stats[stat.key] or 0)
+  end
+  return { marker .. p.name, table.concat(parts, " · "), "Deck " .. #p.deck .. " · Discard " .. #p.discard }
+end
+
+-- The info panel, on the right: title, turn, one block per seat, the last
+-- few messages (see Game:notify; TTS draws broadcasts behind custom UI, so
+-- they're shown here instead) and the New Game button, which opens the setup
+-- menu. Returns its XML and its height in pixels.
 function UI_.infoPanel(game)
   local state = game.state
-  local rows, height = {}, 28
+  local rows, height = {}, 26
   local function row(xml, h) rows[#rows + 1] = xml; height = height + h + 4 end
 
-  row(text("cz_title", game.rules.name or "Cardalyzer", 20, 'fontStyle="Bold" alignment="MiddleCenter" color="' .. ACCENT .. '"'), 26)
-  row(text("cz_turn", UI_.turnLine(game), 16, 'fontStyle="Bold" alignment="MiddleCenter"'), 22)
+  row(text("cz_title", game.rules.name or "Cardalyzer", 18, 'fontStyle="Bold" alignment="MiddleCenter" color="' .. ACCENT .. '"'), 24)
+  local turn = UI_.turnLine(game)
+  row(text("cz_turn", turn, 15, 'fontStyle="Bold" alignment="MiddleCenter" preferredHeight="' .. wrappedHeight(turn, 15) .. '"'),
+    wrappedHeight(turn, 15))
   for seat = 1, #state.players do
     local p = state.players[seat]
     local active = state.started and state.turn.active == seat
-    row(text("cz_seat_" .. seat, UI_.seatLine(game, seat), 15,
-      'color="' .. (UI_.seatColors[p.color] or "#FFFFFF") .. '"' .. (active and ' fontStyle="Bold"' or "")), 22)
+    local tint = 'color="' .. (UI_.seatColors[p.color] or "#FFFFFF") .. '"'
+    for i, line in ipairs(UI_.seatLines(game, seat)) do
+      local first = i == 1
+      row(text("cz_seat_" .. seat .. (first and "" or ("_" .. i)), line, first and 15 or 13,
+        tint .. ((first and active) and ' fontStyle="Bold"' or "") .. ' preferredHeight="' .. (first and 20 or 17) .. '"'),
+        first and 20 or 17)
+    end
   end
   for i, msg in ipairs(game.notices and game.notices.all or {}) do
-    row(text("cz_notice_" .. i, msg, 13, 'color="' .. ACCENT .. '" fontStyle="Italic"'), 18)
+    local h = wrappedHeight(msg, 12)
+    row(text("cz_notice_" .. i, msg, 12, 'color="' .. ACCENT .. '" fontStyle="Italic" preferredHeight="' .. h .. '"'), h)
   end
-  local buttons = button("cz-new", "New Game") .. button("cz-tidy", "Tidy table")
-  local who = Tutorial.visibility(game)
-  if who ~= "" then
-    buttons = buttons .. button("cz-tutorial", "Tutorial"):gsub("<Button ", '<Button visibility="' .. who .. '" ')
-  end
-  row('<HorizontalLayout spacing="8" preferredHeight="28" childForceExpandWidth="false" childAlignment="MiddleCenter">'
-    .. buttons:gsub("<Button ", '<Button preferredWidth="150" ') .. '</HorizontalLayout>', 28)
+  row(button("cz-setup", "New Game"), 28)
+
+  return '<Panel id="cz_panel" width="' .. UI_.INFO_WIDTH .. '" height="' .. height .. '" rectAlignment="LowerRight" offsetXY="-10 '
+    .. INFO_BOTTOM .. '"' .. PANEL .. '><VerticalLayout spacing="4" childForceExpandHeight="false">' .. table.concat(rows)
+    .. '</VerticalLayout></Panel>', height
+end
+
+-- The setup menu, in the middle of the screen for the player who pressed New
+-- Game: the player count, Play Game (deals and closes the menu), Tutorial and
+-- Close. Choices made here are kept for next time.
+function UI_.setupPanel(game, color)
+  local rows, height = {}, 26
+  local function row(xml, h) rows[#rows + 1] = xml; height = height + h + 8 end
+  row(text("cz_setup_title_" .. color, "New Game", 20, 'fontStyle="Bold" alignment="MiddleCenter" color="' .. ACCENT .. '"'), 26)
   local players = UI_.playersRow(game)
   if players then row(players, 28) end
-
-  return '<Panel id="cz_panel" width="620" height="' .. height .. '" rectAlignment="UpperCenter" offsetXY="0 -50"'
-    .. PANEL .. '><VerticalLayout spacing="4" childForceExpandHeight="false">' .. table.concat(rows)
-    .. '</VerticalLayout></Panel>', height
+  local buttons = button("cz-new", "Play Game")
+  if Tutorial.buttonShown(game, color) then buttons = buttons .. button("cz-tutorial", "Tutorial") end
+  buttons = buttons .. button("cz-setupclose", "Close")
+  row('<HorizontalLayout spacing="8" preferredHeight="30" childForceExpandWidth="false" childAlignment="MiddleCenter">'
+    .. buttons:gsub("<Button ", '<Button preferredWidth="120" ') .. '</HorizontalLayout>', 30)
+  return '<Panel id="cz_setup_' .. color .. '" visibility="' .. color .. '" width="440" height="' .. height
+    .. '" rectAlignment="MiddleCenter"' .. PANEL .. '><VerticalLayout spacing="8" childForceExpandHeight="false">'
+    .. table.concat(rows) .. '</VerticalLayout></Panel>'
 end
 
 function UI_.xml(game)
@@ -165,17 +198,28 @@ function UI_.xml(game)
   local info, infoHeight = UI_.infoPanel(game)
   local parts = { info }
 
-  -- A private message for one player, just under the info panel.
+  -- Tidy table on its own, in the bottom right corner.
+  parts[#parts + 1] = '<Panel id="cz_tidy" width="170" height="' .. TIDY_HEIGHT .. '" rectAlignment="LowerRight" offsetXY="-10 10"'
+    .. PANEL .. '>' .. button("cz-tidy", "Tidy table") .. '</Panel>'
+
+  -- A private message for one player, just above the info panel.
   local byColor = game.notices and game.notices.byColor or {}
   local colors = {}
   for color in pairs(byColor) do colors[#colors + 1] = color end
   table.sort(colors)
   for _, color in ipairs(colors) do
-    parts[#parts + 1] = '<Panel id="cz_notice_' .. color .. '" visibility="' .. color .. '" width="620" height="40"'
-      .. ' rectAlignment="UpperCenter" offsetXY="0 ' .. -(50 + infoHeight + 6) .. '"' .. PANEL .. '>'
-      .. text("cz_notice_text_" .. color, byColor[color], 14, 'alignment="MiddleCenter" color="' .. ACCENT .. '"')
+    local h = wrappedHeight(byColor[color], 13) + 24
+    parts[#parts + 1] = '<Panel id="cz_notice_' .. color .. '" visibility="' .. color .. '" width="' .. UI_.INFO_WIDTH
+      .. '" height="' .. h .. '" rectAlignment="LowerRight" offsetXY="-10 ' .. (INFO_BOTTOM + infoHeight + 6) .. '"' .. PANEL .. '>'
+      .. text("cz_notice_text_" .. color, byColor[color], 13, 'alignment="MiddleCenter" color="' .. ACCENT .. '"')
       .. '</Panel>'
   end
+
+  -- The setup menu, for each player who opened it.
+  local setup = {}
+  for color in pairs(game.setupOpen or {}) do setup[#setup + 1] = color end
+  table.sort(setup)
+  for _, color in ipairs(setup) do parts[#parts + 1] = UI_.setupPanel(game, color) end
 
   -- The tutorial, in the middle of the screen, for each player reading it.
   local open = game.tutorialOpen or {}

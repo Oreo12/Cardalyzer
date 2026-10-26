@@ -103,8 +103,11 @@ Realms, Ascension, Dominion, and the card play in Clank-style games.
   haven't been played in TTS yet. Four seats need a table about 60 units wide;
   on a smaller one, lower `layout.seatSpread`.
 - **Cards moved by hand.** Cardalyzer tracks the game in its script, not by
-  where cards sit. If you drag a card somewhere it doesn't read, use Tidy table
-  to put everything back.
+  where cards sit. It understands a few drags: a card from your hand onto your
+  play area is played, and a market row card, or one you have in play, dropped
+  on the scrap pile is scrapped. Any other drag is undone: the card goes back
+  where it belongs. Engine cards never merge into decks. Moving a card on
+  someone else's behalf, or between players, isn't possible by hand.
 
 **Magic: The Gathering and similar games** aren't a good fit. They rely on the
 stack, instants, triggered and static abilities, coloured mana, blocking and
@@ -182,26 +185,37 @@ To play:
    `build/Global.lua`. If you use VS Code, the
    [TTS Editor extension](https://marketplace.visualstudio.com/items?itemName=sebaestschjin.tts-editor)
    can push it for you.
-3. Click **Save & Play**. The info panel appears on its own at the top centre of
-   the screen, with each player's line in their seat colour:
+3. Click **Save & Play**. The info panel appears on the right of the screen,
+   with a block for each player in their seat colour, and **Tidy table** sits
+   on its own in the bottom right corner:
    ```
    Ember Guilds
-   Press New Game to deal.
-      White: Gold 0 · Might 0 · Health 40 · Deck 0 · Discard 0
-      Red: Gold 0 · Might 0 · Health 40 · Deck 0 · Discard 0
-   [New Game] [Tidy table] [Tutorial]
-   Players [2] [3] [4]
+   Press New Game to set up a game.
+   White
+   Gold 0 · Might 0 · Health 40
+   Deck 0 · Discard 0
+   Red
+   Gold 0 · Might 0 · Health 40
+   Deck 0 · Discard 0
+   [New Game]
    ```
-   The host can pick how many play. Before the first game the table is laid
-   out again straight away; during a game the choice waits for the next
-   **New Game**.
-   Messages, such as "It's not your turn", appear inside this panel (the last
-   three for everyone, plus a private line just below it for the player they
-   concern), and are copied to chat. Cardalyzer doesn't use TTS broadcasts for
-   them, because TTS draws broadcast text behind custom UI.
-4. Sit at White and press **New Game** (only the host can). Each seat
-   gets its starter deck, the first player draws 3 cards and everyone else
-   draws 5, and five cards fill the market row.
+   Messages, such as "It's not your turn" or "Ember Smith ally: +2 Might",
+   appear inside this panel (the last three for everyone, plus a private line
+   just above it for the player they concern), and are copied to chat.
+   Cardalyzer doesn't use TTS broadcasts for them, because TTS draws broadcast
+   text behind custom UI.
+4. Sit at White and press **New Game** (only the host can). A setup menu opens
+   in the middle of your screen:
+   ```
+   New Game
+   Players [2] [3] [4]
+   [Play Game] [Tutorial] [Close]
+   ```
+   Pick how many play (the table is laid out for them straight away before
+   the first game) and press **Play Game**. The menu closes, each seat gets
+   its starter deck, the first player draws 3 cards and everyone else draws
+   5, and five cards are dealt into the market row. The menu remembers your
+   choices for next time.
 5. Play your turn. A second panel at the top right shows only to the
    player whose turn it is:
    ```
@@ -226,9 +240,9 @@ To play:
    - **End Turn**. Your played cards and your hand go to your discard pile,
      buildings stay, you draw 5, and play passes to the next seat. When a deck runs out,
      the discard pile is shuffled into it automatically.
-6. If cards end up somewhere odd after a drag, press **Tidy table**. It redraws
-   every pile from the game state.
-7. New to the table? Press **Tutorial** in the info panel. It opens a short
+6. If cards end up somewhere odd, press **Tidy table**. It redraws every pile
+   from the game state.
+7. New to the table? Press **Tutorial** in the setup menu. It opens a short
    guide in the middle of your screen, only for you, covering what Cardalyzer
    does, where the info panel, action panel and messages are, and how the table
    is laid out. **Hide button** removes the Tutorial button for you (it stays

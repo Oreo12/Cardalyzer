@@ -22,6 +22,7 @@ end
 
 local HOST = { color = "White", host = true }
 local GUEST = { color = "Red", host = false }
+local function press(player, id) Cardalyzer_onUI(player, "-1", id) end
 
 local function boot(saved)
   tts.reset()
@@ -77,7 +78,8 @@ test("boot builds zones, hands and the UI", function()
   eq(count(ofType("ScriptingTrigger")), 9, "scripting zones (4 per seat + market)")
   eq(count(ofType("HandTrigger")), 2, "hand zones")
   eq(count(function(o) return o.tags.cz_card end), 0, "no cards before New Game")
-  assert(tts.ui.xml:find("cz-new", 1, true), "New Game button in XML")
+  assert(tts.ui.xml:find("cz-setup", 1, true), "New Game button in XML")
+  assert(not tts.ui.xml:find("cz-new", 1, true), "setup menu closed until New Game is pressed")
   assert(tts.ui.xml:find("Press New Game"), "prompt to start")
   assert(not tts.ui.xml:find("cz-end", 1, true), "no action panel before the game starts")
 end)
@@ -155,13 +157,17 @@ test("End Turn is refused for the wrong player", function()
   assert(tts.broadcasts[#tts.broadcasts]:find("turn"), "told why")
 end)
 
-test("the info panel stands alone at the top centre and holds messages", function()
+test("the UI runs down the right: action panel, info panel, Tidy table in the corner", function()
   local game = boot()
   Cardalyzer_onStartGame(HOST)
   local xml = tts.ui.xml
-  assert(xml:find('id="cz_panel" width="620" height="%d+" rectAlignment="UpperCenter"'), "info panel centred")
-  assert(xml:find('id="cz_actions"[^>]*rectAlignment="UpperRight"'), "action panel kept to the side")
-  assert(xml:find('id="cz_seat_2" fontSize="15" color="#E5413F"', 1, true), "seat lines tinted")
+  assert(xml:find('id="cz_panel" width="320" height="%d+" rectAlignment="LowerRight"'), "info panel on the right")
+  assert(xml:find('id="cz_actions"[^>]*rectAlignment="UpperRight"'), "action panel top right")
+  assert(xml:find('id="cz_tidy"[^>]*rectAlignment="LowerRight" offsetXY="%-10 10"'), "Tidy table in its own corner panel")
+  assert(not xml:find('id="cz_panel".-cz%-tidy.-</Panel><Panel id="cz_tidy"'), "not in the info panel")
+  assert(xml:find('id="cz_seat_2" fontSize="15" color="#E5413F"', 1, true), "seat names tinted")
+  assert(xml:find('id="cz_seat_2_2"[^>]*>Gold 0 · Might 0 · Health 40<'), "resources and stats on their own line")
+  assert(xml:find('id="cz_seat_2_3"[^>]*>Deck 5 · Discard 0<'), "pile counts on another")
   assert(not xml:find('color="[^"]*"[^>]-color="'), "no duplicate color attributes")
 
   Cardalyzer_onEndTurn(GUEST)
@@ -177,6 +183,28 @@ test("the info panel stands alone at the top centre and holds messages", functio
 
   Cardalyzer_onEndTurn(HOST)
   assert(tts.ui.xml:find('id="cz_notice_' .. GUEST.color .. '"', 1, true), "guest notice stays until the guest acts")
+end)
+
+test("New Game opens a setup menu; Play Game deals and closes it", function()
+  local game = boot()
+  local xml = tts.ui.xml
+  assert(xml:find('id="cz%-setup"[^>]*>New Game<'), "the info panel only has New Game")
+  assert(not xml:find("cz-tutorial", 1, true) and not xml:find("cz-players", 1, true), "settings are in the menu")
+  press(GUEST, "cz-setup")
+  assert(not tts.ui.xml:find("cz_setup_", 1, true), "only the host can open it")
+  press(HOST, "cz-setup")
+  xml = tts.ui.xml
+  assert(xml:find('id="cz_setup_White" visibility="White"[^>]*rectAlignment="MiddleCenter"'), "menu in the middle, for the host")
+  assert(xml:find('id="cz%-new"[^>]*>Play Game<'), "Play Game")
+  assert(xml:find("cz-tutorial", 1, true) and xml:find("cz-players-3", 1, true), "Tutorial and player count")
+  press(HOST, "cz-setupclose")
+  assert(not tts.ui.xml:find("cz_setup_White", 1, true), "Close shuts it")
+  press(HOST, "cz-setup")
+  press(HOST, "cz-players-3")
+  press(HOST, "cz-new")
+  eq(game.state.started, true, "Play Game deals")
+  eq(#game.state.players, 3, "with the chosen player count")
+  assert(not tts.ui.xml:find("cz_setup_White", 1, true), "and closes the menu")
 end)
 
 test("cards dealt into a hand are turned 180 from the hand zone", function()
@@ -196,35 +224,39 @@ end)
 
 test("the tutorial opens, pages, closes and its button can be hidden", function()
   local game = boot()
-  assert(tts.ui.xml:find('visibility="White|Brown|Red', 1, true), "Tutorial button for everyone")
-  Cardalyzer_onUI(HOST, "-1", "cz-tutorial")
+  local BLUE_HOST = { color = "Blue", promoted = true }
+  press(HOST, "cz-setup")
+  assert(tts.ui.xml:find('id="cz_setup_White".-cz%-tutorial'), "Tutorial button in the setup menu")
+  press(HOST, "cz-tutorial")
   local xml = tts.ui.xml
   assert(xml:find('id="cz_tutorial_White" visibility="White"', 1, true), "tutorial only for its reader")
   assert(xml:find('rectAlignment="MiddleCenter"', 1, true), "middle of the screen")
   assert(xml:find("Welcome to Ember Guilds", 1, true), "page 1")
   assert(not xml:find("cz-tutback", 1, true), "no Back on page 1")
-  Cardalyzer_onUI(HOST, "-1", "cz-tutnext")
-  assert(tts.ui.xml:find("The info panel (top centre)", 1, true), "page 2")
-  for _ = 1, 10 do Cardalyzer_onUI(HOST, "-1", "cz-tutnext") end
+  press(HOST, "cz-tutnext")
+  assert(tts.ui.xml:find("The info panel (right side)", 1, true), "page 2")
+  for _ = 1, 10 do press(HOST, "cz-tutnext") end
   assert(tts.ui.xml:find("Page 5 of 5", 1, true), "stops at the last page")
   assert(not tts.ui.xml:find("cz-tutnext", 1, true), "no Next on the last page")
-  Cardalyzer_onUI(HOST, "-1", "cz-tutback")
+  press(HOST, "cz-tutback")
   assert(tts.ui.xml:find("Page 4 of 5", 1, true), "back a page")
-  Cardalyzer_onUI(HOST, "-1", "cz-tutclose")
+  press(HOST, "cz-tutclose")
   assert(not tts.ui.xml:find("cz_tutorial_White", 1, true), "closed")
 
-  Cardalyzer_onUI(HOST, "-1", "cz-tutorial")
-  Cardalyzer_onUI(HOST, "-1", "cz-tuthide")
+  press(HOST, "cz-tutorial")
+  press(HOST, "cz-tuthide")
   xml = tts.ui.xml
   assert(not xml:find("cz_tutorial_White", 1, true), "hide also closes")
-  assert(not xml:find('visibility="White|', 1, true), "button hidden for White")
-  assert(xml:find('visibility="Brown|Red', 1, true), "still shown to others")
-  assert(xml:find("!tutorial", 1, true), "told how to bring it back")
+  assert(not xml:find('id="cz_setup_White".-cz%-tutorial'), "button hidden for White")
+  press(BLUE_HOST, "cz-setup")
+  assert(tts.ui.xml:find('id="cz_setup_Blue".-cz%-tutorial'), "still shown to others")
+  assert(tts.ui.xml:find("!tutorial", 1, true), "told how to bring it back")
 
   local restored = boot(game:save())
-  assert(not tts.ui.xml:find('visibility="White|', 1, true), "stays hidden after reload")
+  press(HOST, "cz-setup")
+  assert(not tts.ui.xml:find("cz-tutorial", 1, true), "stays hidden after reload")
   eq(onChat("!tutorial", HOST), false, "chat command swallowed")
-  assert(tts.ui.xml:find('visibility="White|', 1, true), "button back")
+  assert(tts.ui.xml:find('id="cz_setup_White".-cz%-tutorial'), "button back")
   assert(tts.ui.xml:find("cz_tutorial_White", 1, true), "and the tutorial opens")
   eq(onChat("hello", HOST), true, "other chat passes through")
   assert(restored)
@@ -233,7 +265,7 @@ end)
 test("a game can turn the Tutorial button off", function()
   local game = boot()
   game.rules.tutorial = false
-  game:refreshUI()
+  press(HOST, "cz-setup")
   assert(not tts.ui.xml:find("cz-tutorial", 1, true), "no Tutorial button")
   game.rules.tutorial = nil
 end)
@@ -741,6 +773,8 @@ end)
 
 test("the host picks 2 to 4 players and the table is laid out for them", function()
   local game = boot()
+  assert(not tts.ui.xml:find('id="cz-players-4"', 1, true), "player count lives in the setup menu")
+  click(HOST, "cz-setup")
   assert(tts.ui.xml:find('id="cz-players-4"', 1, true), "player-count buttons")
   click(GUEST, "cz-players-3")
   eq(#game.state.players, 2, "guests can't change it")
@@ -767,7 +801,9 @@ test("the host picks 2 to 4 players and the table is laid out for them", functio
   -- During a game the choice waits for the next New Game.
   click(HOST, "cz-players-2")
   eq(#s.players, 3, "current game unchanged")
-  assert(tts.ui.xml:find("Next game: 2 players", 1, true), "shown as the next game's count")
+  click(HOST, "cz-setup")
+  assert(tts.ui.xml:find('fontStyle="Bold" textColor="#E8B84A" preferredWidth="60" id="cz-players-2"', 1, true),
+    "the setup menu remembers the choice")
   DBE_start()
   eq(#game.state.players, 2, "next game seats 2")
   eq(count(ofType("ScriptingTrigger")), 9, "back to two seats of zones")
@@ -1122,6 +1158,130 @@ test("play areas, decks, discards, the market and the scrap pile are outlined", 
   game.rules.outlines = false
   click(HOST, "cz-players-2")
   eq(#tts.lines, 0, "rules.outlines = false turns them off")
+end)
+
+---------------------------------------------------------------------------
+-- Moving cards by hand
+---------------------------------------------------------------------------
+
+-- Drops the object drawn for `uid` at table point (x, z), lifted as TTS does.
+local function dropAt(game, color, uid, x, z)
+  local obj
+  for _, guids in pairs(game.state.view.piles) do
+    for _, g in ipairs(guids) do
+      local o = getObjectFromGUID(g)
+      if o and o.data.GMNotes == uid then obj = o end
+    end
+  end
+  assert(obj, "no object drawn for " .. uid)
+  obj.position, obj.zones = { x, 4, z }, {}
+  onObjectDrop(color, obj)
+  return obj
+end
+
+test("engine cards never merge into decks", function()
+  local game, put = blank()
+  put(1, "discard", "apprentice"); put(1, "discard", "squire")
+  game:tidy()
+  local deck = getObjectFromGUID(game.state.view.piles["1.discard"][1])
+  local card = spawnObjectData({ data = { Name = "Card", Tags = { "cz_card" } } })
+  eq(tryObjectEnterContainer(deck, card), false, "an engine card can't join an engine deck")
+  local other = spawnObjectData({ data = { Name = "Card" } })
+  local bag = spawnObjectData({ data = { Name = "Bag" } })
+  eq(tryObjectEnterContainer(bag, other), true, "other objects are left alone")
+end)
+
+test("dragging a market row card onto the scrap pile scraps it and refills the slot", function()
+  local game, _, putRow, putMarketDeck = blank()
+  local junk = putRow(1, "tide_runner")
+  local next = putMarketDeck("seed_vault")
+  game:tidy()
+  local scrap = game.layout.market.scrap.position
+  dropAt(game, "White", junk, scrap[1] + 0.5, scrap[3] - 0.5)
+  local m = game.state.market
+  assert(has(m.scrap, junk), "in the scrap pile")
+  eq(m.row[1], next, "slot refilled from the market deck")
+  eq(#game.state.view.piles["market.row.1"], 1, "and drawn")
+  assert(tts.ui.xml:find("White scrapped Tide Runner from the market row.", 1, true), "announced to everyone")
+  -- Not your turn: it goes back.
+  local keep = m.row[1]
+  dropAt(game, "Red", keep, scrap[1], scrap[3])
+  eq(m.row[1], keep, "Red can't scrap on White's turn")
+  eq(#game.state.view.piles["market.row.1"], 1, "card back in its slot")
+  eq(getObjectFromGUID(game.state.view.piles["market.row.1"][1]).position[1], game.layout.market.row[1].position[1], "at its spot")
+end)
+
+test("dragging answers a waiting 'scrap from the market row' choice", function()
+  local game, put, putRow = blank()
+  local target = putRow(1, "tide_runner")
+  game:play(1, put(1, "hand", "herbalist")) -- any card; then queue the choice directly
+  game:prompt(1, { kind = "scrap_row", count = 1, optional = true })
+  game:tidy()
+  local scrap = game.layout.market.scrap.position
+  dropAt(game, "White", target, scrap[1], scrap[3])
+  assert(has(game.state.market.scrap, target), "scrapped")
+  for _, pr in ipairs(game.state.players[1].prompts) do assert(pr.kind ~= "scrap_row", "choice answered") end
+end)
+
+test("dragging a card in play onto the scrap pile uses its scrap ability", function()
+  local game, put = blank()
+  local hireling = put(1, "hand", "hireling")
+  game:play(1, hireling)
+  game:tidy()
+  local scrap = game.layout.market.scrap.position
+  dropAt(game, "White", hireling, scrap[1], scrap[3])
+  eq(game.state.players[1].resources.might, 2, "scrap ability applied")
+  assert(has(game.state.market.scrap, hireling), "scrapped")
+  -- A card without a scrap ability goes back to play.
+  local smith = put(1, "hand", "ember_smith")
+  game:play(1, smith)
+  game:tidy()
+  dropAt(game, "White", smith, scrap[1], scrap[3])
+  assert(has(game.state.players[1].play, smith), "still in play")
+  assert(lastBroadcast():find("has no scrap ability", 1, true), "told why")
+end)
+
+test("a card dropped somewhere the engine doesn't read goes back", function()
+  local game, put = blank()
+  local played = put(1, "hand", "apprentice")
+  game:play(1, played)
+  put(1, "deck", "squire"); put(1, "deck", "squire")
+  game:tidy()
+  dropAt(game, "White", played, 25, 25) -- off in a corner
+  eq(#game.state.view.piles["1.play"], 1, "redrawn in the play area")
+  -- A card pulled off a two-card deck: TTS leaves one loose card and a moved one.
+  local deck = game.state.players[1].deck
+  local pulled = spawnObjectData({ data = { Name = "Card", GMNotes = deck[2], Tags = { "cz_card" } } })
+  local leftover = spawnObjectData({ data = { Name = "Card", GMNotes = deck[1], Tags = { "cz_card" } } })
+  getObjectFromGUID(game.state.view.piles["1.deck"][1]).destruct() -- TTS removes the deck object
+  pulled.position, pulled.zones = { 20, 3, -20 }, {}
+  onObjectDrop("White", pulled)
+  eq(getObjectFromGUID(pulled.getGUID()), nil, "the pulled card is removed")
+  eq(getObjectFromGUID(leftover.getGUID()), nil, "and so is the loose leftover")
+  eq(#game.state.view.piles["1.deck"], 1, "the deck is drawn again whole")
+  local tracked = 0
+  for _, guids in pairs(game.state.view.piles) do tracked = tracked + #guids end
+  eq(count(function(o) return o.tags.cz_card end), tracked, "no stray cards")
+end)
+
+test("a hand card dropped on your play area on someone else's turn goes back to your hand", function()
+  local game, put = blank()
+  local uid = put(2, "hand", "apprentice")
+  game:tidy()
+  local area = game.layout.seats[2].play.position
+  dropAt(game, "Red", uid, area[1], area[3])
+  assert(has(game.state.players[2].hand, uid), "still in Red's hand")
+  eq(#game.state.view.piles["2.hand"], 1, "drawn back in the hand")
+  local tracked = 0
+  for _, guids in pairs(game.state.view.piles) do tracked = tracked + #guids end
+  eq(count(function(o) return o.tags.cz_card end), tracked, "no copy left in the play area")
+end)
+
+test("each ally ability that fires is announced", function()
+  local game, put = blank()
+  game:play(1, put(1, "hand", "ember_smith"))
+  game:play(1, put(1, "hand", "ember_smith"))
+  assert(tts.ui.xml:find("Ember Smith ally: +2 Might", 1, true), "shown in the info panel")
 end)
 
 print(string.format("\n%d passed, %d failed", passed, failed))
