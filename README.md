@@ -409,7 +409,9 @@ One row per card. The column order doesn't matter, but the names do.
 | `copies` | yes | How many copies exist (see `deck`) | `1` |
 | `effects` | yes (may be empty) | What happens when it's played | `might:3` |
 | `ally_effects` | no | Extra effects when another card sharing a faction is in play; once per turn | `draw:1` |
-| `scrap_effects` | no | Effects when you scrap it (remove it from the game) | `might:2` |
+| `double_ally_effects` | no | Like `ally_effects`, but needs two other cards of the faction in play | `might:3` |
+| `scrap_effects` | no | Effects when you scrap it (remove it from the game). A faction prefix (`forge=might:8`) means it can only be scrapped while that ally is in play | `might:2` |
+| `set` | no | Which set the card belongs to (a `key` from `rules.sets`); players choose sets in the New Game menu | `expansion1` |
 | `defense` | no | Damage needed to destroy a persistent card | `5` |
 | `text` | no | Extra rules text shown on the card | `Ally: take a free card.` |
 
@@ -433,6 +435,11 @@ fine.
 | `opponent_discard:1` | Each opponent discards a card at the start of their next turn |
 | `scrap_hand:1` | You may scrap a card from your hand or discard pile |
 | `scrap_required:1` | You must scrap a card from your hand or discard pile (if you have one) |
+| `scrap_from_hand:1`, `scrap_from_discard:1` | You may scrap a card from just your hand, or just your discard pile (add `_required` to make it a must) |
+| `discard:1` | Discard a card (required) |
+| `cycle:2` | Discard up to 2 cards, then draw that many |
+| `free_buy:4` | Take a card costing 4 or less from the market row for free. `free_buy_hand:4` puts it into your hand, `free_buy_top:4` on top of your deck, `free_ship_top:4` takes a `ship` onto your deck |
+| `bounce_base:1` | Return an opponent's base to its owner's hand |
 | `scrap_row:1` | You may scrap a card from the market row (it refills) |
 | `destroy_base:1` | You may destroy an opponent's building, ignoring guards |
 | `draw_discard:1` | Draw a card, then discard a card |
@@ -471,6 +478,7 @@ These are the fields in `games/<yours>/rules.lua`:
 | `market.rowSize` | `5` | Face-up market slots |
 | `market.buyTo` | `"discard"` or `"deck_top"` | Where bought cards go |
 | `market.returnScrapped` | `true` | A scrapped card from a fixed pile goes back to its pile instead of the scrap pile (Star Realms' Explorers) |
+| `sets` | `{ {key="base", label="Base Game", always=true}, {key="exp1", label="Expansion", default=true} }` | Sets of cards (named in the `set` column) the host switches in or out in the New Game menu. `always` sets can't be switched off; `default` ones start on. Cards with no `set` are always in |
 | `market.faceActive` | `false` | Leave out to turn the market's cards to face the player whose turn it is; `false` keeps them facing seat 1 |
 | `factions` | `forge = {label="Forge", color="#C8502D"}` | Faction labels and frame colours |
 | `cardTypes` | `wall = {persistent=true, guard=true}` | Types. Persistent ones stay in play and apply their effects again each turn; guard ones must be destroyed before their owner or other buildings can be attacked |
@@ -558,6 +566,19 @@ Prompts take a few extra fields:
 - `pick`: choose a card you have in play (`cardType` and `exclude = uid`
   narrow it), then the custom effect named by `custom` runs its `onPick`.
 
+More prompt fields:
+
+- `scrap`: `from` can include `"row"` (the market row) as well as `"hand"` and `"discard"`.
+- `scrap`, `free_buy`, `pick`: `cardType` (a type or a list), `maxCost`, and
+  `factions` (a list; the card needs one of them) narrow the choice.
+- `pick`: `scope` is `"play"` (your cards in play, the default), `"bases"`
+  (every base in play), `"discard"` (your discard pile) or `"opponentDiscard"`;
+  `only` limits it to a list of card uids.
+- `destroy_base`: `bounce = true` returns the base to its owner's hand.
+- Any prompt with `custom = "<name>"` calls that custom effect's
+  `afterPick(game, seat, uid, prompt)` after each card picked and
+  `afterPrompt(game, seat, prompt)` when it ends (`prompt.picked` is how many).
+
 Setting `game.state.players[seat].flags.buyToTop = true` puts the next card
 that player buys on top of their deck. Set it to a card type, such as
 `"ship"`, to wait for the next card of that type, as in "put the next ship you
@@ -577,6 +598,26 @@ Besides `apply`, a custom effect can have:
 - `onPick = function(game, seat, uid, prompt)`: answers a `pick` prompt.
 
 `game.state.turn.played` lists the cards played this turn, in order.
+Turn flags for the next card bought (each takes `true`, a type such as
+`"ship"`, or a list of types, and is used up when it applies):
+`buyToTop`, `mayBuyToTop` (asks), `buyToHand`, and `buyToPlay` (straight into
+play, its effects applying).
+
+More hooks a custom effect can have:
+
+- `onAcquire = function(game, seat, ctx)`: runs when the card is bought.
+- `whenYouScrap = function(game, seat, ctx, scrapped)`: while in play, runs
+  each time its owner scraps a card from hand or discard pile.
+- `whenTurnEnds = function(game, seat, ctx)`: for a card in play at the end
+  of the turn; returning `"hand"` keeps it, back in the hand after the new
+  hand is drawn ("docking").
+- `atTurnEnd = function(game, seat, job)`: runs for jobs queued with
+  `game:atTurnEnd({ custom = "<name>", ... })` this turn.
+
+`game.state.turn.scrapped` counts the active player's cards scrapped this
+turn (`total`, and `handOrDiscard`). `game:addFaction(seat, uid, faction)`
+gives a card an extra faction until the end of the turn and checks allies.
+
 `game:copyCard(seat, uid, id)` makes card `uid` act as card `id` until the
 end of the turn, with both cards' factions, and applies the copied card's
 effects ("copy another ship you've played this turn").

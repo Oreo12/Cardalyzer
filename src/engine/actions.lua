@@ -478,7 +478,9 @@ function Actions.targets(game, seat, prompt)
     out[#out + 1] = { value = uid, label = card(game, uid).name .. (where and (" (" .. where .. ")") or "") }
   end
   local function addIf(uid, where)
-    if uid ~= State.EMPTY and uid ~= prompt.exclude and passes(prompt, card(game, uid)) then add(uid, where) end
+    if uid == State.EMPTY or uid == prompt.exclude then return end
+    if prompt.only and not Util.indexOf(prompt.only, uid) then return end -- limited to these uids
+    if passes(prompt, card(game, uid)) then add(uid, where) end
   end
   local kind = prompt.kind
   if kind == "choice" then
