@@ -170,7 +170,7 @@ function Zones.build(game, layout)
 
   for seat, s in ipairs(layout.seats) do
     local color = game.state.players[seat].color
-    local hand = findHand(color)
+    local hand = view.hands[color] and getObjectFromGUID(view.hands[color]) or findHand(color)
     if hand then
       place(hand, s.hand)
     else
