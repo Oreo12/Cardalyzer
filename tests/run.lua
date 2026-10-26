@@ -2493,5 +2493,58 @@ test("animation timing, card tooltips, the Buy button's look, message history", 
   game.rules.animation, game.rules.ui = nil, nil
 end)
 
+test("seating: around the table, along one side, or at exact spots", function()
+  local game = boot()
+  local Zones = Cardalyzer.require("engine.zones")
+  local function near(a, b) return math.abs(a - b) < 0.01 end
+  -- around: every seat faces the middle, the same distance away, its areas apart from the others'
+  game.rules.layout = { seating = "around", seatDistance = 14 }
+  local layout = Zones.layout(game.rules, nil, 3)
+  for seat, s in ipairs(layout.seats) do
+    local p, f = s.play.position, s.play.forward
+    local back = { p[1] - f[1] * 2, p[3] - f[2] * 2 } -- the seat's own spot (play sits 2 out)
+    assert(near(math.sqrt(back[1] ^ 2 + back[2] ^ 2), 14), "seat " .. seat .. " is 14 from the middle")
+    assert(near(back[1] + f[1] * 14, 0) and near(back[2] + f[2] * 14, 0), "seat " .. seat .. " faces the middle")
+    for other, o in ipairs(layout.seats) do
+      if other ~= seat then
+        assert(not Zones.contains(o.play, p[1], p[3]), "seat " .. seat .. "'s play area is clear of seat " .. other .. "'s")
+      end
+    end
+    eq(Zones.playSeatAt(layout, p[1], p[3]), seat, "a card dropped on seat " .. seat .. "'s play area is theirs")
+  end
+  eq(layout.seats[1].play.rotation[2], 180, "seat 1 at the bottom, as before")
+  -- an oval
+  game.rules.layout = { seating = "around", seatRadius = { x = 30, z = 10 } }
+  layout = Zones.layout(game.rules, nil, 4)
+  local s2 = layout.seats[2].play
+  assert(near(s2.position[1] - s2.forward[1] * 2, -30), "seat 2 out on the long axis")
+  -- one side
+  game.rules.layout = { seating = "oneSide", seatDistance = 12, seatSpread = 30 }
+  layout = Zones.layout(game.rules, nil, 3)
+  for _, s in ipairs(layout.seats) do assert(near(s.play.position[3], -10), "all along the bottom") end
+  assert(near(layout.seats[3].play.position[1] - layout.seats[1].play.position[1], 60), "seatSpread apart")
+  -- exact spots for two players, the rest "sides"
+  game.rules.layout = { seating = { [2] = { { x = -20, z = 0, yaw = 90 }, { x = 20, z = 0, yaw = 270 } } } }
+  layout = Zones.layout(game.rules, nil, 2)
+  assert(near(layout.seats[1].play.position[1], -18), "seat 1 on the left, facing right")
+  eq(layout.seats[2].play.rotation[2], (180 + 270) % 360, "seat 2's cards turned to face them")
+  layout = Zones.layout(game.rules, nil, 3)
+  assert(near(layout.seats[1].play.position[3], -8), "three players: the usual sides")
+  -- a game played around a circle loses no cards
+  game.rules.layout = { seating = "around" }
+  click(HOST, "cz-players-4")
+  Cardalyzer_onStartGame(HOST)
+  local UI = Cardalyzer.require("engine.ui")
+  for _ = 1, 40 do
+    local seat = game.state.turn.active
+    local who = { color = game.state.players[seat].color, host = seat == 1 }
+    click(who, "cz-playall")
+    for _, b in ipairs(UI.actions(game).buttons) do if b.id:find("^cz%-attack%-") then click(who, b.id); break end end
+    Cardalyzer_onEndTurn(who)
+  end
+  for _, b in ipairs(tts.broadcasts) do assert(not b:find("%[Cardalyzer%]"), "no errors: " .. b) end
+  game.rules.layout = nil
+end)
+
 print(string.format("\n%d passed, %d failed", passed, failed))
 if failed > 0 then os.exit(1) end

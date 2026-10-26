@@ -504,6 +504,7 @@ These are the fields in `games/<yours>/rules.lua`:
 | `win` | `{type="stat_depleted", stat="health", atOrBelow=0}` | Attacks lower this stat. A player who drops to it is out (no more turns, can't be attacked); the last player left wins |
 | `art.baseUrl` | `"https://…/games/sample/"` | Where the card images are hosted (see [Using card art you already have](#using-card-art-you-already-have)) |
 | `layout` | `{seatDistance=10, cardSpacing=2.8, seatSpread=28}` | Table spacing; adjust if piles overlap your table's edge. `seatSpread` is how far apart two seats on the same side sit (default 10 × `cardSpacing`) |
+| `layout.seating` | `"around"` | Where the seats sit: `"sides"` (default), `"around"`, `"oneSide"`, or exact spots (see [Customising the table](#customising-the-table)) |
 | `layout.areas` | `{ play = {out=3}, bases = false, scrap = false, market = {z=4} }` | Move, resize or turn off the areas on the table (see [Customising the table](#customising-the-table)) |
 | `layout.mats` | `{ seat = {image="https://…"}, market = {image="https://…"} }` | Play mats: pictures under each player's areas, the market, or anywhere (see [Customising the table](#customising-the-table)) |
 | `layout.tableImage` | `"https://…/table.jpg"` | The table's picture, when the save uses TTS's custom table |
@@ -708,6 +709,20 @@ layout = {
   },
 },
 ```
+
+**Seating**: `rules.layout.seating` places the seats.
+
+- `"sides"` (the default): along the two long sides, facing the market.
+- `"around"`: evenly round the market, seat 1 at the bottom and the rest
+  going clockwise. They sit `seatDistance` away (20 unless set), or on an oval
+  with `seatRadius = { x = 30, z = 18 }`.
+- `"oneSide"`: side by side along the bottom, `seatSpread` apart.
+- Exact spots per player count, `{ [2] = { {x=-20, z=0, yaw=90}, {x=20, z=0, yaw=270} } }`.
+  Counts it doesn't list use `"sides"`. A `function(seat, count, rules)` that
+  returns `{ x, z, yaw }` works too. Yaw 0 faces +z, and 90 faces +x.
+
+Each seat's areas, hand and outlines turn with it, and so do the market's
+cards on that seat's turn.
 
 **Play mats** are pictures laid flat under the areas. They're locked, so they
 can't be knocked around, and the outlines are drawn on top of them.

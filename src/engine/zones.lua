@@ -26,25 +26,63 @@ function Zones.defaultCount(rules)
   return math.min(players.default or players.min or #rules.seats, #rules.seats)
 end
 
--- Seats sit on the two long sides of the table, facing the market in the
--- centre, so a rectangular table fits four. Seat 1 is at the bottom (-z)
--- left, and play goes along the bottom from left to right, then back along
--- the top, so each player's neighbours are next in turn order. Two seats on
--- a side sit the same distance either side of the market; a seat alone on
--- its side is in line with it.
-local function seatFrame(seat, count, distance, spread)
+-- A seat's frame from where it sits and which way it faces: yaw 0 faces +z
+-- (seat 1 at the bottom of the table), and TTS turns clockwise seen from
+-- above, so yaw 90 faces +x.
+local function frameAt(x, z, yaw)
+  local r = math.rad(yaw)
+  local function tidy(v) return math.floor(v * 1e6 + 0.5) / 1e6 end
+  return {
+    origin = { x = x, z = z },
+    forward = { x = tidy(math.sin(r)), z = tidy(math.cos(r)) }, -- toward the table centre
+    right = { x = tidy(math.cos(r)), z = tidy(-math.sin(r)) },
+    yaw = yaw % 360,
+  }
+end
+Zones.frameAt = frameAt
+
+-- Where each seat sits: rules.layout.seating.
+--   "sides" (the default): the two long sides of the table, facing the
+--     market in the centre, so a rectangular table fits four. Seat 1 is at
+--     the bottom (-z) left, and play goes along the bottom from left to
+--     right, then back along the top, so each player's neighbours are next
+--     in turn order. Two seats on a side sit the same distance either side
+--     of the market; a seat alone on its side is in line with it.
+--   "around": evenly round the market, seat 1 at the bottom and the rest
+--     going clockwise, on a circle seatDistance away (20 unless set), or an
+--     oval: layout.seatRadius = { x = 30, z = 18 }.
+--   "oneSide": every seat side by side along the bottom, seatSpread apart.
+--   A function(seat, count, rules) returning { x, z, yaw }, or a table by
+--     player count: seating = { [2] = { {x=0, z=-10, yaw=0}, {x=0, z=10, yaw=180} }, ... }
+--     (counts it doesn't list fall back to "sides").
+local function seatFrame(seat, count, distance, spread, rules)
+  local seating = rules and rules.layout and rules.layout.seating or "sides"
+  local own
+  if type(seating) == "function" then
+    own = seating(seat, count, rules)
+  elseif type(seating) == "table" then
+    own = seating[count] and seating[count][seat]
+  end
+  if own then return frameAt(own.x or 0, own.z or 0, own.yaw or 0) end
+  if seating == "around" then
+    local yaw = (seat - 1) * 360 / count
+    -- side seats need to clear the market row, so the circle is wider than
+    -- the long sides' distance unless the rules give one
+    local d = rules.layout.seatDistance or 20
+    local radius = rules.layout.seatRadius or {}
+    local r = math.rad(yaw)
+    return frameAt(-math.sin(r) * (radius.x or d), -math.cos(r) * (radius.z or d), yaw)
+  end
+  if seating == "oneSide" then
+    return frameAt((seat - (count + 1) / 2) * spread, -distance, 0)
+  end
   local bottom = math.ceil(count / 2)
   local top = seat > bottom
   local n = top and count - bottom or bottom
   local i = top and seat - bottom or seat
   local along = (i - (n + 1) / 2) * spread
   local s = top and -1 or 1
-  return {
-    origin = { x = s * along, z = -s * distance },
-    forward = { x = 0, z = s }, -- toward the table centre
-    right = { x = s, z = 0 },
-    yaw = top and 180 or 0,
-  }
+  return frameAt(s * along, -s * distance, top and 180 or 0)
 end
 
 -- Each seat's areas, in that seat's frame: `along` its row (to the
@@ -112,7 +150,7 @@ function Zones.layout(rules, fixedIds, count)
     return s
   end
   for seat = 1, count do
-    local f = seatFrame(seat, count, distance, spread)
+    local f = seatFrame(seat, count, distance, spread, rules)
     result.seats[seat] = {
       play = area(f, "play", 3),
       bases = area(f, "bases", 3),
