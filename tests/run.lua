@@ -1598,6 +1598,197 @@ test("scrap_required makes the player scrap; returnScrapped sends fixed-pile car
   game.rules.market.returnScrapped = nil
 end)
 
+---------------------------------------------------------------------------
+-- Expansion features: double allies, gated scraps, buy destinations, more
+-- prompts and keywords, hooks, sets
+---------------------------------------------------------------------------
+
+test("a double ally needs two other cards of the faction", function()
+  local game, put = blank()
+  local smith = game.cards:get("ember_smith")
+  smith.allyGroups[#smith.allyGroups + 1] = { need = 2, effects = { { key = "gold", amount = 5 } } }
+  game:play(1, put(1, "hand", "ember_smith"))
+  game:play(1, put(1, "hand", "bellows_crew")) -- one other Forge card: the single ally fires, not the double
+  local p = game.state.players[1]
+  eq(p.resources.gold, 0, "double ally not yet")
+  game:play(1, put(1, "hand", "war_anvil")) -- a second other Forge card
+  eq(p.resources.gold, 5, "double ally fired")
+end)
+
+test("a scrap ability with a faction prefix needs that ally in play", function()
+  local game, put = blank()
+  game.cards:get("hireling").scrapEffects = { { key = "might", amount = 2, ally = "forge" } }
+  local h = put(1, "hand", "hireling")
+  game:play(1, h)
+  game:refreshUI()
+  assert(not tts.ui.xml:find("cz-scrap-" .. h, 1, true), "no Scrap button without a Forge ally")
+  eq(game:scrapFromPlay(1, h), false, "refused")
+  game:play(1, put(1, "hand", "ember_smith"))
+  assert(tts.ui.xml:find("cz-scrap-" .. h, 1, true), "button once a Forge card is in play")
+  click(WHITE, "cz-scrap-" .. h)
+  eq(game.state.players[1].resources.might, 2 + 2, "scrap effect (plus the Smith's 2)")
+end)
+
+test("buy destinations: hand, straight into play, type lists, and onAcquire", function()
+  local game, put, putRow, putDeck = blank()
+  local p = game.state.players[1]
+  p.resources.gold = 30
+  local a, b, c = putRow(1, "tide_runner"), putRow(2, "seed_vault"), putRow(3, "old_oak")
+  p.flags.buyToHand = { "building", "wall" }
+  game:buy(1, a)
+  eq(p.discard[#p.discard], a, "a unit doesn't match the list")
+  game:buy(1, b)
+  assert(has(p.hand, b), "a building goes to the hand")
+  eq(p.flags.buyToHand, nil, "used up")
+  p.flags.buyToPlay = "building"
+  local healthBefore = p.stats.health
+  game:buy(1, c)
+  assert(has(p.bases, c), "straight into play")
+  eq(p.stats.health, healthBefore + 3, "and its effect applied (Old Oak: +3 Health)")
+  -- onAcquire runs for the bought card.
+  local seen
+  game.effects:registerCustom("noticeMe", { onAcquire = function(g, seat, ctx) seen = ctx.card.id end })
+  game.cards:get("lighthouse").effects = { { key = "custom", fn = "noticeMe" } }
+  game:buy(1, putRow(4, "lighthouse"))
+  eq(seen, "lighthouse", "onAcquire ran")
+  assert(putDeck)
+end)
+
+test("keywords: scrap from one place, discard, cycle, capped free buys, bounce", function()
+  local game, put, putRow = blank()
+  local Cards = Cardalyzer.require("engine.cards")
+  local p = game.state.players[1]
+  local function apply(s) game.effects:apply(game, 1, Cards.parseEffects(s)) end
+  local inHand, inDiscard = put(1, "hand", "squire"), put(1, "discard", "squire")
+  apply("scrap_from_discard_required:1")
+  local targets = Cardalyzer.require("engine.actions").targets(game, 1, p.prompts[1])
+  eq(#targets, 1, "only the discard pile")
+  eq(targets[1].value, inDiscard, "the discarded card")
+  eq(p.prompts[1].optional, false, "required")
+  click(WHITE, "cz-pick-" .. inDiscard)
+  apply("scrap_from_hand:1")
+  eq(p.prompts[1].optional, true, "optional")
+  click(WHITE, "cz-done")
+  for _ = 1, 4 do put(1, "deck", "apprentice") end
+  local d1, d2 = put(1, "hand", "squire"), put(1, "hand", "squire")
+  apply("cycle:2")
+  click(WHITE, "cz-pick-" .. d1)
+  click(WHITE, "cz-pick-" .. d2)
+  eq(#p.hand, 3, "discarded two (of three), drew two")
+  apply("discard:1")
+  eq(p.prompts[1].optional, false, "a required discard")
+  click(WHITE, "cz-pick-" .. p.hand[1])
+  local cheap, dear = putRow(1, "tide_runner"), putRow(2, "fleet_admiral")
+  apply("free_buy_hand:2")
+  game:refreshUI()
+  assert(tts.ui.xml:find("cz-pick-" .. cheap, 1, true) and not tts.ui.xml:find("cz-pick-" .. dear, 1, true), "capped at cost 2")
+  click(WHITE, "cz-pick-" .. cheap)
+  assert(has(p.hand, cheap), "into the hand")
+  -- bounce: an opponent's base goes back to their hand.
+  local base = put(2, "bases", "seed_vault")
+  apply("bounce_base:1")
+  click(WHITE, "cz-pick-" .. base)
+  assert(has(game.state.players[2].hand, base), "back in its owner's hand")
+  assert(inHand)
+end)
+
+test("scrap prompts: the market row, faction filters, afterPick/afterPrompt, counters and whenYouScrap", function()
+  local game, put, putRow = blank()
+  local p = game.state.players[1]
+  local picked, ended, scrapped = {}, nil, 0
+  game.effects:registerCustom("watchScrap", {
+    afterPick = function(g, seat, uid) picked[#picked + 1] = g.state.cards[uid] end,
+    afterPrompt = function(g, seat, prompt) ended = prompt.picked end,
+    whenYouScrap = function() scrapped = scrapped + 1 end,
+  })
+  -- a card in play that reacts to scraps from hand or discard
+  local vault = game.cards:get("seed_vault")
+  vault.effects[#vault.effects + 1] = { key = "custom", fn = "watchScrap" }
+  game:play(1, put(1, "hand", "seed_vault"))
+  local forge, grove = put(1, "hand", "ember_smith"), put(1, "hand", "grove_tender")
+  local row = putRow(1, "tide_runner")
+  game:prompt(1, { kind = "scrap", count = 3, optional = true, from = { "hand", "row" }, factions = { "forge", "tide" }, custom = "watchScrap" })
+  game:refreshUI()
+  assert(not tts.ui.xml:find("cz-pick-" .. grove, 1, true), "a Grove card is filtered out")
+  click(WHITE, "cz-pick-" .. forge)
+  click(WHITE, "cz-pick-" .. row)
+  click(WHITE, "cz-done")
+  eq(table.concat(picked, ","), "ember_smith,tide_runner", "afterPick for each")
+  eq(ended, 2, "afterPrompt with the count")
+  eq(game.state.market.row[1], "", "the row card left the row")
+  eq(game.state.turn.scrapped.total, 1, "own cards scrapped this turn (the row card isn't yours)")
+  eq(game.state.turn.scrapped.handOrDiscard, 1, "from hand")
+  eq(scrapped, 1, "whenYouScrap fired once")
+end)
+
+test("pick scopes, extra factions, end-of-turn jobs and cards that stay in hand", function()
+  local game, put = blank()
+  local State = Cardalyzer.require("engine.state")
+  local targets = function() return Cardalyzer.require("engine.actions").targets(game, 1, game.state.players[1].prompts[1]) end
+  local mine, theirs = put(1, "bases", "seed_vault"), put(2, "bases", "hidden_den")
+  local oppDiscard = put(2, "discard", "squire")
+  game.effects:registerCustom("noop", { onPick = function() end })
+  game:prompt(1, { kind = "pick", scope = "bases", custom = "noop" })
+  eq(#targets(), 2, "every base in play")
+  click(WHITE, "cz-pick-" .. theirs)
+  game:prompt(1, { kind = "pick", scope = "opponentDiscard", custom = "noop" })
+  eq(targets()[1].value, oppDiscard, "the opponent's discard pile")
+  click(WHITE, "cz-pick-" .. oppDiscard)
+  -- addFaction: a Grove card gains Forge, so a Forge ally fires
+  local smith = put(1, "hand", "ember_smith")
+  local tender = put(1, "hand", "grove_tender")
+  game:play(1, smith)
+  game:play(1, tender)
+  local might = game.state.players[1].resources.might
+  game:addFaction(1, tender, "forge")
+  eq(game.state.players[1].resources.might, might + 2, "the Smith's Forge ally fired")
+  -- atTurnEnd jobs and whenTurnEnds = "hand"
+  local ran
+  game.effects:registerCustom("later", { atTurnEnd = function(g, seat, job) ran = job.note end })
+  game:atTurnEnd({ custom = "later", note = "done" })
+  game.effects:registerCustom("dock", { whenTurnEnds = function() return "hand" end })
+  game.cards:get("squire").effects = { { key = "custom", fn = "dock" } }
+  local docked = put(1, "hand", "squire")
+  game:play(1, docked)
+  for _ = 1, 5 do put(1, "deck", "apprentice") end
+  click(WHITE, "cz-end")
+  eq(ran, "done", "end-of-turn job ran")
+  local p = game.state.players[1]
+  assert(has(p.hand, docked), "the docked card is back in hand")
+  eq(#p.hand, 6, "on top of a full new hand")
+  eq(game:cardOf(tender).id, "grove_tender", "factions added last turn are gone")
+  assert(mine and State)
+end)
+
+test("sets: toggled in the setup menu, only their cards are dealt", function()
+  local game = boot()
+  -- put two market cards in an expansion set, off by default
+  game.cards:get("fleet_admiral").set = "exp"
+  game.cards:get("night_queen").set = "exp"
+  game.rules.sets = { { key = "base", label = "Base", always = true }, { key = "exp", label = "Expansion" } }
+  local function dealtIds()
+    Cardalyzer_onStartGame(HOST)
+    local ids = {}
+    for _, uid in ipairs(game.state.market.deck) do ids[game.state.cards[uid]] = true end
+    for _, uid in ipairs(game.state.market.row) do if uid ~= "" then ids[game.state.cards[uid]] = true end end
+    return ids
+  end
+  local ids = dealtIds()
+  assert(ids.ember_smith, "base cards dealt")
+  assert(not ids.fleet_admiral and not ids.night_queen, "expansion cards left out by default")
+  click(HOST, "cz-setup")
+  assert(tts.ui.xml:find('id="cz%-set%-base"[^>]*colors="#E8B84A'), "the always-on set is shown on")
+  assert(tts.ui.xml:find('id="cz%-set%-exp"[^>]*colors="#D6DEE8'), "the expansion off")
+  click(GUEST, "cz-set-exp")
+  eq(game:setsInPlay().exp, nil, "only the host can switch sets")
+  click(HOST, "cz-set-exp")
+  click(HOST, "cz-set-base")
+  eq(game:setsInPlay().base, true, "an always set can't be switched off")
+  ids = dealtIds()
+  assert(ids.fleet_admiral and ids.night_queen, "expansion cards dealt once switched on")
+  game.rules.sets = nil
+end)
+
 test("messages to an empty seat don't stop the game", function()
   local game = boot()
   Cardalyzer_onStartGame(HOST)

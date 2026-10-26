@@ -79,18 +79,45 @@ end
 -- The card a uid acts as right now: its own card, or, while it copies
 -- another card this turn (see Game:copyCard), that card's effects, allies
 -- and scrap ability, with both cards' factions and its own name.
+-- Factions added this turn (Game:addFaction) count too.
 function Game:cardOf(uid)
   local own = self.cards:get(State.cardId(self.state, uid))
-  local copied = self.state.turn.copies and self.state.turn.copies[uid]
-  if not copied then return own end
-  local merged = setmetatable({ name = own.name, factions = {} }, { __index = self.cards:get(copied) })
-  for _, list in ipairs({ own.factions, self.cards:get(copied).factions }) do
+  local turn = self.state.turn
+  local copied = turn.copies and turn.copies[uid]
+  local added = turn.factions and turn.factions[uid]
+  if not copied and not added then return own end
+  local base = copied and self.cards:get(copied) or own
+  local merged = setmetatable({ name = own.name, factions = {} }, { __index = base })
+  local seen = {}
+  for _, list in ipairs({ own.factions, copied and base.factions or {}, added or {} }) do
     for _, f in ipairs(list) do
-      if f ~= "none" then merged.factions[#merged.factions + 1] = f end
+      if f ~= "none" and not seen[f] then
+        seen[f] = true
+        merged.factions[#merged.factions + 1] = f
+      end
     end
   end
   merged.faction = merged.factions[1] or "none"
   return merged
+end
+
+-- Gives card `uid` an extra faction until the end of the turn ("choose a
+-- faction as you play this; it has that faction"), then checks allies.
+function Game:addFaction(seat, uid, faction)
+  local turn = self.state.turn
+  turn.factions = turn.factions or {}
+  turn.factions[uid] = turn.factions[uid] or {}
+  local list = turn.factions[uid]
+  list[#list + 1] = faction
+  Actions.checkAllies(self, seat)
+end
+
+-- Queues a job for the end of the current turn: { custom = name, ... }. The
+-- custom effect's atTurnEnd(game, seat, job) runs as the turn ends.
+function Game:atTurnEnd(job)
+  local turn = self.state.turn
+  turn.atEnd = turn.atEnd or {}
+  turn.atEnd[#turn.atEnd + 1] = job
 end
 
 -- Makes `uid` act as card `id` until the end of the turn ("copy another
@@ -116,7 +143,8 @@ function Game:setupState()
   local count = self.state.nextPlayers or #self.state.players
   self.state = State.new(self.rules, count)
   self.state.view = view -- keep zone GUIDs so zones aren't respawned
-  Turn.setup(self.state, self.rules, self.cards, self.random, Turn.openingRule(self.rules, self:setupChoice("opening")))
+  Turn.setup(self.state, self.rules, self.cards, self.random, Turn.openingRule(self.rules, self:setupChoice("opening")),
+    self:setsInPlay())
   Actions.startTurn(self, self.state.turn.active)
 end
 
@@ -124,6 +152,44 @@ end
 -- to game and through a reload). nil means the first option.
 function Game:setupChoice(key)
   return self.state.view.setup and self.state.view.setup[key]
+end
+
+-- The sets in the next game, as { [key] = true }, from rules.sets: those
+-- marked always, plus those switched on in the setup menu (by default the
+-- ones marked default = true). nil when the rules list no sets (every card).
+function Game:setsInPlay()
+  if not self.rules.sets then return nil end
+  local chosen = self:setupChoice("sets")
+  local out = {}
+  for _, set in ipairs(self.rules.sets) do
+    local on
+    if set.always then
+      on = true
+    elseif chosen then
+      on = chosen[set.key] == true
+    else
+      on = set.default == true
+    end
+    if on then out[set.key] = true end
+  end
+  return out
+end
+
+-- Switches set `key` in or out of the next New Game (host only). Sets marked
+-- always can't be switched off.
+function Game:toggleSet(key)
+  local set
+  for _, s in ipairs(self.rules.sets or {}) do
+    if s.key == key then set = s end
+  end
+  if not set then return false, "There's no set called " .. tostring(key) .. "." end
+  if set.always then return false, set.label .. " is always in." end
+  local current = self:setsInPlay()
+  current[key] = not current[key] or nil
+  self.state.view.setup = self.state.view.setup or {}
+  self.state.view.setup.sets = current
+  self:refreshUI()
+  return true
 end
 
 -- Picks option i of rules.openingHands for the next New Game (host only).

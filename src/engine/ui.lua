@@ -72,7 +72,7 @@ function UI_.actions(game)
 
   for _, uid in ipairs(Actions.inPlay(p)) do
     local c = game:cardOf(uid) -- a card copying another this turn shows that card's scrap ability
-    if #c.scrapEffects > 0 then
+    if Actions.canScrap(game, seat, uid) then -- (some need an ally in play first)
       add(out.buttons, "cz-scrap-" .. uid, "Scrap " .. c.name .. ": " .. game.effects:describe(c.scrapEffects, c.text))
     end
   end
@@ -424,6 +424,23 @@ function UI_.openingRow(game)
   return UI_.optionRow("cz_opening", "First hands", list)
 end
 
+-- The set toggles (cz-set-<key>), when the rules list sets, four to a row.
+-- Returns a list of rows.
+function UI_.setRows(game)
+  local sets = game.rules.sets or {}
+  if #sets < 2 then return {} end
+  local inPlay = game:setsInPlay()
+  local rows, row = {}, {}
+  for _, set in ipairs(sets) do
+    row[#row + 1] = { id = "cz-set-" .. set.key, label = set.label, on = inPlay[set.key] == true }
+    if #row == 4 then rows[#rows + 1] = row; row = {} end
+  end
+  if #row > 0 then rows[#rows + 1] = row end
+  local out = {}
+  for i, r in ipairs(rows) do out[i] = UI_.optionRow("cz_sets_" .. i, i == 1 and "Sets" or "", r) end
+  return out
+end
+
 function UI_.setupPanel(game, color)
   local buttons = { { id = "cz-new", label = "Play Game" } }
   if Tutorial.buttonShown(game, color) then buttons[#buttons + 1] = { id = "cz-tutorial", label = "Tutorial" } end
@@ -436,6 +453,7 @@ function UI_.setupPanel(game, color)
   end
   add(UI_.playersRow(game))
   add(UI_.openingRow(game))
+  for _, r in ipairs(UI_.setRows(game)) do add(r) end
   local extra = #rows > 0 and { '<VerticalLayout spacing="8" preferredHeight="' .. height .. '" childForceExpandHeight="false">'
     .. table.concat(rows) .. '</VerticalLayout>', height } or nil
   return centrePanel("cz_setup_" .. color, color, "New Game", ACCENT, 22, extra, buttons, UI_.scaleOf(game, color))

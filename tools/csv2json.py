@@ -17,6 +17,9 @@ from pathlib import Path
 
 COLUMNS = ["id", "name", "deck", "faction", "type", "cost", "copies",
            "effects", "ally_effects", "scrap_effects", "defense", "text"]
+# Optional columns: double_ally_effects (need two other cards of the faction)
+# and set (which expansion a card is from, toggled in the New Game menu).
+OPTIONAL = ["double_ally_effects", "set"]
 REQUIRED = ["id", "name", "cost", "copies", "effects"]
 DECKS = {"starter", "market", "fixed"}
 # One effect: keyword:amount, custom:name or a bare keyword like reminder,
@@ -78,6 +81,8 @@ def convert(rows):
             "effects": check_effects(row.get("effects"), "effects", card_id, errors),
             "ally_effects": check_effects(row.get("ally_effects"), "ally_effects", card_id, errors),
             "scrap_effects": check_effects(row.get("scrap_effects"), "scrap_effects", card_id, errors),
+            "double_ally_effects": check_effects(row.get("double_ally_effects"), "double_ally_effects", card_id, errors) or None,
+            "set": row.get("set") or None,
             "defense": parse_int(row.get("defense"), "defense", card_id, errors, allow_blank=True),
             "text": row.get("text", ""),
         }

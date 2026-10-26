@@ -85,10 +85,19 @@ local function parseRow(row, index)
   if not okAlly then fail(ally) end
   local okScrap, scrap = pcall(Cards.parseEffects, row.scrap_effects)
   if not okScrap then fail(scrap) end
+  local okDouble, double = pcall(Cards.parseEffects, row.double_ally_effects)
+  if not okDouble then fail(double) end
 
   local factions = {}
   for _, f in ipairs(Util.split(blank(row.faction) and "none" or row.faction, "/")) do
     factions[#factions + 1] = Util.trim(f)
+  end
+
+  -- Double ally effects fire when two other cards of the faction are in play.
+  local groups = Cards.allyGroups(ally)
+  for _, g in ipairs(Cards.allyGroups(double)) do
+    g.need = 2
+    groups[#groups + 1] = g
   end
 
   return {
@@ -96,9 +105,11 @@ local function parseRow(row, index)
     index = index,
     name = blank(row.name) and id or row.name,
     deck = deck,
+    set = not blank(row.set) and row.set or nil, -- which set (expansion) the card belongs to
     faction = factions[1],
     factions = factions, -- "blob/machine_cult" is in both; "any" counts as every faction
-    allyGroups = Cards.allyGroups(ally),
+    allyGroups = groups,
+    doubleAllyEffects = double,
     type = blank(row.type) and "unit" or row.type,
     cost = tonumber(row.cost) or 0,
     copies = tonumber(row.copies) or 1,
