@@ -174,18 +174,25 @@ end
 local function buttonRows(list, size, maxWidth, bigger)
   local rows, row, used, rowSize = {}, {}, 0, size
   local sizes = {}
+  -- One statement per table: TTS's Lua (MoonSharp) doesn't evaluate
+  -- `a[#a + 1], b[#a + 1] = x, y` the way standard Lua does.
+  local function closeRow()
+    local n = #rows + 1
+    rows[n] = row
+    sizes[n] = rowSize
+  end
   for _, b in ipairs(list) do
     local s = (bigger and bigger[b.id]) and bigger[b.id] or size
     local xml, w = smallButton(b.id, b.label, s)
     if used > 0 and used + w > maxWidth then
-      rows[#rows + 1], sizes[#rows + 1] = row, rowSize
+      closeRow()
       row, used, rowSize = {}, 0, size
     end
     row[#row + 1] = xml
     used = used + w + 6
     rowSize = math.max(rowSize, s)
   end
-  if #row > 0 then rows[#rows + 1], sizes[#rows + 1] = row, rowSize end
+  if #row > 0 then closeRow() end
   local out, height = {}, 0
   for i, r in ipairs(rows) do
     out[#out + 1] = '<HorizontalLayout spacing="6" preferredHeight="' .. (sizes[i] + 14) .. '" childForceExpandWidth="false"'
