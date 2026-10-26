@@ -130,8 +130,10 @@ local FX = ' outline="#000000E0" outlineSize="1.5 -1.5"'
 -- Icons: a counter is its symbol with the number laid over it.
 ---------------------------------------------------------------------------
 
--- Built-in symbols, hosted with the engine. rules.ui.iconBaseUrl points
--- elsewhere: a folder holding coin.png, reticle.png, heart.png and shield.png.
+-- Built-in symbols, hosted with the engine. The theme's symbols.folder (or
+-- the older rules.ui.iconBaseUrl) points elsewhere: a folder holding
+-- coin.png, reticle.png, heart.png and shield.png. symbols.pictures replaces
+-- any one of them, or adds a symbol of its own: { [name] = URL }.
 UI_.ICONS = { "coin", "reticle", "heart", "shield" }
 UI_.ICON_BASE = "https://raw.githubusercontent.com/Oreo12/Cardalyzer/main/assets/icons/"
 
@@ -155,16 +157,20 @@ end
 
 -- Every image the UI uses, for UI.setCustomAssets.
 function UI_.assets(rules)
-  local base = (rules.ui and rules.ui.iconBaseUrl) or UI_.ICON_BASE
+  local sym = Theme.of(rules).symbols
+  local base = sym.folder or (rules.ui and rules.ui.iconBaseUrl) or UI_.ICON_BASE
   local out, seen = {}, {}
   local function add(icon)
     if icon and not seen[icon] then
       seen[icon] = true
-      local full = (icon:match("^https?://") or icon:match("^file://")) and icon or (base .. icon .. ".png")
+      local full = (icon:match("^https?://") or icon:match("^file://")) and icon
+        or sym.pictures[icon] or (base .. icon .. ".png")
       out[#out + 1] = { name = assetName(icon), url = full }
     end
   end
   for _, name in ipairs(UI_.ICONS) do add(name) end
+  for name in pairs(sym.pictures) do add(name) end
+  add(sym.defense)
   for _, r in ipairs(rules.resources or {}) do add(UI_.iconFor(rules, r, "resource")) end
   for _, st in ipairs(rules.stats or {}) do add(UI_.iconFor(rules, st, "stat")) end
   for _, url in ipairs(Theme.images(rules)) do
@@ -176,13 +182,26 @@ function UI_.assets(rules)
   return out
 end
 
+-- A counter in the theme's symbol style: its number over the symbol, or
+-- (symbols.number = "right") beside it. Returns XML.
 local function counter(id, icon, value, size)
+  local sym = Theme.of(current).symbols
+  local fx = sym.outline and (' outline="' .. sym.outline .. '" outlineSize="1.5 -1.5"') or ""
+  local image = '<Image image="' .. assetName(icon) .. '" color="' .. sym.tint .. '" preserveAspect="true"'
+  local function number(extra)
+    return string.format('<Text id="%s_n" fontSize="%d" fontStyle="%s" color="%s"%s%s>%s</Text>',
+      id, math.floor(size * sym.textSize), sym.textStyle, sym.text, extra, fx, escape(value))
+  end
+  if sym.number == "right" then
+    local w = math.floor(size * sym.textSize * 0.62 * #tostring(value)) + 6
+    return '<HorizontalLayout id="' .. id .. '" spacing="2" preferredWidth="' .. (size + w + 2) .. '" preferredHeight="' .. size
+      .. '" childForceExpandWidth="false">' .. image .. ' preferredWidth="' .. size .. '" />'
+      .. number(' alignment="MiddleLeft" preferredWidth="' .. w .. '"') .. '</HorizontalLayout>'
+  end
   return '<Panel id="' .. id .. '" preferredWidth="' .. size .. '" preferredHeight="' .. size .. '">'
-    .. '<Image image="' .. assetName(icon) .. '" preserveAspect="true" />'
-    .. string.format('<Text id="%s_n" fontSize="%d" fontStyle="Bold" color="#FFFFFF" alignment="MiddleCenter"%s>%s</Text>',
-      id, math.floor(size * 0.45), FX, escape(value))
-    .. '</Panel>'
+    .. image .. ' />' .. number(' alignment="MiddleCenter"') .. '</Panel>'
 end
+local function symbolSize(which) return Theme.of(current).symbols.sizes[which] end
 
 -- What each button does, shown when the mouse is over it. rules.ui.tooltips
 -- adds or replaces any of them ({ [id] = text }; false for none). A button
@@ -291,10 +310,23 @@ end
 -- bottom, and a private message for one player just above the info panel.
 UI_.INFO_WIDTH = 300
 -- Both sit clear of TTS's own Notes button in the bottom right corner.
-local TIDY_Y = 70 -- the Tidy table button's bottom edge, in pixels above the screen's
 local INFO_BOTTOM = 112 -- the info panel's bottom edge
 UI_.ACTION_BAR_Y = 210 -- the action bar's bottom edge by default: just above the on-screen hand
 UI_.BAR_STEP = 30 -- how far one press of Up / Down in Settings moves a player's bar
+
+-- A panel's place (theme positions): its rectAlignment and offsetXY,
+-- `dy` added to its y.
+local function place(which, dy)
+  local at = Theme.of(current).positions[which]
+  return ' rectAlignment="' .. at.anchor .. '" offsetXY="' .. (at.x or 0) .. ' ' .. ((at.y or 0) + (dy or 0)) .. '"'
+end
+UI_.place = place
+
+-- Content of a panel anchored on the left reads from the left.
+local function leftSide(xml, which)
+  if not Theme.of(current).positions[which].anchor:find("Left") then return xml end
+  return (xml:gsub('alignment="MiddleRight"', 'alignment="MiddleLeft"'):gsub('Alignment="MiddleRight"', 'Alignment="MiddleLeft"'))
+end
 
 -- Rough pixel height of a message wrapped to the info panel's width.
 local function wrappedHeight(msg, size)
@@ -315,12 +347,14 @@ local function seatRow(game, seat)
   if not p.out then
     for i, uid in ipairs(p.bases) do
       local c = game.cards:get(State.cardId(state, uid))
-      if c.defense then xml = xml .. counter("cz_base_" .. seat .. "_" .. i, "shield", Actions.defenseOf(game, seat, uid), 30) end
+      if c.defense then
+        xml = xml .. counter("cz_base_" .. seat .. "_" .. i, Theme.of(rules).symbols.defense, Actions.defenseOf(game, seat, uid), symbolSize("base"))
+      end
     end
     for _, st in ipairs(rules.stats or {}) do
       local icon = UI_.iconFor(rules, st, "stat")
       local value = p.stats[st.key] or 0
-      xml = xml .. (icon and counter("cz_stat_" .. seat .. "_" .. st.key, icon, value, 34)
+      xml = xml .. (icon and counter("cz_stat_" .. seat .. "_" .. st.key, icon, value, symbolSize("seat"))
         or text("cz_stat_" .. seat .. "_" .. st.key, (st.label or Util.titleCase(st.key)) .. " " .. value, 14, FX))
     end
   end
@@ -329,8 +363,9 @@ local function seatRow(game, seat)
     .. "/" .. (rules.objectives.toWin or #p.completed + #p.objectives)) or ""
   local piles = text("cz_seat_" .. seat .. "_piles", "Deck " .. #p.deck .. " · Discard " .. #p.discard .. goals, 11,
     'color="#C8CED6" alignment="MiddleRight" preferredHeight="14"' .. FX)
-  return '<HorizontalLayout spacing="4" preferredHeight="34" childForceExpandWidth="false" childAlignment="MiddleRight">'
-    .. xml .. '</HorizontalLayout>' .. piles, 34 + 14 + 4
+  local h = math.max(symbolSize("seat"), symbolSize("base"), 20)
+  return '<HorizontalLayout spacing="4" preferredHeight="' .. h .. '" childForceExpandWidth="false" childAlignment="MiddleRight">'
+    .. xml .. '</HorizontalLayout>' .. piles, h + 14 + 4
 end
 
 -- The active player's per-turn counters (Trade, Combat) that are above 0, for
@@ -345,12 +380,12 @@ local function turnCounters(game, color)
     if value > 0 then
       local icon = UI_.iconFor(rules, r, "resource")
       local id = "cz_res_" .. color .. "_" .. r.key
-      xml = xml .. (icon and counter(id, icon, value, 52)
+      xml = xml .. (icon and counter(id, icon, value, symbolSize("turn"))
         or text(id, (r.label or Util.titleCase(r.key)) .. " " .. value, 18, 'fontStyle="Bold"' .. FX))
     end
   end
   if xml == "" then return nil end
-  return '<HorizontalLayout spacing="12" preferredHeight="52" childForceExpandWidth="false" childAlignment="MiddleCenter">'
+  return '<HorizontalLayout spacing="12" preferredHeight="' .. symbolSize("turn") .. '" childForceExpandWidth="false" childAlignment="MiddleCenter">'
     .. xml .. '</HorizontalLayout>'
 end
 
@@ -448,9 +483,11 @@ function UI_.infoPanel(game, suffix, attrs, bottom)
   row('<HorizontalLayout spacing="6" preferredHeight="28" childForceExpandWidth="false" childAlignment="MiddleRight">'
     .. smallButton("cz-settings", "Settings", 14) .. smallButton("cz-setup", "New Game", 14) .. '</HorizontalLayout>', 28)
 
+  local at = Theme.of(current).positions.info
+  local y = at.y or bottom or INFO_BOTTOM
   local xml, _, h = UI_.framed("cz_panel" .. (suffix or ""), "info", table.concat(rows), UI_.INFO_WIDTH, height - 4,
-    (attrs or "") .. ' rectAlignment="LowerRight" offsetXY="-12 ' .. (bottom or INFO_BOTTOM) .. '"')
-  return xml, h
+    (attrs or "") .. ' rectAlignment="' .. at.anchor .. '" offsetXY="' .. (at.x or 0) .. ' ' .. y .. '"')
+  return leftSide(xml, "info"), h
 end
 
 -- The title at the top of the info panel: the theme's title picture, or the
@@ -491,7 +528,7 @@ local function centrePanel(id, visibility, title, titleColor, titleSize, extra, 
     row(bx, bh)
   end
   return sized((UI_.framed(id, style or "menu", table.concat(rows), width, height - 8,
-    ' visibility="' .. visibility .. '" rectAlignment="MiddleCenter"', 8)), scale)
+    ' visibility="' .. visibility .. '"' .. place("menus"), 8)), scale)
 end
 UI_.centrePanel = centrePanel
 
@@ -755,15 +792,18 @@ function UI_.xml(game)
   -- Tidy table sits clear of TTS's own Notes button; the info panel above it.
   local groups = UI_.scaleGroups(game)
   local infoTop = {}
+  local positions = Theme.of(game.rules).positions
+  local corner = positions.corner
   for i, g in ipairs(groups) do
     local vis, suffix = groupAttrs(groups, i)
-    local infoBottom = TIDY_Y + math.ceil(42 * g.scale)
+    -- the info panel: at its own y, or just above the corner buttons
+    local infoBottom = positions.info.y or ((corner.y or 0) + math.ceil(42 * g.scale))
     local info, h = UI_.infoPanel(game, suffix, vis, infoBottom)
     parts[#parts + 1] = sized(info, g.scale)
-    parts[#parts + 1] = sized('<Panel id="cz_tidy' .. suffix .. '"' .. vis .. ' width="' .. UI_.INFO_WIDTH .. '" height="30" rectAlignment="LowerRight" offsetXY="-12 '
-      .. TIDY_Y .. '"' .. PANEL .. '><HorizontalLayout spacing="6" childForceExpandWidth="false" childAlignment="MiddleRight">'
-      .. UI_.cornerButtons(game) .. '</HorizontalLayout></Panel>', g.scale)
-    for _, color in ipairs(g.colors) do infoTop[color] = infoBottom + math.ceil(h * g.scale) end
+    parts[#parts + 1] = sized(leftSide('<Panel id="cz_tidy' .. suffix .. '"' .. vis .. ' width="' .. UI_.INFO_WIDTH .. '" height="30"'
+      .. place("corner") .. PANEL .. '><HorizontalLayout spacing="6" childForceExpandWidth="false" childAlignment="MiddleRight">'
+      .. UI_.cornerButtons(game) .. '</HorizontalLayout></Panel>', "corner"), g.scale)
+    for _, color in ipairs(g.colors) do infoTop[color] = { bottom = infoBottom, top = infoBottom + math.ceil(h * g.scale) } end
   end
 
   -- A private message for one player, just above the info panel.
@@ -771,13 +811,18 @@ function UI_.xml(game)
   local colors = {}
   for color in pairs(byColor) do colors[#colors + 1] = color end
   table.sort(colors)
+  local info = positions.info
   for _, color in ipairs(colors) do
     local h = wrappedHeight(byColor[color], 13) + 6
-    parts[#parts + 1] = sized('<Panel id="cz_notice_' .. color .. '" visibility="' .. color .. '"'
-      .. ' width="' .. UI_.INFO_WIDTH .. '" height="' .. h .. '" rectAlignment="LowerRight" offsetXY="-12 '
-      .. ((infoTop[color] or INFO_BOTTOM) + 6) .. '"' .. PANEL .. '>'
+    -- just past the info panel: above it when it hangs from the bottom of the
+    -- screen, below it when it hangs from the top
+    local at = infoTop[color] or { bottom = INFO_BOTTOM, top = INFO_BOTTOM }
+    local y = info.anchor:find("Upper") and (at.bottom - (at.top - at.bottom) - 6) or (at.top + 6)
+    parts[#parts + 1] = sized(leftSide('<Panel id="cz_notice_' .. color .. '" visibility="' .. color .. '"'
+      .. ' width="' .. UI_.INFO_WIDTH .. '" height="' .. h .. '" rectAlignment="' .. info.anchor .. '" offsetXY="' .. (info.x or 0) .. ' '
+      .. y .. '"' .. PANEL .. '>'
       .. text("cz_notice_text_" .. color, byColor[color], 13, 'alignment="MiddleRight" color="' .. accent() .. '"' .. FX)
-      .. '</Panel>', UI_.scaleOf(game, color))
+      .. '</Panel>', "info"), UI_.scaleOf(game, color))
   end
 
   -- The setup, kit and settings menus, for each player who opened one. A
@@ -831,7 +876,7 @@ function UI_.xml(game)
         .. text("cz_tut_page_" .. color, "Page " .. n .. " of " .. #pages, 12, 'alignment="MiddleRight" color="#9AA4AE" preferredHeight="16"')
         .. navXml
       parts[#parts + 1] = sized((UI_.framed("cz_tutorial_" .. color, "menu", inner, 650, 430,
-        ' visibility="' .. color .. '" rectAlignment="MiddleCenter"', 8)), UI_.scaleOf(game, color))
+        ' visibility="' .. color .. '"' .. place("menus"), 8)), UI_.scaleOf(game, color))
     end
   end
 
@@ -861,17 +906,24 @@ function UI_.xml(game)
       bar = text("cz_goals", acts.goals, 12, 'alignment="MiddleCenter" color="#C8CED6" preferredHeight="18"' .. FX) .. bar
       barHeight = barHeight + 22
     end
-    local barY = UI_.barY(game, color)
+    local barAt = positions.bar
     parts[#parts + 1] = sized('<Panel id="cz_actions" visibility="' .. color .. '" width="1120" height="'
-      .. barHeight .. '" rectAlignment="LowerCenter" offsetXY="0 ' .. barY .. '"' .. PANEL
+      .. barHeight .. '" rectAlignment="' .. barAt.anchor .. '" offsetXY="' .. (barAt.x or 0) .. ' ' .. UI_.barY(game, color) .. '"' .. PANEL
       .. '><VerticalLayout spacing="4" childForceExpandHeight="false">' .. bar .. '</VerticalLayout></Panel>', scale)
     for _, p in ipairs(state.players) do
       local counters = turnCounters(game, p.color)
       if counters then
         local s = UI_.scaleOf(game, p.color)
-        local y = UI_.barY(game, p.color) + (p.color == color and math.ceil(barHeight * s) or 0) + 8
+        -- at their own place, or just above that player's action bar
+        local where
+        if positions.counters then
+          where = place("counters")
+        else
+          local y = UI_.barY(game, p.color) + (p.color == color and math.ceil(barHeight * s) or 0) + 8
+          where = ' rectAlignment="' .. positions.bar.anchor .. '" offsetXY="' .. (positions.bar.x or 0) .. ' ' .. y .. '"'
+        end
         parts[#parts + 1] = sized('<Panel id="cz_counters_' .. p.color .. '" visibility="' .. p.color .. '"'
-          .. ' width="400" height="52" rectAlignment="LowerCenter" offsetXY="0 ' .. y .. '"' .. PANEL .. '>' .. counters .. '</Panel>', s)
+          .. ' width="400" height="' .. symbolSize("turn") .. '"' .. where .. PANEL .. '>' .. counters .. '</Panel>', s)
       end
     end
   end
@@ -893,7 +945,8 @@ end
 -- Where a colour's action bar sits: the default, moved in their Settings.
 function UI_.barY(game, color)
   local moved = game.state.view.barOffset and game.state.view.barOffset[color] or 0
-  return UI_.ACTION_BAR_Y + moved
+  local y = Theme.of(game.rules).positions.bar.y
+  return (y or UI_.ACTION_BAR_Y) + moved
 end
 
 ---------------------------------------------------------------------------

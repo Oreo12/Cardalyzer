@@ -567,6 +567,58 @@ ui = {
 Pictures are loaded for every player, so use web links (`https://`, such as
 Steam Cloud). A `file:///` picture only shows on the computer it's on.
 
+### Symbols
+
+Counters are a symbol with a number on it: each player's stats (a heart for
+Authority), a shield with each base's defense, and the turn's resources (a
+coin for Trade, a reticle for Combat). The theme's `symbols` changes them.
+
+```lua
+theme = {
+  symbols = {
+    pictures = { heart = "https://…/life.png", tower = "https://…/tower.png" }, -- replace a built-in, or add your own
+    defense = "tower",        -- the symbol in front of each base's defense
+    tint = "#FFFFFF",         -- tints every symbol picture
+    text = "#FFFFFF",         -- the number's colour
+    textSize = 0.45,          -- the number's size, as a share of the symbol's
+    textStyle = "Bold",       -- Normal, Bold, Italic or BoldAndItalic
+    outline = "#000000E0",    -- the number's outline, or false
+    number = "center",        -- "center": on the symbol; "right": beside it
+    sizes = { seat = 34, base = 30, turn = 52 },
+  },
+},
+```
+
+The built-in symbols are `coin`, `reticle`, `heart` and `shield`. `folder`
+points at a folder holding all of them as `<name>.png` (draw your own with
+`tools/make_icons.py`). A resource or stat chooses its symbol with `icon`
+(a symbol's name or a picture's URL).
+
+### Where everything sits
+
+The theme's `positions` places each panel on the screen with an `anchor`
+(a TTS rectAlignment: `UpperLeft`, `MiddleCenter`, `LowerRight` and so on)
+and `x`, `y` offsets in pixels from it.
+
+```lua
+theme = {
+  positions = {
+    info = { anchor = "LowerRight", x = -12 },               -- no y: just above the corner buttons
+    corner = { anchor = "LowerRight", x = -12, y = 70 },     -- Rulebooks, your buttons, Tidy table
+    bar = { anchor = "LowerCenter", x = 0, y = 210 },        -- the action bar
+    counters = nil,                                          -- nil: just above the action bar
+    menus = { anchor = "MiddleCenter", x = 0, y = 0 },       -- New Game, Settings, the tutorial, choices, game over
+  },
+},
+```
+
+- A panel anchored on the left reads from the left.
+- A player's private message sits just past the info panel: above it when the
+  panel hangs from the bottom of the screen, below it when it hangs from the
+  top.
+- Each player can still move their own action bar up or down in Settings.
+  That's added to the bar's `y`.
+
 ### Your own New Game menu
 
 `rules.ui.setupMenu(game, color, menu, UI)` runs each time the menu is drawn.

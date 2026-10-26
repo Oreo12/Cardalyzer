@@ -2353,5 +2353,57 @@ test("play mats under each seat and the market, extra mats, the table picture", 
   game.rules.layout = nil
 end)
 
+test("symbols: replace or add pictures, the defense symbol, the counters' look and sizes", function()
+  local game = boot()
+  game.rules.ui = { theme = { symbols = {
+    pictures = { heart = "https://example.com/life.png", tower = "https://example.com/tower.png" },
+    defense = "tower", tint = "#FFEEDD", text = "#112233", textSize = 0.5, textStyle = "Italic", outline = false,
+    number = "right", sizes = { seat = 40, base = 20, turn = 60 },
+  } } }
+  game.assetsSet = nil
+  Cardalyzer_onStartGame(HOST)
+  local urls = {}
+  for _, a in ipairs(tts.ui.assets) do urls[a.name] = a.url end
+  eq(urls.cz_heart, "https://example.com/life.png", "a built-in symbol replaced")
+  eq(urls.cz_tower, "https://example.com/tower.png", "a new symbol added")
+  assert(urls.cz_coin:find("coin.png", 1, true), "the others keep the engine's pictures")
+  game.state.players[2].bases[1] = Cardalyzer.require("engine.state").newCard(game.state, "seed_vault")
+  game:refreshUI()
+  local xml = tts.ui.xml
+  assert(xml:find('id="cz_base_2_1"[^>]*preferredWidth="%d+" preferredHeight="20"'), "a base's defense at its size")
+  assert(xml:find('<Image image="cz_tower" color="#FFEEDD"', 1, true), "the defense symbol, tinted")
+  assert(xml:find('id="cz_stat_1_health" spacing="2" preferredWidth="%d+" preferredHeight="40"'), "a stat beside its number, at its size")
+  assert(xml:find('id="cz_stat_1_health_n" fontSize="20" fontStyle="Italic" color="#112233" alignment="MiddleLeft"', 1, true),
+    "the number's size, style and colour, with no outline")
+end)
+
+test("positions: every panel's anchor and offset", function()
+  local game = boot()
+  game.rules.ui = { theme = { positions = {
+    info = { anchor = "UpperLeft", x = 20, y = -30 },
+    corner = { anchor = "LowerLeft", x = 20, y = 15 },
+    bar = { anchor = "LowerCenter", x = 100, y = 150 },
+    counters = { anchor = "MiddleRight", x = -40, y = 0 },
+    menus = { anchor = "MiddleCenter", x = 0, y = 80 },
+  } } }
+  Cardalyzer_onStartGame(HOST)
+  game.state.players[1].resources.gold = 3
+  game:notify("Not yet!", "White")
+  game:setup("White", true)
+  local xml = tts.ui.xml
+  assert(xml:find('id="cz_panel"[^>]* rectAlignment="UpperLeft" offsetXY="20 %-30"'), "the info panel")
+  assert(xml:find('id="cz_tidy"[^>]* rectAlignment="LowerLeft" offsetXY="20 15"'), "the corner buttons")
+  local panel = xml:match('<Panel id="cz_panel".-</Panel>')
+  assert(not panel:find('MiddleRight', 1, true), "a panel on the left reads from the left")
+  assert(xml:find('id="cz_actions"[^>]* rectAlignment="LowerCenter" offsetXY="100 150"'), "the action bar")
+  assert(xml:find('id="cz_counters_White"[^>]* rectAlignment="MiddleRight" offsetXY="%-40 0"'), "the turn's counters")
+  assert(xml:find('id="cz_setup_White"[^>]* rectAlignment="MiddleCenter" offsetXY="0 80"'), "the menus")
+  local y = tonumber(xml:match('id="cz_notice_White"[^>]*offsetXY="20 (%-%d+)"'))
+  assert(y and y < -30, "a private message goes below an info panel that hangs from the top")
+  -- each player's own bar offset still adds to the bar's y
+  click(HOST, "cz-barup")
+  assert(tts.ui.xml:find('id="cz_actions"[^>]* offsetXY="100 180"'), "moved up in Settings")
+end)
+
 print(string.format("\n%d passed, %d failed", passed, failed))
 if failed > 0 then os.exit(1) end
