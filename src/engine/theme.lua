@@ -30,6 +30,28 @@ Theme.DEFAULT = {
   -- column, then `columns` cells `cell` pixels wide (a long label takes two
   -- cells). The menu's own buttons (Play Game, Close ...) are one cell wide.
   grid = { label = 110, cell = 140, columns = 4, size = 14 },
+  -- Symbols: a counter is a picture with its number over it (or beside it).
+  symbols = {
+    pictures = {},       -- { [name] = URL }: replaces a built-in symbol (coin, reticle, heart, shield) or adds one
+    folder = nil,        -- a folder of the built-ins (<name>.png), instead of the engine's own
+    defense = "shield",  -- the symbol in front of each base's defense
+    tint = "#FFFFFF",    -- tints the pictures
+    text = "#FFFFFF",    -- the number's colour
+    textSize = 0.45,     -- the number's size, as a share of the symbol's
+    textStyle = "Bold",  -- Normal, Bold, Italic or BoldAndItalic
+    outline = "#000000E0", -- the number's outline (false for none)
+    number = "center",   -- center: over the symbol; right: beside it
+    sizes = { seat = 34, base = 30, turn = 52 }, -- a player's stats, a base's defense, the turn's resources
+  },
+  -- Where the panels sit on the screen: `anchor` (a TTS rectAlignment such as
+  -- LowerRight, UpperLeft, MiddleCenter) and `x`, `y` offsets in pixels.
+  positions = {
+    info = { anchor = "LowerRight", x = -12 },   -- y left out: just above the corner buttons
+    corner = { anchor = "LowerRight", x = -12, y = 70 }, -- Rulebooks, your buttons, Tidy table
+    bar = { anchor = "LowerCenter", x = 0, y = 210 }, -- the action bar (each player can move it up or down in Settings)
+    counters = nil,  -- the turn's resources; nil: just above the action bar
+    menus = { anchor = "MiddleCenter", x = 0, y = 0 }, -- New Game, Settings, the tutorial, choices, game over
+  },
   -- Button ids drawn with the primary look.
   primary = { ["cz-playall"] = true, ["cz-end"] = true, ["cz-new"] = true, ["cz-again"] = true, ["cz-setup"] = true,
     ["cz-kitsave"] = true },
