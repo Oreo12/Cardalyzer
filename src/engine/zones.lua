@@ -55,7 +55,8 @@ Zones.frameAt = frameAt
 --   A function(seat, count, rules) returning { x, z, yaw }, or a table by
 --     player count: seating = { [2] = { {x=0, z=-10, yaw=0}, {x=0, z=10, yaw=180} }, ... }
 --     (counts it doesn't list fall back to "sides").
-local function seatFrame(seat, count, distance, spread, rules)
+local function seatFrame(seat, count, distance, spread, rules, grow)
+  grow = grow or 0
   local seating = rules and rules.layout and rules.layout.seating or "sides"
   local own
   if type(seating) == "function" then
@@ -68,7 +69,7 @@ local function seatFrame(seat, count, distance, spread, rules)
     local yaw = (seat - 1) * 360 / count
     -- side seats need to clear the market row, so the circle is wider than
     -- the long sides' distance unless the rules give one
-    local d = rules.layout.seatDistance or 20
+    local d = (rules.layout.seatDistance or 20) + grow
     local radius = rules.layout.seatRadius or {}
     local r = math.rad(yaw)
     return frameAt(-math.sin(r) * (radius.x or d), -math.cos(r) * (radius.z or d), yaw)
@@ -142,8 +143,15 @@ function Zones.layout(rules, fixedIds, count, facing)
   -- Seats sharing a side are this far apart (piles span -3.5 to +5.75 gaps).
   local spread = (rules.layout and rules.layout.seatSpread) or gap * 10
   count = count or Zones.defaultCount(rules)
+  -- Extra markets (rules.markets) stack their rows beside the main one,
+  -- `pitch` apart, and the seats move back to make room.
+  local extras = rules.markets or {}
+  local pitch = 3.4 * layoutValue(rules, "cardScale") + 1.2
+  local grow = #extras * pitch / 2
+  distance = distance + grow
+  local mainOut = -#extras * pitch / 2
 
-  local result = { seats = {}, market = { row = {}, fixed = {} } }
+  local result = { seats = {}, market = { row = {}, fixed = {} }, markets = {} }
   local areas = Zones.seatAreas(rules)
   local function area(f, name, height, ownYaw)
     local a = areas[name]
@@ -152,7 +160,7 @@ function Zones.layout(rules, fixedIds, count, facing)
     return s
   end
   for seat = 1, count do
-    local f = seatFrame(seat, count, distance, spread, rules)
+    local f = seatFrame(seat, count, distance, spread, rules, grow)
     result.seats[seat] = {
       play = area(f, "play", 3),
       bases = area(f, "bases", 3),
@@ -179,16 +187,16 @@ function Zones.layout(rules, fixedIds, count, facing)
   -- built in the facing seat's frame, so the whole market (row, piles and
   -- outlines) reads for that player
   local facingYaw = 0
-  if facing and facing > 1 then facingYaw = seatFrame(facing, count, distance, spread, rules).yaw end
+  if facing and facing > 1 then facingYaw = seatFrame(facing, count, distance, spread, rules, grow).yaw end
   local centre = frameAt(mo.x or 0, mo.z or 0, facingYaw)
   local n = rules.market.rowSize or 0
   local first = -(n - 1) / 2 * gap
   for i = 1, n do
-    result.market.row[i] = spot(centre, y, first + (i - 1) * gap, 0, yaw)
+    result.market.row[i] = spot(centre, y, first + (i - 1) * gap, mainOut, yaw)
   end
   local function piece(name, along)
     local o = over[name]
-    local s = spot(centre, y, type(o) == "table" and o.along or along, type(o) == "table" and o.out or 0, yaw)
+    local s = spot(centre, y, type(o) == "table" and o.along or along, type(o) == "table" and o.out or mainOut, yaw)
     s.hidden = o == false or nil
     return s
   end
@@ -197,11 +205,26 @@ function Zones.layout(rules, fixedIds, count, facing)
   local x = first + (n - 1) * gap + gap * 1.5
   if n == 0 then x = 0 end
   for _, id in ipairs(fixedIds or {}) do
-    result.market.fixed[id] = spot(centre, y, x, 0, yaw)
+    result.market.fixed[id] = spot(centre, y, x, mainOut, yaw)
     x = x + gap
   end
   result.market.scrap = piece("scrap", x + gap * 0.5)
-  result.market.area = spot(centre, y, 0, 0, yaw, { n * gap + 1, 3, 4.5 })
+  result.market.area = spot(centre, y, 0, mainOut, yaw, { n * gap + 1, 3, 4.5 })
+  -- Each extra market: its row, with its deck to the left, the next row out.
+  -- rules.layout.areas[key] = { along, out } moves one.
+  for k, m in ipairs(extras) do
+    local o = type(over[m.key]) == "table" and over[m.key] or {}
+    local size = m.rowSize or 0
+    local out = (o.out or (mainOut + k * pitch))
+    local start = (o.along or 0) - (size - 1) / 2 * gap
+    local row = {}
+    for i = 1, size do row[i] = spot(centre, y, start + (i - 1) * gap, out, yaw) end
+    result.markets[m.key] = {
+      row = row,
+      deck = spot(centre, y, start - gap * 1.5, out, yaw),
+      area = spot(centre, y, o.along or 0, out, yaw, { size * gap + 1, 3, 4.5 }),
+    }
+  end
   return result
 end
 
@@ -300,6 +323,11 @@ function Zones.outlines(rules, layout, colors)
   box("marketDeck", m.deck, marketRgb)
   for _, s in pairs(m.fixed) do box("fixed", s, marketRgb) end
   box("scrap", m.scrap, marketRgb)
+  for _, extra in pairs(layout.markets or {}) do
+    if #extra.row > 0 then box("row", extra.area, marketRgb, 0.12, 0) end
+    for _, slot in ipairs(extra.row) do box("slots", slot, marketRgb) end
+    box("marketDeck", extra.deck, marketRgb)
+  end
   return lines
 end
 
@@ -312,6 +340,9 @@ function Zones.zoneSpots(layout)
     end
   end
   if #layout.market.row > 0 then list[#list + 1] = { key = "market.row", spot = layout.market.area } end
+  for key, m in pairs(layout.markets or {}) do
+    if #m.row > 0 then list[#list + 1] = { key = "market.row." .. key, spot = m.area } end
+  end
   return list
 end
 

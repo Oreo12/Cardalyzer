@@ -125,12 +125,14 @@ function Turn.setup(state, rules, cards, random, opening, sets, kits)
     end
   end
 
-  for _, card in ipairs(inDeck("market")) do
-    for _ = 1, card.copies do
-      state.market.deck[#state.market.deck + 1] = State.newCard(state, card.id)
+  for _, m in ipairs(State.rows(state)) do
+    for _, card in ipairs(inDeck(m.key and ("market:" .. m.key) or "market")) do
+      for _ = 1, card.copies do
+        m.deck[#m.deck + 1] = State.newCard(state, card.id)
+      end
     end
+    Util.shuffle(m.deck, random)
   end
-  Util.shuffle(state.market.deck, random)
 
   for _, card in ipairs(inDeck("fixed")) do
     local pile = {}
@@ -170,15 +172,17 @@ function Turn.draw(state, seat, n, random)
   return drawn
 end
 
--- Fills empty market slots from the top of the market deck. Returns the
--- indexes of the slots that were filled.
+-- Fills every market's empty slots from the top of its own deck. Returns
+-- the slots that were filled: { { market = m, slot = i }, ... }.
 function Turn.fillMarket(state)
   local filled = {}
-  local row = state.market.row
-  for i = 1, #row do
-    if row[i] == State.EMPTY and #state.market.deck > 0 then
-      row[i] = table.remove(state.market.deck)
-      filled[#filled + 1] = i
+  for _, m in ipairs(State.rows(state)) do
+    local row = m.row
+    for i = 1, #row do
+      if row[i] == State.EMPTY and #m.deck > 0 then
+        row[i] = table.remove(m.deck)
+        filled[#filled + 1] = { market = m, slot = i }
+      end
     end
   end
   return filled

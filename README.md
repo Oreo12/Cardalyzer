@@ -423,6 +423,7 @@ The `deck` values work like this:
 
 - **`starter`**: every player gets `copies` of it in their starting deck.
 - **`market`**: `copies` are shuffled into the market deck, which refills the row.
+- **`market:<key>`**: the same, for one of the extra markets in `rules.markets`.
 - **`fixed`**: a pile of `copies` that's always available next to the row.
   The sample's Hireling works this way.
 - **`dealt`**: at the start, each player is dealt `rules.deal.count` of these
@@ -499,6 +500,7 @@ These are the fields in `games/<yours>/rules.lua`:
 | `sets` | `{ {key="base", label="Base Game", always=true}, {key="exp1", label="Expansion", default=true} }` | Sets of cards (named in the `set` column) the host switches in or out in the New Game menu. `always` sets can't be switched off; `default` ones start on. Cards with no `set` are always in. `about` is the set's tooltip in the menu |
 | `market.faceActive` | `false` | Leave out to turn the market's cards to face the player whose turn it is; `false` keeps them facing seat 1 |
 | `market.turnsWithPlayer` | `true` | The whole market (row, piles, outlines) turns to face the player whose turn it is, with its cards gliding to their new places. Best with `layout.seating = "around"` |
+| `markets` | `{ {key="heroes", label="Heroes", rowSize=3} }` | Extra markets, each with its own deck and row of cards for sale. A card joins one with `deck = market:heroes` in the spreadsheet. The rows stack beside the main one, and the seats move back to make room; `layout.areas.heroes = {along, out}` places one. They share the main market's scrap pile; fixed piles stay with the main market |
 | `factions` | `forge = {label="Forge", color="#C8502D"}` | Faction labels and frame colours |
 | `cardTypes` | `wall = {persistent=true, guard=true}` | Types. Persistent ones stay in play and apply their effects again each turn; guard ones must be destroyed before their owner or other buildings can be attacked. `replay = false`: a persistent card doesn't apply its effects again each turn. `target = false`: it can't be attacked or destroyed (a hero that stays until you scrap it). `event = true`: revealed into the market row, it resolves at once for the player whose turn it is, then goes to the scrap pile and the slot refills |
 | `mechanics` | `{allies=true, persistent=true, scrap=true}` | Turn whole mechanics on or off |

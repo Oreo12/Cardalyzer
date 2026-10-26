@@ -295,6 +295,7 @@ function Game:loadState(saved)
   for _, p in ipairs(data.players) do
     p.objectives, p.completed = p.objectives or {}, p.completed or {}
   end
+  data.markets = data.markets or {}
   self.state = data
   self:relayout()
   return true

@@ -42,7 +42,32 @@ function State.new(rules, count)
     state.players[seat] = player
   end
   for i = 1, rules.market.rowSize do state.market.row[i] = State.EMPTY end
+  -- Extra markets (rules.markets): each its own deck and row. The main
+  -- market keeps the fixed piles and the scrap pile.
+  state.markets = {}
+  for _, m in ipairs(rules.markets or {}) do
+    local extra = { key = m.key, deck = {}, row = {} }
+    for i = 1, m.rowSize or 0 do extra.row[i] = State.EMPTY end
+    state.markets[#state.markets + 1] = extra
+  end
   return state
+end
+
+-- Every market with a row, the main one first: { market, extra, ... }.
+function State.rows(state)
+  local out = { state.market }
+  for _, m in ipairs(state.markets or {}) do out[#out + 1] = m end
+  return out
+end
+
+-- The market whose row holds uid, and its slot.
+function State.rowOf(state, uid)
+  for _, m in ipairs(State.rows(state)) do
+    for i, u in ipairs(m.row) do
+      if u == uid then return m, i end
+    end
+  end
+  return nil
 end
 
 function State.resetResources(player, rules)

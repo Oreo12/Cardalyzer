@@ -2580,5 +2580,70 @@ test("the whole market turns to face the player whose turn it is", function()
   game.rules.layout, game.rules.market.turnsWithPlayer = nil, nil
 end)
 
+test("extra markets: their own deck and row, bought from, scrapped from, refilled", function()
+  local game = boot()
+  local Cards = Cardalyzer.require("engine.cards")
+  local ok, lib = pcall(Cards.new, { { id = "x", name = "X", deck = "market:heroes", cost = "1", copies = "1", effects = "" } })
+  assert(ok and lib:get("x").deck == "market:heroes", "market:<key> is a deck: " .. tostring(lib))
+  assert(not pcall(Cards.new, { { id = "y", name = "Y", deck = "shop", cost = "1", copies = "1", effects = "" } }), "other decks still refused")
+  for _, id in ipairs({ "fleet_admiral", "night_queen", "hidden_den" }) do game.cards:get(id).deck = "market:heroes" end
+  game.rules.markets = { { key = "heroes", label = "Heroes", rowSize = 2 } }
+  local Zones = Cardalyzer.require("engine.zones")
+  local plain = Zones.layout({ seats = game.rules.seats, market = game.rules.market }, nil, 2)
+  Cardalyzer_onStartGame(HOST)
+  local s = game.state
+  local heroes = s.markets[1]
+  eq(heroes.key, "heroes", "the extra market")
+  eq(#heroes.row, 2, "its row")
+  local inRow = 0
+  for _, uid in ipairs(heroes.row) do if uid ~= "" then inRow = inRow + 1 end end
+  eq(inRow + #heroes.deck, game.cards:get("fleet_admiral").copies + game.cards:get("night_queen").copies + game.cards:get("hidden_den").copies,
+    "all its cards, in its row and deck")
+  for _, uid in ipairs(s.market.deck) do assert(game.cards:get(s.cards[uid]).deck == "market", "the main deck keeps its own") end
+  -- the table: a second row beside the main one, seats moved back
+  local L = game.layout
+  local extra = L.markets.heroes
+  assert(math.abs(extra.row[1].position[3] - L.market.row[1].position[3]) > 3, "the second row sits beside the main row")
+  assert(L.seats[1].play.position[3] < plain.seats[1].play.position[3], "seat 1 moved back to make room")
+  local keys = {}
+  for _, e in ipairs(Zones.zoneSpots(L)) do keys[e.key] = true end
+  assert(keys["market.row.heroes"], "a zone for the extra row")
+  local piles = {}
+  for _, pile in ipairs(Cardalyzer.require("engine.board").piles(game)) do piles[pile.key] = pile end
+  assert(piles["market.deck.heroes"] and piles["market.row.heroes.1"].buyable, "its deck and buyable row on the table")
+  -- buy from it: the slot refills from its own deck
+  local uid = heroes.row[1]
+  local cost = game:cardOf(uid).cost
+  s.players[1].resources.gold = cost
+  local deckBefore = #heroes.deck
+  assert(game:buy(1, uid), "bought from the extra row")
+  assert(Cardalyzer.require("engine.util").indexOf(s.players[1].discard, uid), "into the discard pile")
+  if deckBefore > 0 then
+    assert(heroes.row[1] ~= "", "the slot refilled")
+    eq(#heroes.deck, deckBefore - 1, "from its own deck")
+  end
+  -- scrap from it by hand (dragged to the scrap pile)
+  local other = heroes.row[2]
+  if other ~= "" then
+    local okScrap = game:scrapDropped(1, other, "market.row.heroes.2")
+    assert(okScrap, "scrapped from the extra row")
+    assert(Cardalyzer.require("engine.util").indexOf(s.market.scrap, other), "onto the shared scrap pile")
+  end
+  -- cards are conserved
+  local seen, total = {}, 0
+  local function visit(l) for _, u in ipairs(l) do if u ~= "" then assert(not seen[u], "dup " .. u); seen[u] = true; total = total + 1 end end end
+  for _, p in ipairs(s.players) do visit(p.deck); visit(p.hand); visit(p.discard); visit(p.play); visit(p.bases) end
+  visit(s.market.deck); visit(s.market.row); visit(s.market.scrap)
+  for _, pile in pairs(s.market.fixed) do visit(pile) end
+  visit(heroes.deck); visit(heroes.row)
+  local n = 0
+  for _ in pairs(s.cards) do n = n + 1 end
+  eq(total, n, "no card lost")
+  -- saved and loaded
+  local restored = boot(game:save())
+  eq(#restored.state.markets[1].row, 2, "kept after a reload")
+  game.rules.markets = nil
+end)
+
 print(string.format("\n%d passed, %d failed", passed, failed))
 if failed > 0 then os.exit(1) end

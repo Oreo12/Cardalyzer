@@ -206,6 +206,17 @@ function Board.piles(game)
     add("fixed." .. id, m.fixed[id] or {}, facing(layout.market.fixed[id]), "stack", true, true)
   end
   add("market.scrap", m.scrap, facing(layout.market.scrap), "stack", true)
+  -- extra markets (rules.markets): "market.deck.<key>", "market.row.<key>.<i>"
+  for _, extra in ipairs(state.markets or {}) do
+    local spots = layout.markets and layout.markets[extra.key]
+    if spots then
+      add("market.deck." .. extra.key, extra.deck, facing(spots.deck), "stack", false)
+      for i, uid in ipairs(extra.row) do
+        add("market.row." .. extra.key .. "." .. i, uid == State.EMPTY and {} or { uid }, facing(spots.row[i]), "stack", true, true,
+          spots.deck.position)
+      end
+    end
+  end
   for i = first, #list do list[i].facing = yaw end
   return list
 end

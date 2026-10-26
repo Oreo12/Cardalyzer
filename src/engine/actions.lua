@@ -55,12 +55,12 @@ function Actions.fillMarket(game)
   local state = game.state
   for _ = 1, 100 do
     local again = false
-    for _, slot in ipairs(Turn.fillMarket(state)) do
-      local uid = state.market.row[slot]
+    for _, filled in ipairs(Turn.fillMarket(state)) do
+      local uid = filled.market.row[filled.slot]
       -- (an earlier event in this pass may have emptied the slot, e.g. "scrap the row")
       local c = uid ~= State.EMPTY and game:cardOf(uid)
       if c and Actions.typeDef(game, c).event then
-        state.market.row[slot] = State.EMPTY
+        filled.market.row[filled.slot] = State.EMPTY
         state.market.scrap[#state.market.scrap + 1] = uid
         if game.notify then game:notify(Words.say(game.rules, "event", { card = c.name, effects = game.effects:describe(c.effects, c.text) })) end
         game.effects:apply(game, state.turn.active, c.effects, { uid = uid, card = c, event = true })
@@ -76,13 +76,17 @@ end
 -- to the bottom of the market deck and the row fills again.
 function Actions.setAsideEvents(game)
   local state = game.state
-  for _ = 1, #state.market.deck + #state.market.row do
+  local total = 0
+  for _, m in ipairs(State.rows(state)) do total = total + #m.deck + #m.row end
+  for _ = 1, total do
     local moved = false
-    for i, uid in ipairs(state.market.row) do
-      if uid ~= State.EMPTY and Actions.typeDef(game, game:cardOf(uid)).event then
-        table.insert(state.market.deck, 1, uid)
-        state.market.row[i] = State.EMPTY
-        moved = true
+    for _, m in ipairs(State.rows(state)) do
+      for i, uid in ipairs(m.row) do
+        if uid ~= State.EMPTY and Actions.typeDef(game, game:cardOf(uid)).event then
+          table.insert(m.deck, 1, uid)
+          m.row[i] = State.EMPTY
+          moved = true
+        end
       end
     end
     if not moved then return end
@@ -286,12 +290,12 @@ function Actions.playAll(game, seat)
   return true
 end
 
--- Where a buyable uid sits: ("row", slot) or ("fixed", card id).
-local function locate(market, uid)
-  for i, u in ipairs(market.row) do
-    if u == uid then return "row", i end
-  end
-  for id, pile in pairs(market.fixed) do
+-- Where a buyable uid sits: ("row", slot, its market) in any market's row,
+-- or ("fixed", card id).
+local function locate(state, uid)
+  local m, slot = State.rowOf(state, uid)
+  if m then return "row", slot, m end
+  for id, pile in pairs(state.market.fixed) do
     if Util.indexOf(pile, uid) then return "fixed", id end
   end
   return nil
@@ -311,7 +315,7 @@ function Actions.buy(game, seat, uid, free, toTop, toHand)
   local ok, why = isActive(game, seat)
   if not ok then return fail(why) end
   local market = game.state.market
-  local where, slot = locate(market, uid)
+  local where, slot, rowMarket = locate(game.state, uid)
   if not where then return fail(say(game, "cantBuy")) end
   if where == "fixed" then uid = market.fixed[slot][#market.fixed[slot]] end
   local c = card(game, uid)
@@ -332,7 +336,7 @@ function Actions.buy(game, seat, uid, free, toTop, toHand)
     if discounted then player.flags.discount = nil end
   end
 
-  if where == "row" then market.row[slot] = State.EMPTY else table.remove(market.fixed[slot]) end
+  if where == "row" then rowMarket.row[slot] = State.EMPTY else table.remove(market.fixed[slot]) end
   local function take(flag)
     if player.flags[flag] ~= nil and Actions.typeMatches(player.flags[flag], c) then
       player.flags[flag] = nil
@@ -401,8 +405,7 @@ function Actions.scrapFromRow(game, seat, uid)
   local ok, why = isActive(game, seat)
   if not ok then return fail(why) end
   if game.rules.mechanics and game.rules.mechanics.scrap == false then return fail("Scrapping is off in these rules.") end
-  local market = game.state.market
-  local slot = Util.indexOf(market.row, uid)
+  local market, slot = State.rowOf(game.state, uid)
   if not slot then return fail(say(game, "notInRow")) end
   market.row[slot] = State.EMPTY
   Actions.toScrap(game, uid)
@@ -603,14 +606,24 @@ function Actions.targets(game, seat, prompt)
   elseif kind == "scrap" then
     -- from: any of "hand", "discard", "row" (the market row)
     for _, from in ipairs(prompt.from or { "hand", "discard" }) do
-      for _, uid in ipairs(from == "row" and state.market.row or player[from]) do addIf(uid, from) end
+      if from == "row" then
+        for _, m in ipairs(State.rows(state)) do
+          for _, uid in ipairs(m.row) do addIf(uid, from) end
+        end
+      else
+        for _, uid in ipairs(player[from]) do addIf(uid, from) end
+      end
     end
   elseif kind == "discard" then
     for _, uid in ipairs(player.hand) do add(uid) end
   elseif kind == "scrap_row" then
-    for _, uid in ipairs(state.market.row) do addIf(uid) end
+    for _, m in ipairs(State.rows(state)) do
+      for _, uid in ipairs(m.row) do addIf(uid) end
+    end
   elseif kind == "free_buy" then
-    for _, uid in ipairs(state.market.row) do addIf(uid) end
+    for _, m in ipairs(State.rows(state)) do
+      for _, uid in ipairs(m.row) do addIf(uid) end
+    end
     if prompt.includeFixed then
       for _, id in ipairs(game.fixedIds) do
         local pile = state.market.fixed[id]
@@ -718,7 +731,8 @@ function Actions.pick(game, seat, value)
     elseif Util.removeValue(player.discard, value) then
       from = "discard"
     else
-      state.market.row[Util.indexOf(state.market.row, value)] = State.EMPTY
+      local m, slot = State.rowOf(state, value)
+      m.row[slot] = State.EMPTY
       from = "row"
     end
     Actions.toScrap(game, value, seat, from)
@@ -727,7 +741,8 @@ function Actions.pick(game, seat, value)
     Util.removeValue(player.hand, value)
     player.discard[#player.discard + 1] = value
   elseif kind == "scrap_row" then
-    state.market.row[Util.indexOf(state.market.row, value)] = State.EMPTY
+    local m, slot = State.rowOf(state, value)
+    m.row[slot] = State.EMPTY
     Actions.toScrap(game, value, seat, "row")
     Actions.fillMarket(game)
   elseif kind == "free_buy" then
