@@ -22,6 +22,7 @@ end
 
 local HOST = { color = "White", host = true }
 local GUEST = { color = "Red", host = false }
+local function press(player, id) Cardalyzer_onUI(player, "-1", id) end
 
 local function boot(saved)
   tts.reset()
@@ -77,7 +78,8 @@ test("boot builds zones, hands and the UI", function()
   eq(count(ofType("ScriptingTrigger")), 9, "scripting zones (4 per seat + market)")
   eq(count(ofType("HandTrigger")), 2, "hand zones")
   eq(count(function(o) return o.tags.cz_card end), 0, "no cards before New Game")
-  assert(tts.ui.xml:find("cz-new", 1, true), "New Game button in XML")
+  assert(tts.ui.xml:find("cz-setup", 1, true), "New Game button in XML")
+  assert(not tts.ui.xml:find("cz-new", 1, true), "setup menu closed until New Game is pressed")
   assert(tts.ui.xml:find("Press New Game"), "prompt to start")
   assert(not tts.ui.xml:find("cz-end", 1, true), "no action panel before the game starts")
 end)
@@ -155,28 +157,98 @@ test("End Turn is refused for the wrong player", function()
   assert(tts.broadcasts[#tts.broadcasts]:find("turn"), "told why")
 end)
 
-test("the info panel stands alone at the top centre and holds messages", function()
+test("the UI: info panel on the right, action bar above the hand, Tidy table in the corner", function()
   local game = boot()
   Cardalyzer_onStartGame(HOST)
   local xml = tts.ui.xml
-  assert(xml:find('id="cz_panel" width="620" height="%d+" rectAlignment="UpperCenter"'), "info panel centred")
-  assert(xml:find('id="cz_actions"[^>]*rectAlignment="UpperRight"'), "action panel kept to the side")
-  assert(xml:find('id="cz_seat_2" fontSize="15" color="#E5413F"', 1, true), "seat lines tinted")
+  assert(xml:find('id="cz_panel" width="300" height="%d+" rectAlignment="LowerRight"'), "info panel on the right")
+  assert(xml:find('id="cz_actions"[^>]*rectAlignment="LowerCenter" offsetXY="0 210"'), "action bar just above the hand")
+  assert(xml:find('id="cz_tidy"[^>]*rectAlignment="LowerRight" offsetXY="%-12 70"'), "Tidy table above TTS's Notes button")
+  assert(xml:find('id="cz_panel"[^>]*offsetXY="%-12 112"'), "info panel above it")
+  assert(not xml:find('outline="#E8B84A"', 1, true), "no yellow borders")
+  assert(not xml:find('color="#0E1620F2"', 1, true), "no panel backgrounds")
+  assert(xml:find('id="cz%-end"[^>]*fontSize="17"[^>]*colors="#E8B84A'), "End Turn: bigger, gold")
+  assert(xml:find('id="cz%-playall"[^>]*fontSize="17"[^>]*colors="#E8B84A'), "Play all: bigger, gold")
+  assert(xml:find('id="cz%-tidy"[^>]*colors="#D6DEE8'), "other buttons light")
+  assert(xml:find('id="cz_seat_2"[^>]*color="#E5413F"'), "seat names tinted")
   assert(not xml:find('color="[^"]*"[^>]-color="'), "no duplicate color attributes")
+  eq(#tts.ui.assets, 4, "four symbols registered")
+
+  -- Stats sit beside each name as symbols with the number over them.
+  assert(xml:find('id="cz_stat_2_health"[^>]*><Image image="cz_heart"'), "health as a heart")
+  assert(xml:find('id="cz_stat_2_health_n"[^>]*>40<'), "with the number on it")
+  -- The active player's Trade/Combat sit above the action bar, only when above 0.
+  assert(not xml:find("cz_res_", 1, true), "nothing to count at the start of the turn")
+  game.state.players[1].resources.gold = 3
+  game:refreshUI()
+  xml = tts.ui.xml
+  assert(xml:find('id="cz_res_White_gold"[^>]*><Image image="cz_coin"'), "gold as a coin")
+  assert(xml:find('id="cz_res_White_gold_n"[^>]*>3<'), "showing 3")
+  assert(not xml:find("cz_res_White_might", 1, true), "might hidden while it's 0")
+  assert(xml:find('id="cz_res_Red_gold"', 1, true), "the other player sees it too")
+  local barY = tonumber(xml:match('id="cz_actions"[^>]*offsetXY="0 (%d+)"'))
+  local countersY = tonumber(xml:match('id="cz_counters_White"[^>]*offsetXY="0 (%d+)"'))
+  assert(countersY > barY, "counters just above the bar")
+  assert(not xml:match('<Panel id="cz_panel".-</Panel>'):find("cz_res_", 1, true), "not in the info panel")
+  -- Each player can move their bar to sit above their own hand; it's remembered.
+  press(HOST, "cz-barup")
+  press(HOST, "cz-barup")
+  local moved = tonumber(tts.ui.xml:match('id="cz_actions"[^>]*offsetXY="0 (%d+)"'))
+  eq(moved, barY + 60, "two steps up")
+  local restored = boot(game:save())
+  eq(Cardalyzer.require("engine.ui").barY(restored, "White"), barY + 60, "kept after a reload")
+  game = restored
+  game.state.players[1].bases = {}
+  -- A base in play shows a shield with its defense, in front of the heart.
+  local State = Cardalyzer.require("engine.state")
+  local vault = State.newCard(game.state, "seed_vault") -- defense from cards.csv
+  game.state.players[1].bases[1] = vault
+  game:refreshUI()
+  xml = tts.ui.xml
+  local def = game.cards:get("seed_vault").defense
+  if def then
+    assert(xml:find('id="cz_base_1_1"[^>]*><Image image="cz_shield"'), "a shield for the base")
+    assert(xml:find("cz_base_1_1", 1, true) < xml:find("cz_stat_1_health", 1, true), "in front of the heart")
+  end
+
+  -- Choices go in the middle of the screen; the bar keeps the rest.
+  game:prompt(1, { kind = "choice", options = { { key = "gold", amount = 1 }, { key = "might", amount = 1 } } })
+  game:refreshUI()
+  xml = tts.ui.xml
+  assert(xml:find('id="cz_choice" visibility="White"[^>]*rectAlignment="MiddleCenter"'), "choice in the middle")
+  local choice = xml:match('<Panel id="cz_choice".-</Panel>')
+  assert(choice:find("cz-pick-1", 1, true), "its options there")
+  assert(not choice:find("cz-end", 1, true), "End Turn stays in the bar")
 
   Cardalyzer_onEndTurn(GUEST)
   xml = tts.ui.xml
-  assert(xml:find('id="cz_notice_' .. GUEST.color .. '" visibility="' .. GUEST.color .. '"', 1, true), "private notice panel")
-  assert(xml:find("turn", 1, true), "reason shown in the UI")
-
+  assert(xml:find('id="cz_notice_' .. GUEST.color .. '" visibility="' .. GUEST.color .. '"', 1, true), "private notice")
   game:notify("Hello table")
   assert(tts.ui.xml:find("Hello table", 1, true), "public notice in the info panel")
   for i = 1, 5 do game:notify("msg " .. i) end
   assert(not tts.ui.xml:find("Hello table", 1, true), "only the latest three kept")
-  assert(tts.ui.xml:find("msg 5", 1, true), "newest kept")
+end)
 
-  Cardalyzer_onEndTurn(HOST)
-  assert(tts.ui.xml:find('id="cz_notice_' .. GUEST.color .. '"', 1, true), "guest notice stays until the guest acts")
+test("New Game opens a setup menu; Play Game deals and closes it", function()
+  local game = boot()
+  local xml = tts.ui.xml
+  assert(xml:find('id="cz%-setup"[^>]*>New Game<'), "the info panel only has New Game")
+  assert(not xml:find("cz-tutorial", 1, true) and not xml:find("cz-players", 1, true), "settings are in the menu")
+  press(GUEST, "cz-setup")
+  assert(not tts.ui.xml:find("cz_setup_", 1, true), "only the host can open it")
+  press(HOST, "cz-setup")
+  xml = tts.ui.xml
+  assert(xml:find('id="cz_setup_White" visibility="White"[^>]*rectAlignment="MiddleCenter"'), "menu in the middle, for the host")
+  assert(xml:find('id="cz%-new"[^>]*>Play Game<'), "Play Game")
+  assert(xml:find("cz-tutorial", 1, true) and xml:find("cz-players-3", 1, true), "Tutorial and player count")
+  press(HOST, "cz-setupclose")
+  assert(not tts.ui.xml:find("cz_setup_White", 1, true), "Close shuts it")
+  press(HOST, "cz-setup")
+  press(HOST, "cz-players-3")
+  press(HOST, "cz-new")
+  eq(game.state.started, true, "Play Game deals")
+  eq(#game.state.players, 3, "with the chosen player count")
+  assert(not tts.ui.xml:find("cz_setup_White", 1, true), "and closes the menu")
 end)
 
 test("cards dealt into a hand are turned 180 from the hand zone", function()
@@ -196,35 +268,39 @@ end)
 
 test("the tutorial opens, pages, closes and its button can be hidden", function()
   local game = boot()
-  assert(tts.ui.xml:find('visibility="White|Brown|Red', 1, true), "Tutorial button for everyone")
-  Cardalyzer_onUI(HOST, "-1", "cz-tutorial")
+  local BLUE_HOST = { color = "Blue", promoted = true }
+  press(HOST, "cz-setup")
+  assert(tts.ui.xml:find('id="cz_setup_White".-cz%-tutorial'), "Tutorial button in the setup menu")
+  press(HOST, "cz-tutorial")
   local xml = tts.ui.xml
   assert(xml:find('id="cz_tutorial_White" visibility="White"', 1, true), "tutorial only for its reader")
   assert(xml:find('rectAlignment="MiddleCenter"', 1, true), "middle of the screen")
   assert(xml:find("Welcome to Ember Guilds", 1, true), "page 1")
   assert(not xml:find("cz-tutback", 1, true), "no Back on page 1")
-  Cardalyzer_onUI(HOST, "-1", "cz-tutnext")
-  assert(tts.ui.xml:find("The info panel (top centre)", 1, true), "page 2")
-  for _ = 1, 10 do Cardalyzer_onUI(HOST, "-1", "cz-tutnext") end
+  press(HOST, "cz-tutnext")
+  assert(tts.ui.xml:find("The info panel (right side)", 1, true), "page 2")
+  for _ = 1, 10 do press(HOST, "cz-tutnext") end
   assert(tts.ui.xml:find("Page 5 of 5", 1, true), "stops at the last page")
   assert(not tts.ui.xml:find("cz-tutnext", 1, true), "no Next on the last page")
-  Cardalyzer_onUI(HOST, "-1", "cz-tutback")
+  press(HOST, "cz-tutback")
   assert(tts.ui.xml:find("Page 4 of 5", 1, true), "back a page")
-  Cardalyzer_onUI(HOST, "-1", "cz-tutclose")
+  press(HOST, "cz-tutclose")
   assert(not tts.ui.xml:find("cz_tutorial_White", 1, true), "closed")
 
-  Cardalyzer_onUI(HOST, "-1", "cz-tutorial")
-  Cardalyzer_onUI(HOST, "-1", "cz-tuthide")
+  press(HOST, "cz-tutorial")
+  press(HOST, "cz-tuthide")
   xml = tts.ui.xml
   assert(not xml:find("cz_tutorial_White", 1, true), "hide also closes")
-  assert(not xml:find('visibility="White|', 1, true), "button hidden for White")
-  assert(xml:find('visibility="Brown|Red', 1, true), "still shown to others")
-  assert(xml:find("!tutorial", 1, true), "told how to bring it back")
+  assert(not xml:find('id="cz_setup_White".-cz%-tutorial'), "button hidden for White")
+  press(BLUE_HOST, "cz-setup")
+  assert(tts.ui.xml:find('id="cz_setup_Blue".-cz%-tutorial'), "still shown to others")
+  assert(tts.ui.xml:find("!tutorial", 1, true), "told how to bring it back")
 
   local restored = boot(game:save())
-  assert(not tts.ui.xml:find('visibility="White|', 1, true), "stays hidden after reload")
+  press(HOST, "cz-setup")
+  assert(not tts.ui.xml:find("cz-tutorial", 1, true), "stays hidden after reload")
   eq(onChat("!tutorial", HOST), false, "chat command swallowed")
-  assert(tts.ui.xml:find('visibility="White|', 1, true), "button back")
+  assert(tts.ui.xml:find('id="cz_setup_White".-cz%-tutorial'), "button back")
   assert(tts.ui.xml:find("cz_tutorial_White", 1, true), "and the tutorial opens")
   eq(onChat("hello", HOST), true, "other chat passes through")
   assert(restored)
@@ -233,7 +309,7 @@ end)
 test("a game can turn the Tutorial button off", function()
   local game = boot()
   game.rules.tutorial = false
-  game:refreshUI()
+  press(HOST, "cz-setup")
   assert(not tts.ui.xml:find("cz-tutorial", 1, true), "no Tutorial button")
   game.rules.tutorial = nil
 end)
@@ -741,6 +817,8 @@ end)
 
 test("the host picks 2 to 4 players and the table is laid out for them", function()
   local game = boot()
+  assert(not tts.ui.xml:find('id="cz-players-4"', 1, true), "player count lives in the setup menu")
+  click(HOST, "cz-setup")
   assert(tts.ui.xml:find('id="cz-players-4"', 1, true), "player-count buttons")
   click(GUEST, "cz-players-3")
   eq(#game.state.players, 2, "guests can't change it")
@@ -767,7 +845,8 @@ test("the host picks 2 to 4 players and the table is laid out for them", functio
   -- During a game the choice waits for the next New Game.
   click(HOST, "cz-players-2")
   eq(#s.players, 3, "current game unchanged")
-  assert(tts.ui.xml:find("Next game: 2 players", 1, true), "shown as the next game's count")
+  click(HOST, "cz-setup")
+  assert(tts.ui.xml:find('id="cz%-players%-2"[^>]*colors="#E8B84A'), "the setup menu remembers the choice")
   DBE_start()
   eq(#game.state.players, 2, "next game seats 2")
   eq(count(ofType("ScriptingTrigger")), 9, "back to two seats of zones")
@@ -873,6 +952,605 @@ test("art.json problems are reported when the game loads", function()
   local ok, err = pcall(Game.new, { rules = game.rules, cards = Cardalyzer.require("game.cards"), art = art })
   eq(ok, false, "Game.new refuses bad art")
   assert(tostring(err):find("art.json", 1, true), "says why")
+end)
+
+---------------------------------------------------------------------------
+-- Hooks for unusual cards: triggers, copies, prompt options
+---------------------------------------------------------------------------
+
+test("a card in play can react to its owner playing another card", function()
+  local game, put = blank()
+  local seen = {}
+  game.effects:registerCustom("watcher", {
+    whenYouPlay = function(g, seat, ctx, played)
+      seen[#seen + 1] = played.card.id
+      local pools = g.state.players[seat].resources
+      pools.might = pools.might + 1
+    end,
+  })
+  local vault = game.cards:get("seed_vault")
+  vault.effects[#vault.effects + 1] = { key = "custom", fn = "watcher" }
+  local a1, b, a2 = put(1, "hand", "apprentice"), put(1, "hand", "seed_vault"), put(1, "hand", "apprentice")
+  game:play(1, a1) -- before the watcher is in play
+  game:play(1, b)
+  game:play(1, a2)
+  eq(#seen, 1, "fires only for cards played while it's in play, not for itself")
+  eq(seen[1], "apprentice", "told which card")
+  eq(game.state.players[1].resources.might, 1, "trigger applied")
+  eq(table.concat(game.state.turn.played, ","), a1 .. "," .. b .. "," .. a2, "turn.played lists this turn's plays in order")
+  for _ = 1, 5 do put(1, "deck", "apprentice") end
+  click(WHITE, "cz-end")
+  eq(#game.state.turn.played, 0, "cleared for the next turn")
+end)
+
+test("drawPerPick draws for each card picked once the prompt ends", function()
+  local game, put = blank()
+  local p = game.state.players[1]
+  local s1, s2 = put(1, "hand", "squire"), put(1, "hand", "squire")
+  put(1, "hand", "squire")
+  for _ = 1, 3 do put(1, "deck", "apprentice") end
+  game:prompt(1, { kind = "scrap", count = 2, optional = true, from = { "hand" }, drawPerPick = 1 })
+  click(WHITE, "cz-pick-" .. s1)
+  eq(#p.hand, 2, "no draw until the prompt ends")
+  click(WHITE, "cz-pick-" .. s2)
+  eq(#p.hand, 3, "drew one for each card scrapped")
+  game:prompt(1, { kind = "discard", count = 2, optional = true, drawPerPick = 1 })
+  click(WHITE, "cz-pick-" .. p.hand[1])
+  click(WHITE, "cz-done")
+  eq(#p.hand, 3, "stopping early draws for what was picked")
+  eq(#p.deck, 0, "deck used")
+end)
+
+test("free buys can be limited to a card type, include fixed piles and go on top", function()
+  local game, _, putRow = blank()
+  local Actions = Cardalyzer.require("engine.actions")
+  local admiral = putRow(1, "fleet_admiral")
+  local oak = putRow(2, "old_oak")
+  game:prompt(1, { kind = "free_buy", cardType = "unit", includeFixed = true, toTop = true, optional = true })
+  game:refreshUI()
+  local offered = {}
+  for _, t in ipairs(Actions.targets(game, 1, game.state.players[1].prompts[1])) do offered[t.value] = true end
+  assert(offered[admiral], "any cost when maxCost is left out")
+  assert(not offered[oak], "other card types left out")
+  local hirelings = game.state.market.fixed.hireling
+  assert(offered[hirelings[#hirelings]], "top of a fixed pile offered")
+  assert(tts.ui.xml:find("Take a unit from the market for free, onto your deck", 1, true), "prompt text")
+  click(WHITE, "cz-pick-" .. admiral)
+  local p = game.state.players[1]
+  eq(p.deck[#p.deck], admiral, "on top of the deck")
+  eq(p.resources.gold, 0, "nothing spent")
+end)
+
+test("flags.buyToTop can name a card type and waits for one", function()
+  local game, _, putRow = blank()
+  local vault, runner = putRow(1, "seed_vault"), putRow(2, "tide_runner")
+  local p = game.state.players[1]
+  p.resources.gold = 10
+  p.flags.buyToTop = "unit"
+  game:buy(1, vault)
+  eq(p.discard[#p.discard], vault, "a building still goes to the discard pile")
+  eq(p.flags.buyToTop, "unit", "flag kept for the next unit")
+  game:buy(1, runner)
+  eq(p.deck[#p.deck], runner, "the unit goes on top")
+  eq(p.flags.buyToTop, nil, "flag used up")
+end)
+
+test("a card can copy another in play for the turn, with both cards' factions", function()
+  local game, put = blank()
+  local State = Cardalyzer.require("engine.state")
+  game.effects:registerCustom("mimic", {
+    apply = function(g, seat, ctx)
+      g:prompt(seat, { kind = "pick", custom = "mimic", exclude = ctx.uid, cardType = "unit", text = "Copy a unit" })
+    end,
+    onPick = function(g, seat, uid, prompt)
+      g:copyCard(seat, prompt.exclude, State.cardId(g.state, uid))
+    end,
+  })
+  game.cards:get("veil_cutpurse").effects = { { key = "custom", fn = "mimic" } }
+  local smith = put(1, "hand", "ember_smith")
+  local mimic = put(1, "hand", "veil_cutpurse")
+  game:play(1, smith)
+  game:play(1, mimic)
+  game:refreshUI()
+  assert(tts.ui.xml:find("Copy a unit", 1, true), "asks what to copy")
+  assert(tts.ui.xml:find("cz-pick-" .. smith, 1, true), "offers the other unit")
+  assert(not tts.ui.xml:find("cz-pick-" .. mimic, 1, true), "not itself")
+  click(WHITE, "cz-pick-" .. smith)
+  local c = game:cardOf(mimic)
+  eq(c.name, "Veil Cutpurse", "keeps its own name")
+  eq(c.id, "ember_smith", "acts as the copied card")
+  local factions = table.concat(c.factions, "/")
+  assert(factions:find("veil", 1, true) and factions:find("forge", 1, true), "both factions: " .. factions)
+  -- Smith 2 + copy 2, and both forge allies fire (each sees the other): 2 + 2.
+  eq(game.state.players[1].resources.might, 8, "copied effects and allies")
+  for _ = 1, 5 do put(1, "deck", "apprentice") end
+  click(WHITE, "cz-end")
+  eq(game:cardOf(mimic).id, "veil_cutpurse", "back to itself next turn")
+end)
+
+---------------------------------------------------------------------------
+-- Dropping, animation and outlines
+---------------------------------------------------------------------------
+
+test("a card dropped while still lifted above the play area is played", function()
+  local game, put = blank()
+  local uid = put(1, "hand", "apprentice")
+  game:tidy()
+  local obj = getObjectFromGUID(game.state.view.piles["1.hand"][1])
+  local area = game.layout.seats[1].play.position
+  obj.position = { area[1] + 3, area[2] + 6, area[3] + 1 } -- high above the zone; TTS reports no zones
+  obj.zones = {}
+  onObjectDrop("White", obj)
+  local p = game.state.players[1]
+  assert(has(p.play, uid), "in play")
+  eq(p.resources.gold, 1, "its effect applied")
+  -- Dropped on the table outside the play area: nothing happens.
+  local other = put(1, "hand", "squire")
+  game:tidy()
+  local stray = getObjectFromGUID(game.state.view.piles["1.hand"][1])
+  stray.position = { 0, 2, 0 } -- the market, at the centre
+  onObjectDrop("White", stray)
+  assert(has(p.hand, other), "still in hand")
+end)
+
+local function liveCards() return count(function(o) return o.tags.cz_card end) end
+local function ghosts() return tts.live(function(o) return o.tags.cz_card and o.locked end) end
+
+test("New Game deals the market row and hands from their decks, one card after another", function()
+  local game = boot()
+  tts.deferTimers = true
+  DBE_start()
+  local layout = game.layout
+  eq(game.state.view.piles["market.row.1"], nil, "row slot waits for its card to land")
+  assert(#ghosts() > 0, "cards are in flight")
+  tts.runTimers()
+  eq(#ghosts(), 0, "flying cards removed when they land")
+  local function to(f, p) return math.abs(f.to[1] - p[1]) < 1e-9 and math.abs(f.to[3] - p[3]) < 1e-9 end
+  local slot1, last, handFlights, toSlot1 = layout.market.row[1].position, -1, 0, nil
+  for _, f in ipairs(tts.flights) do
+    eq(f.locked, true, "flying cards are locked")
+    eq(f.interactable, false, "and can't be picked up")
+    assert(f.at > last, "cards are dealt one after another")
+    last = f.at
+    if to(f, slot1) then toSlot1 = f end
+    if to(f, layout.seats[1].hand.landing) then
+      handFlights = handFlights + 1
+      eq(f.rotation[3], 180, "a card dealt to a hand flies face down")
+    end
+  end
+  eq(handFlights, 3, "three cards dealt to seat 1")
+  assert(toSlot1, "a card flies to market slot 1")
+  eq(toSlot1.uid, game.state.market.row[1], "the slot's own card")
+  for i = 1, 5 do eq(#game.state.view.piles["market.row." .. i], 1, "row slot " .. i .. " drawn") end
+  local tracked = 0
+  for _, guids in pairs(game.state.view.piles) do tracked = tracked + #guids end
+  eq(liveCards(), tracked, "nothing left over")
+end)
+
+test("a bought card flies from its slot to the discard pile, and a new one is dealt in", function()
+  local game, _, putRow, putMarketDeck = blank()
+  local bought = putRow(1, "tide_runner")
+  putMarketDeck("seed_vault")
+  game:tidy()
+  game.state.players[1].resources.gold = 5
+  tts.deferTimers, tts.flights = true, {}
+  local slotAt = game.layout.market.row[1].position
+  game:buy(1, bought)
+  eq(#(game.state.view.piles["1.discard"] or {}), 0, "discard pile waits for the card to land")
+  tts.runTimers()
+  local discard = game.layout.seats[1].discard.position
+  local toDiscard, toSlot = false, false
+  for _, f in ipairs(tts.flights) do
+    if math.abs(f.to[1] - discard[1]) < 1e-9 and math.abs(f.to[3] - discard[3]) < 1e-9 then toDiscard = f.uid == bought end
+    if math.abs(f.to[1] - slotAt[1]) < 1e-9 and math.abs(f.to[3] - slotAt[3]) < 1e-9 then toSlot = f.uid == game.state.market.row[1] end
+  end
+  assert(toDiscard, "bought card flies to the discard pile")
+  assert(toSlot, "replacement flies into the empty slot")
+  eq(#game.state.view.piles["1.discard"], 1, "discard drawn after landing")
+  eq(#game.state.view.piles["market.row.1"], 1, "slot refilled")
+end)
+
+test("a dropped card animates from where it was dropped, and Tidy table doesn't animate", function()
+  local game, put = blank()
+  local uid = put(1, "hand", "apprentice")
+  game:tidy()
+  local obj = getObjectFromGUID(game.state.view.piles["1.hand"][1])
+  local area = game.layout.seats[1].play.position
+  obj.position = { area[1] + 4, area[2] + 3, area[3] }
+  tts.deferTimers, tts.flights = true, {}
+  onObjectDrop("White", obj)
+  local ghost = getObjectFromGUID(tts.flights[1].guid)
+  eq(ghost.position[1], area[1], "lands on the play row")
+  tts.runTimers()
+  eq(#game.state.view.piles["1.play"], 1, "played card drawn")
+  tts.flights = {}
+  game:tidy()
+  eq(#tts.flights, 0, "Tidy table draws instantly")
+  assert(uid)
+end)
+
+test("a newer change to a pile cancels a draw still waiting on a flight", function()
+  local game, put = blank()
+  for _ = 1, 3 do put(1, "deck", "apprentice") end
+  game:tidy()
+  tts.deferTimers = true
+  game:draw(1, 1)
+  local Board = Cardalyzer.require("engine.board")
+  Board.sync(game)
+  game:draw(1, 1)
+  Board.sync(game)
+  tts.runTimers()
+  eq(#game.state.view.piles["1.hand"], 2, "hand shows both cards, not the stale one-card draw")
+  eq(#ghosts(), 0, "no flying cards left")
+end)
+
+test("play areas, decks, discards, the market and the scrap pile are outlined", function()
+  local game = boot()
+  local lines = tts.lines
+  assert(lines, "vector lines set")
+  -- 4 per seat, the market area, 5 row slots, market deck, 1 fixed pile, scrap
+  eq(#lines, 2 * 4 + 1 + 5 + 1 + 1 + 1, "outlines")
+  for _, l in ipairs(lines) do
+    eq(#l.points, 4, "a rectangle")
+    eq(l.loop, true, "closed")
+  end
+  eq(lines[1].color[1], 1, "White's play area in white")
+  eq(lines[5].color[1], 0.9, "Red's in red")
+  click(HOST, "cz-players-4")
+  eq(#tts.lines, 4 * 4 + 9, "redrawn for four seats")
+  game.rules.outlines = false
+  click(HOST, "cz-players-2")
+  eq(#tts.lines, 0, "rules.outlines = false turns them off")
+end)
+
+---------------------------------------------------------------------------
+-- Moving cards by hand
+---------------------------------------------------------------------------
+
+-- Drops the object drawn for `uid` at table point (x, z), lifted as TTS does.
+local function dropAt(game, color, uid, x, z)
+  local obj
+  for _, guids in pairs(game.state.view.piles) do
+    for _, g in ipairs(guids) do
+      local o = getObjectFromGUID(g)
+      if o and o.data.GMNotes == uid then obj = o end
+    end
+  end
+  assert(obj, "no object drawn for " .. uid)
+  obj.position, obj.zones = { x, 4, z }, {}
+  onObjectDrop(color, obj)
+  return obj
+end
+
+test("engine cards never merge into decks", function()
+  local game, put = blank()
+  put(1, "discard", "apprentice"); put(1, "discard", "squire")
+  game:tidy()
+  local deck = getObjectFromGUID(game.state.view.piles["1.discard"][1])
+  local card = spawnObjectData({ data = { Name = "Card", Tags = { "cz_card" } } })
+  eq(tryObjectEnterContainer(deck, card), false, "an engine card can't join an engine deck")
+  local other = spawnObjectData({ data = { Name = "Card" } })
+  local bag = spawnObjectData({ data = { Name = "Bag" } })
+  eq(tryObjectEnterContainer(bag, other), true, "other objects are left alone")
+end)
+
+test("dragging a market row card onto the scrap pile scraps it and refills the slot", function()
+  local game, _, putRow, putMarketDeck = blank()
+  local junk = putRow(1, "tide_runner")
+  local next = putMarketDeck("seed_vault")
+  game:tidy()
+  local scrap = game.layout.market.scrap.position
+  dropAt(game, "White", junk, scrap[1] + 0.5, scrap[3] - 0.5)
+  local m = game.state.market
+  assert(has(m.scrap, junk), "in the scrap pile")
+  eq(m.row[1], next, "slot refilled from the market deck")
+  eq(#game.state.view.piles["market.row.1"], 1, "and drawn")
+  assert(tts.ui.xml:find("White scrapped Tide Runner from the market row.", 1, true), "announced to everyone")
+  -- Not your turn: it goes back.
+  local keep = m.row[1]
+  dropAt(game, "Red", keep, scrap[1], scrap[3])
+  eq(m.row[1], keep, "Red can't scrap on White's turn")
+  eq(#game.state.view.piles["market.row.1"], 1, "card back in its slot")
+  eq(getObjectFromGUID(game.state.view.piles["market.row.1"][1]).position[1], game.layout.market.row[1].position[1], "at its spot")
+end)
+
+test("dragging answers a waiting 'scrap from the market row' choice", function()
+  local game, put, putRow = blank()
+  local target = putRow(1, "tide_runner")
+  game:play(1, put(1, "hand", "herbalist")) -- any card; then queue the choice directly
+  game:prompt(1, { kind = "scrap_row", count = 1, optional = true })
+  game:tidy()
+  local scrap = game.layout.market.scrap.position
+  dropAt(game, "White", target, scrap[1], scrap[3])
+  assert(has(game.state.market.scrap, target), "scrapped")
+  for _, pr in ipairs(game.state.players[1].prompts) do assert(pr.kind ~= "scrap_row", "choice answered") end
+end)
+
+test("dragging a card in play onto the scrap pile uses its scrap ability", function()
+  local game, put = blank()
+  local hireling = put(1, "hand", "hireling")
+  game:play(1, hireling)
+  game:tidy()
+  local scrap = game.layout.market.scrap.position
+  dropAt(game, "White", hireling, scrap[1], scrap[3])
+  eq(game.state.players[1].resources.might, 2, "scrap ability applied")
+  assert(has(game.state.market.scrap, hireling), "scrapped")
+  -- A card without a scrap ability goes back to play.
+  local smith = put(1, "hand", "ember_smith")
+  game:play(1, smith)
+  game:tidy()
+  dropAt(game, "White", smith, scrap[1], scrap[3])
+  assert(has(game.state.players[1].play, smith), "still in play")
+  assert(lastBroadcast():find("has no scrap ability", 1, true), "told why")
+end)
+
+test("a card dropped somewhere the engine doesn't read goes back", function()
+  local game, put = blank()
+  local played = put(1, "hand", "apprentice")
+  game:play(1, played)
+  put(1, "deck", "squire"); put(1, "deck", "squire")
+  game:tidy()
+  dropAt(game, "White", played, 25, 25) -- off in a corner
+  eq(#game.state.view.piles["1.play"], 1, "redrawn in the play area")
+  -- A card pulled off a two-card deck: TTS leaves one loose card and a moved one.
+  local deck = game.state.players[1].deck
+  local pulled = spawnObjectData({ data = { Name = "Card", GMNotes = deck[2], Tags = { "cz_card" } } })
+  local leftover = spawnObjectData({ data = { Name = "Card", GMNotes = deck[1], Tags = { "cz_card" } } })
+  getObjectFromGUID(game.state.view.piles["1.deck"][1]).destruct() -- TTS removes the deck object
+  pulled.position, pulled.zones = { 20, 3, -20 }, {}
+  onObjectDrop("White", pulled)
+  eq(getObjectFromGUID(pulled.getGUID()), nil, "the pulled card is removed")
+  eq(getObjectFromGUID(leftover.getGUID()), nil, "and so is the loose leftover")
+  eq(#game.state.view.piles["1.deck"], 1, "the deck is drawn again whole")
+  local tracked = 0
+  for _, guids in pairs(game.state.view.piles) do tracked = tracked + #guids end
+  eq(count(function(o) return o.tags.cz_card end), tracked, "no stray cards")
+end)
+
+test("a hand card dropped on your play area on someone else's turn goes back to your hand", function()
+  local game, put = blank()
+  local uid = put(2, "hand", "apprentice")
+  game:tidy()
+  local area = game.layout.seats[2].play.position
+  dropAt(game, "Red", uid, area[1], area[3])
+  assert(has(game.state.players[2].hand, uid), "still in Red's hand")
+  eq(#game.state.view.piles["2.hand"], 1, "drawn back in the hand")
+  local tracked = 0
+  for _, guids in pairs(game.state.view.piles) do tracked = tracked + #guids end
+  eq(count(function(o) return o.tags.cz_card end), tracked, "no copy left in the play area")
+end)
+
+test("each ally ability that fires is announced", function()
+  local game, put = blank()
+  game:play(1, put(1, "hand", "ember_smith"))
+  game:play(1, put(1, "hand", "ember_smith"))
+  assert(tts.ui.xml:find("Ember Smith ally: +2 Might", 1, true), "shown in the info panel")
+end)
+
+---------------------------------------------------------------------------
+-- No blinking, full play areas, "may" choices, blocked plays, game over
+---------------------------------------------------------------------------
+
+test("a landed card stays until the real one is drawn under it; redrawn piles never blink", function()
+  local game, put = blank()
+  local played = put(1, "hand", "apprentice")
+  game:tidy()
+  tts.deferTimers, tts.flights = true, {}
+  game:play(1, played)
+  local Board = Cardalyzer.require("engine.board")
+  tts.runTimers(Board.TRAVEL + 0.01) -- just after landing
+  eq(#game.state.view.piles["1.play"], 1, "the play row is drawn on landing")
+  local ghost = getObjectFromGUID(tts.flights[1].guid)
+  assert(ghost, "the flying copy is still there, covering the moment the real card takes to appear")
+  tts.runTimers()
+  eq(getObjectFromGUID(tts.flights[1].guid), nil, "then removed")
+  local card = getObjectFromGUID(game.state.view.piles["1.play"][1])
+  eq(card.locked, false, "the real card is unlocked once its pile is ready")
+  eq(card.data.Locked, true, "it spawned locked, so it couldn't knock the old objects about")
+
+  -- The old objects of a redrawn pile go only once the new ones are ready.
+  local p = game.state.players[1]
+  put(1, "discard", "squire")
+  game:tidy()
+  local oldPile = game.state.view.piles["1.discard"][1]
+  p.discard[#p.discard + 1] = Cardalyzer.require("engine.state").newCard(game.state, "squire")
+  local held = {}
+  local real = spawnObjectData
+  spawnObjectData = function(params) -- hold back TTS's "finished spawning" callbacks
+    local cb = params.callback_function
+    params.callback_function = function(o) held[#held + 1] = function() cb(o) end end
+    return real(params)
+  end
+  Board.sync(game, { instant = true })
+  spawnObjectData = real
+  local newPile = game.state.view.piles["1.discard"][1]
+  assert(newPile ~= oldPile, "a new discard pile was spawned")
+  assert(getObjectFromGUID(oldPile), "the old pile stays while the new one is still appearing")
+  eq(getObjectFromGUID(newPile).locked, true, "the new pile waits locked")
+  for _, fire in ipairs(held) do fire() end
+  eq(getObjectFromGUID(oldPile), nil, "the old pile goes once the new one is ready")
+  eq(getObjectFromGUID(newPile).locked, false, "and the new one unlocks")
+end)
+
+test("a full play area closes up so every card stays inside it", function()
+  local game, put = blank()
+  for _ = 1, 10 do game:play(1, put(1, "hand", "apprentice")) end
+  local spot = game.layout.seats[1].play
+  local half = spot.size[1] / 2
+  local lastY = -math.huge
+  for _, guid in ipairs(game.state.view.piles["1.play"]) do
+    local p = getObjectFromGUID(guid).position
+    local along = (p[1] - spot.position[1]) * spot.right[1] + (p[3] - spot.position[3]) * spot.right[2]
+    assert(math.abs(along) + 1.2 <= half + 1e-9, "card at " .. along .. " runs past the play area")
+    assert(p[2] > lastY, "overlapping cards rest one above the next")
+    lastY = p[2]
+  end
+  -- Five cards still sit side by side at the normal spacing.
+  local game2, put2 = blank()
+  for _ = 1, 5 do game2:play(1, put2(1, "hand", "apprentice")) end
+  local a = getObjectFromGUID(game2.state.view.piles["1.play"][1]).position
+  local b = getObjectFromGUID(game2.state.view.piles["1.play"][2]).position
+  eq(math.abs(b[1] - a[1]) > 2.7, true, "normal spacing when there's room")
+  eq(a[2], b[2], "and flat")
+end)
+
+test("flags.mayBuyToTop asks where the bought card goes", function()
+  local game, _, putRow = blank()
+  local first, second = putRow(1, "tide_runner"), putRow(2, "harbor_broker")
+  local p = game.state.players[1]
+  p.resources.gold = 10
+  p.flags.mayBuyToTop = "unit"
+  game:buy(1, first)
+  game:refreshUI()
+  assert(tts.ui.xml:find("Where should Tide Runner go?", 1, true), "asks")
+  assert(tts.ui.xml:find("Top of your deck", 1, true) and tts.ui.xml:find("Your discard pile", 1, true), "both options")
+  click(WHITE, "cz-pick-top")
+  eq(p.deck[#p.deck], first, "on top of the deck")
+  game:buy(1, second)
+  eq(p.discard[#p.discard], second, "only the next one asks")
+  eq(#p.prompts, 0, "no question for the second")
+  -- Choosing the discard pile leaves it there.
+  local g2, _, row2 = blank()
+  local c = row2(1, "tide_runner")
+  local p2 = g2.state.players[1]
+  p2.resources.gold, p2.flags.mayBuyToTop = 5, "unit"
+  g2:buy(1, c)
+  click(WHITE, "cz-pick-discard")
+  eq(p2.discard[#p2.discard], c, "left in the discard pile")
+  eq(#p2.prompts, 0, "answered")
+end)
+
+test("an owed discard must be made before any card is played", function()
+  local game, put = blank()
+  local red = game.state.players[2]
+  local a, b = put(2, "hand", "apprentice"), put(2, "hand", "squire")
+  red.owed.discard = 1
+  for _ = 1, 5 do put(1, "deck", "apprentice") end
+  click(WHITE, "cz-end")
+  eq(game.state.turn.active, 2, "Red's turn")
+  assert(not tts.ui.xml:find("cz-playall", 1, true), "no Play all while the discard waits")
+  click(RED, "cz-playall")
+  eq(#red.hand, 2, "Play all refused")
+  game:tidy()
+  local area = game.layout.seats[2].play.position
+  dropAt(game, "Red", a, area[1], area[3])
+  assert(has(red.hand, a), "dragging a card into play is refused too")
+  assert(lastBroadcast():find("First: Discard 1 card", 1, true), "told why")
+  click(RED, "cz-pick-" .. b)
+  assert(tts.ui.xml:find("cz-playall", 1, true), "Play all is back")
+  click(RED, "cz-playall")
+  assert(has(red.play, a), "and works")
+end)
+
+test("the winner is announced, with Play Again? to set up the next game", function()
+  local game = blank()
+  game.state.players[2].stats.health = 3
+  game.state.players[1].resources.might = 5
+  click(WHITE, "cz-attack-2")
+  local xml = tts.ui.xml
+  assert(xml:find('id="cz_winner"[^>]*rectAlignment="MiddleCenter"'), "winner panel in the middle")
+  assert(xml:find(">White wins!<", 1, true), "names the winner")
+  assert(xml:find('id="cz%-again"[^>]*>Play Again%?<'), "Play Again? button")
+  local said = false
+  for _, b in ipairs(tts.broadcasts) do if b == "White wins!" then said = true end end
+  assert(said, "announced in chat too")
+  click(RED, "cz-again")
+  assert(not tts.ui.xml:find("cz_setup_", 1, true), "only the host can set up the next game")
+  click(WHITE, "cz-again")
+  xml = tts.ui.xml
+  assert(xml:find('id="cz_setup_White"', 1, true), "Play Again? opens the setup menu")
+  assert(not xml:find('id="cz_winner" visibility="White', 1, true), "the winner panel steps aside for it")
+  click(WHITE, "cz-new")
+  eq(game.state.winner, nil, "a new game")
+  assert(not tts.ui.xml:find("cz_winner", 1, true), "winner panel gone")
+end)
+
+test("the market turns to face the player whose turn it is", function()
+  local game = boot()
+  Cardalyzer_onStartGame(HOST)
+  local function marketYaws()
+    local out = {}
+    for _, key in ipairs({ "market.row.1", "market.row.5", "market.deck", "fixed.hireling" }) do
+      out[#out + 1] = getObjectFromGUID(game.state.view.piles[key][1]).rotation[2]
+    end
+    return out
+  end
+  for _, yaw in ipairs(marketYaws()) do eq(yaw, 180, "faces White (seat 1)") end
+  local slot = game.state.view.piles["market.row.1"][1]
+  Cardalyzer_onEndTurn(HOST)
+  for _, yaw in ipairs(marketYaws()) do eq(yaw, 0, "faces Red across the table") end
+  eq(game.state.view.piles["market.row.1"][1], slot, "turned in place, not respawned")
+  Cardalyzer_onEndTurn(GUEST)
+  for _, yaw in ipairs(marketYaws()) do eq(yaw, 180, "back to White") end
+  game.rules.market.faceActive = false
+  Cardalyzer_onEndTurn(HOST)
+  for _, yaw in ipairs(marketYaws()) do eq(yaw, 180, "faceActive = false keeps it facing seat 1") end
+  game.rules.market.faceActive = nil
+end)
+
+test("Settings: each player sets their own UI size and action bar height", function()
+  local game = boot()
+  Cardalyzer_onStartGame(HOST)
+  local xml = tts.ui.xml
+  assert(xml:find('id="cz%-settings"[^>]*>Settings<'), "Settings button in the info panel")
+  assert(not xml:find("cz-barup", 1, true), "the bar's arrows moved into Settings")
+  click(GUEST, "cz-settings")
+  xml = tts.ui.xml
+  assert(xml:find('id="cz_settings_Red" visibility="Red"', 1, true), "opens for the player who asked, guests too")
+  assert(xml:find('id="cz_set_ui_Red_value"[^>]*>100%%<'), "UI size starts at 100%")
+  assert(xml:find("cz-uibigger", 1, true) and xml:find("cz-barreset", 1, true), "size and bar controls")
+
+  -- Bigger UI for Red only: Red gets their own scaled copies of shared panels.
+  click(GUEST, "cz-uibigger")
+  click(GUEST, "cz-uibigger")
+  xml = tts.ui.xml
+  assert(xml:find('id="cz_set_ui_Red_value"[^>]*>125%%<'), "two steps up: 125%")
+  assert(xml:find('id="cz_panel_2" visibility="Red" width="375"', 1, true), "Red's own info panel, drawn 25% bigger")
+  assert(not xml:find(' scale="', 1, true), "drawn at real size, not with TTS's scale attribute")
+  local from = xml:find('id="cz_panel_2"', 1, true)
+  assert(xml:find('id="cz%-setup"[^>]*fontSize="18"', from), "its buttons' text 25% bigger too (14 -> 18)")
+  assert(xml:find('id="cz%-setup"[^>]*colors="#D6DEE8', from), "buttons keep their look")
+  assert(xml:find('id="cz_panel" visibility="White|Brown|Orange', 1, true), "everyone else keeps the normal one")
+  assert(xml:find('id="cz_tidy_2" visibility="Red" width="150"', 1, true), "and Tidy table")
+  assert(xml:find('id="cz_settings_Red" visibility="Red" width="825"', 1, true), "menus too")
+  local normalBottom = tonumber(xml:match('id="cz_panel"[^>]*offsetXY="%-12 (%d+)"'))
+  local redBottom = tonumber(xml:match('id="cz_panel_2"[^>]*offsetXY="%-12 (%d+)"'))
+  assert(redBottom > normalBottom, "Red's info panel sits higher, above the bigger Tidy button")
+  for _ = 1, 10 do click(GUEST, "cz-uibigger") end
+  assert(tts.ui.xml:find('id="cz_set_ui_Red_value"[^>]*>155%%<'), "stops at the largest")
+
+  -- The action bar: White's own height, in White's settings.
+  click(HOST, "cz-settings")
+  local before = Cardalyzer.require("engine.ui").barY(game, "White")
+  click(HOST, "cz-barup")
+  eq(Cardalyzer.require("engine.ui").barY(game, "White"), before + 30, "Up")
+  assert(tts.ui.xml:find('id="cz_set_bar_White_value"[^>]*>%+30<'), "shown")
+  click(HOST, "cz-barreset")
+  eq(Cardalyzer.require("engine.ui").barY(game, "White"), before, "Reset")
+  click(HOST, "cz-uismaller")
+  assert(tts.ui.xml:find('id="cz_actions" visibility="White" width="1008"', 1, true), "White's bar drawn at 90%")
+
+  -- Kept after a reload; menus closed.
+  local restored = boot(game:save())
+  local UI = Cardalyzer.require("engine.ui")
+  eq(UI.scaleOf(restored, "Red"), 1.55, "Red's size kept")
+  eq(UI.scaleOf(restored, "White"), 0.9, "White's size kept")
+  click(GUEST, "cz-settingsclose")
+  assert(not tts.ui.xml:find("cz_settings_Red", 1, true), "Close shuts it")
+end)
+
+test("messages to an empty seat don't stop the game", function()
+  local game = boot()
+  Cardalyzer_onStartGame(HOST)
+  tts.empty.Red = true -- the host is playing Red's turns, or Red left
+  Cardalyzer_onEndTurn(HOST)
+  eq(game.state.turn.active, 2, "Red's turn")
+  click(GUEST, "cz-playall")
+  click(GUEST, "cz-playall") -- the hand is empty now: a private "Your hand is empty."
+  assert(tts.ui.xml:find('id="cz_notice_Red"', 1, true), "still shown on Red's screen")
+  click(GUEST, "cz-end")
+  eq(game.state.turn.active, 1, "and the turn carried on")
+  for _, b in ipairs(tts.broadcasts) do assert(not b:find("%[Cardalyzer%]"), "no script error: " .. b) end
 end)
 
 print(string.format("\n%d passed, %d failed", passed, failed))

@@ -148,14 +148,18 @@ function Board.stackData(game, uids)
   return deck
 end
 
--- Every pile the board draws: key -> { uids, spot, style, faceUp }.
+-- Every pile the board draws: key -> { uids, spot, style, faceUp, buyable?, source? }.
 -- style: "stack" (one deck object), "row" (cards side by side), "hand".
+-- source: where a card new to this pile is dealt from when it has never
+-- been drawn before (a hand from its deck, the market row from the market deck).
 function Board.piles(game)
   local state, layout = game.state, game.layout
   local gap = (game.rules.layout and game.rules.layout.cardSpacing) or 2.8
+  local cardWidth = 2.4 * ((game.rules.layout and game.rules.layout.cardScale) or 1)
   local list = {}
-  local function add(key, uids, spot, style, faceUp, buyable)
-    list[#list + 1] = { key = key, uids = uids, spot = spot, style = style, faceUp = faceUp, gap = gap, buyable = buyable }
+  local function add(key, uids, spot, style, faceUp, buyable, source)
+    list[#list + 1] = { key = key, uids = uids, spot = spot, style = style, faceUp = faceUp, gap = gap,
+      buyable = buyable, source = source, cardWidth = cardWidth }
   end
   for seat, p in ipairs(state.players) do
     local s = layout.seats[seat]
@@ -163,27 +167,53 @@ function Board.piles(game)
     add(seat .. ".discard", p.discard, s.discard, "stack", true)
     add(seat .. ".play", p.play, s.play, "row", true)
     add(seat .. ".bases", p.bases, s.bases, "row", true)
-    add(seat .. ".hand", p.hand, s.hand, "hand", true)
+    add(seat .. ".hand", p.hand, s.hand, "hand", true, nil, s.deck.position)
   end
+  -- The market's cards face the player whose turn it is, so they always read
+  -- the right way up for them (rules.market.faceActive = false keeps them
+  -- facing seat 1).
   local m = state.market
-  add("market.deck", m.deck, layout.market.deck, "stack", false)
+  local yaw = Board.marketYaw(game)
+  local function facing(spot)
+    return { position = spot.position, rotation = { 0, yaw, 0 }, right = spot.right, forward = spot.forward, size = spot.size }
+  end
+  local first = #list + 1
+  add("market.deck", m.deck, facing(layout.market.deck), "stack", false)
   for i, uid in ipairs(m.row) do
-    add("market.row." .. i, uid == State.EMPTY and {} or { uid }, layout.market.row[i], "stack", true, true)
+    add("market.row." .. i, uid == State.EMPTY and {} or { uid }, facing(layout.market.row[i]), "stack", true, true,
+      layout.market.deck.position)
   end
   for _, id in ipairs(game.fixedIds) do
-    add("fixed." .. id, m.fixed[id] or {}, layout.market.fixed[id], "stack", true, true)
+    add("fixed." .. id, m.fixed[id] or {}, facing(layout.market.fixed[id]), "stack", true, true)
   end
-  add("market.scrap", m.scrap, layout.market.scrap, "stack", true)
+  add("market.scrap", m.scrap, facing(layout.market.scrap), "stack", true)
+  for i = first, #list do list[i].facing = yaw end
   return list
 end
 
+-- The yaw the market's cards use: the card yaw of the active player's seat.
+function Board.marketYaw(game)
+  local seat = 1
+  if game.rules.market.faceActive ~= false and game.state.started then seat = game.state.turn.active end
+  local s = game.layout.seats[seat] or game.layout.seats[1]
+  return s.play.rotation[2]
+end
+
 -- Positions for n cards laid side by side, centred on the spot.
-function Board.rowPositions(spot, n, gap)
+-- With `cardWidth`, a row that would run past its spot's width closes up to
+-- fit: the cards overlap, each a little higher than the last so they rest on
+-- one another instead of colliding.
+function Board.rowPositions(spot, n, gap, cardWidth)
+  if cardWidth and spot.size and n > 1 then
+    local fit = (spot.size[1] - cardWidth) / (n - 1)
+    if fit < gap then gap = math.max(fit, cardWidth * 0.2) end
+  end
+  local rise = (cardWidth and gap < cardWidth) and 0.05 or 0
   local rx, rz = spot.right[1], spot.right[2]
   local out = {}
   for i = 1, n do
     local along = (i - (n + 1) / 2) * gap
-    out[i] = { spot.position[1] + rx * along, spot.position[2], spot.position[3] + rz * along }
+    out[i] = { spot.position[1] + rx * along, spot.position[2] + (i - 1) * rise, spot.position[3] + rz * along }
   end
   return out
 end
@@ -211,15 +241,16 @@ local function addBuyButton(obj, cost)
   })
 end
 
-local function spawn(game, data, position, rot, buyCost)
+-- onReady(obj) runs once TTS has finished spawning the object.
+local function spawn(game, data, position, rot, onReady)
   local obj = spawnObjectData({
-    data = data, position = position, rotation = rot,
-    callback_function = buyCost and function(o) addBuyButton(o, buyCost) end or nil,
+    data = data, position = position, rotation = rot, callback_function = onReady,
   })
   return obj.getGUID()
 end
 
-function Board.clearPile(game, key)
+-- Destroys the objects a pile spawned last time.
+local function destroyObjects(game, key)
   local guids = game.state.view.piles[key]
   if guids then
     for _, guid in ipairs(guids) do
@@ -228,40 +259,192 @@ function Board.clearPile(game, key)
     end
   end
   game.state.view.piles[key] = nil
+end
+
+function Board.clearPile(game, key)
+  destroyObjects(game, key)
   game.state.view.sig[key] = nil
 end
 
 -- A pile's signature: its uids in order. Unchanged signature = nothing to redraw.
-local function signature(pile)
-  return table.concat(pile.uids, ",")
+local function signature(uids)
+  return table.concat(uids, ",")
+end
+
+local function rowGap(pile)
+  return pile.style == "hand" and pile.gap * 0.8 or pile.gap
+end
+
+-- Where each of a pile's cards sits on the table, in uid order. Hand cards
+-- count as sitting at the hand's landing spot, just in front of the hand
+-- zone, so a card leaving a hand starts its flight outside the zone.
+local function places(pile, uids)
+  local out = {}
+  if pile.style == "stack" then
+    for i = 1, #uids do out[i] = pile.spot.position end
+  elseif pile.style == "hand" then
+    for i = 1, #uids do out[i] = pile.spot.landing or pile.spot.position end
+  else
+    out = Board.rowPositions(pile.spot, #uids, rowGap(pile), pile.cardWidth)
+  end
+  return out
+end
+
+-- Spawns the objects for `uids` in a pile's spot, replacing the pile's old
+-- objects, and remembers where each card now is (view.at) so its next move
+-- can start from there.
+--
+-- The old objects stay until every new one has finished spawning (TTS takes a
+-- few frames to show a new object), so a pile never blinks out while it is
+-- redrawn. Outside a hand the new objects spawn locked, so they don't knock
+-- into the old ones while both are there, and unlock once those are gone.
+-- (Hand cards spawn unlocked: a hand zone may not take in a locked card.)
+local function draw(game, pile, uids)
+  local view = game.state.view
+  local old = view.piles[pile.key] or {}
+  local function removeOld()
+    for _, guid in ipairs(old) do
+      local obj = getObjectFromGUID(guid)
+      if obj then obj.destruct() end
+    end
+  end
+  local n = #uids
+  view.piles[pile.key] = {}
+  for i, at in ipairs(places(pile, uids)) do view.at[uids[i]] = at end
+  if n == 0 then return removeOld() end
+
+  local lock = pile.style ~= "hand"
+  local cost
+  if pile.buyable and pile.style == "stack" then cost = game.cards:get(State.cardId(game.state, uids[n])).cost end
+  local waiting, readied = (pile.style == "stack") and 1 or n, {}
+  local function ready(obj)
+    if cost then addBuyButton(obj, cost) end
+    readied[#readied + 1] = obj
+    if #readied == waiting then
+      removeOld()
+      if lock then for _, o in ipairs(readied) do o.setLock(false) end end
+    end
+  end
+  local function data(d)
+    d.Locked = lock
+    return d
+  end
+
+  local guids = view.piles[pile.key]
+  local rot = rotation(pile.spot, pile.faceUp)
+  if pile.style == "stack" then
+    guids[1] = spawn(game, data(Board.stackData(game, uids)), pile.spot.position, rot, ready)
+  else
+    local positions = Board.rowPositions(pile.spot, n, rowGap(pile), pile.style == "row" and pile.cardWidth or nil)
+    for i, uid in ipairs(uids) do
+      guids[i] = spawn(game, data(Board.cardData(game, uid)), positions[i], rot, ready)
+    end
+  end
 end
 
 function Board.renderPile(game, pile)
-  Board.clearPile(game, pile.key)
-  local guids = {}
-  local n = #pile.uids
-  if n > 0 then
-    local rot = rotation(pile.spot, pile.faceUp)
-    if pile.style == "stack" then
-      local top = game.cards:get(State.cardId(game.state, pile.uids[n]))
-      local cost = pile.buyable and top.cost or nil
-      guids[1] = spawn(game, Board.stackData(game, pile.uids), pile.spot.position, rot, cost)
-    else
-      local gap = pile.style == "hand" and pile.gap * 0.8 or pile.gap
-      local positions = Board.rowPositions(pile.spot, n, gap)
-      for i, uid in ipairs(pile.uids) do
-        guids[i] = spawn(game, Board.cardData(game, uid), positions[i], rot)
-      end
-    end
-  end
-  game.state.view.piles[pile.key] = guids
-  game.state.view.sig[pile.key] = signature(pile)
+  game.state.view.at = game.state.view.at or {}
+  draw(game, pile, pile.uids)
+  game.state.view.sig[pile.key] = signature(pile.uids)
+end
+
+-- Animation timing in seconds. rules.animate = false turns animation off.
+Board.TRAVEL = 0.45 -- one card's flight
+Board.STAGGER = 0.12 -- gap between cards dealt one after another
+Board.LINGER = 0.4 -- a landed card stays this long, until the real card has appeared under it
+local LIFT = 1.2 -- cards fly this far above the table
+
+-- Runs fn after `delay` seconds (straight away for no delay).
+local function after(delay, fn)
+  if delay > 0 then Wait.time(fn, delay) else fn() end
+end
+
+-- A short-lived copy of a card that flies from one place to another. It's
+-- locked and can't be picked up. When it lands the pile draws the real card
+-- beneath it, and the copy is removed a moment later, once that has appeared.
+local function fly(game, uid, from, to, rot, delay)
+  after(delay, function()
+    local obj = spawnObjectData({
+      data = Board.cardData(game, uid),
+      position = { from[1], from[2] + LIFT, from[3] },
+      rotation = rot,
+    })
+    obj.setLock(true)
+    obj.interactable = false
+    obj.setPositionSmooth({ to[1], to[2] + LIFT * 0.4, to[3] }, false, true)
+    local guid = obj.getGUID()
+    after(Board.TRAVEL + Board.LINGER, function()
+      local landed = getObjectFromGUID(guid)
+      if landed then landed.destruct() end
+    end)
+  end)
 end
 
 -- Redraws only the piles whose contents changed since they were last drawn.
-function Board.sync(game)
+-- A card new to a pile flies there from where it was last drawn (or from the
+-- pile's source when it has never been drawn, e.g. a hand being dealt from
+-- its deck); the pile shows it once it lands. Cards flown in one sync go one
+-- after another, like dealing. Cards flying to a hand are face down.
+-- opts.instant draws everything straight away (Tidy table).
+function Board.sync(game, opts)
+  local view = game.state.view
+  view.at, view.gen = view.at or {}, view.gen or {}
+  local animate = game.rules.animate ~= false and not (opts and opts.instant)
+  local dealt = 0
+  view.facing = view.facing or {}
   for _, pile in ipairs(Board.piles(game)) do
-    if game.state.view.sig[pile.key] ~= signature(pile) then Board.renderPile(game, pile) end
+    local key = pile.key
+    local sig = signature(pile.uids)
+    local old = view.sig[key]
+    if old == sig and pile.facing and view.facing[key] ~= pile.facing then
+      -- Same cards, new reader: turn them in place.
+      for _, guid in ipairs(view.piles[key] or {}) do
+        local obj = getObjectFromGUID(guid)
+        if obj then obj.setRotationSmooth(rotation(pile.spot, pile.faceUp), false, false) end
+      end
+    end
+    view.facing[key] = pile.facing
+    if old ~= sig then
+      -- Bumping the pile's generation cancels a draw still waiting on an earlier flight.
+      view.gen[key] = (view.gen[key] or 0) + 1
+      view.sig[key] = sig
+      local before, beforeCount = {}, 0
+      for uid in (old or ""):gmatch("[^,]+") do before[uid] = true; beforeCount = beforeCount + 1 end
+      local uids, staying, arriving = {}, {}, {}
+      for i, uid in ipairs(pile.uids) do
+        uids[i] = uid
+        if before[uid] then staying[#staying + 1] = uid else arriving[#arriving + 1] = i end
+      end
+
+      local flights = {}
+      if animate then
+        local targets = places(pile, uids)
+        for _, i in ipairs(arriving) do
+          local from = view.at[uids[i]] or pile.source
+          if from then flights[#flights + 1] = { uid = uids[i], from = from, to = targets[i] } end
+        end
+      end
+
+      if #flights == 0 then
+        draw(game, pile, uids)
+      else
+        -- Show what stayed now (if anything left); the rest once it lands.
+        if #staying < beforeCount then draw(game, pile, staying) end
+        local rot = rotation(pile.spot, pile.faceUp and pile.style ~= "hand")
+        local landed = 0
+        for _, f in ipairs(flights) do
+          local delay = dealt * Board.STAGGER
+          dealt = dealt + 1
+          fly(game, f.uid, f.from, f.to, rot, delay)
+          view.at[f.uid] = f.to
+          landed = math.max(landed, delay + Board.TRAVEL)
+        end
+        local gen = view.gen[key]
+        after(landed, function()
+          if view.gen[key] == gen then draw(game, pile, uids) end
+        end)
+      end
+    end
   end
 end
 
@@ -277,10 +460,37 @@ end
 
 -- Destroys every card the engine ever spawned, including strays that were
 -- merged into other decks by physics and lost their tracked GUID.
+-- Signatures are cleared, so the next sync redraws every pile and cancels
+-- any draw still waiting on a flight (generations keep counting up).
 function Board.sweep(game)
   for _, obj in ipairs(getObjectsWithTag("cz_card")) do obj.destruct() end
   game.state.view.piles = {}
   game.state.view.sig = {}
+end
+
+-- Draws one pile again from the state, straight away, and removes stray
+-- copies of its cards: a card pulled off one of its decks by hand, or the
+-- last card TTS leaves behind when a two-card deck is split.
+function Board.redraw(game, key)
+  for _, pile in ipairs(Board.piles(game)) do
+    if pile.key == key then
+      local mine, tracked = {}, {}
+      for _, uid in ipairs(pile.uids) do mine[uid] = true end
+      for _, guids in pairs(game.state.view.piles) do
+        for _, g in ipairs(guids) do tracked[g] = true end
+      end
+      for _, obj in ipairs(getObjectsWithTag("cz_card")) do
+        if not tracked[obj.getGUID()] and not obj.getLock() and mine[obj.getGMNotes()] then obj.destruct() end
+      end
+      Board.renderPile(game, pile)
+      return
+    end
+  end
+end
+
+-- Forgets where cards were drawn, for a new game whose uids start again.
+function Board.forgetPlaces(game)
+  game.state.view.at = {}
 end
 
 return Board

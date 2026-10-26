@@ -5,6 +5,9 @@
 local tts = dofile("tests/tts_stub.lua")
 for seed = 1, 200 do
   tts.reset(); math.randomseed(seed)
+  -- Every other game holds animation timers back and lets them run at random
+  -- moments, so piles change again while cards are still in flight.
+  tts.deferTimers = seed % 2 == 0
   dofile("build/Global.lua"); onLoad("")
   -- 2, 3 and 4 players in turn
   Cardalyzer_onUI({color="White", host=true}, "-1", "cz-players-" .. (2 + seed % 3))
@@ -16,7 +19,7 @@ for seed = 1, 200 do
     if g.state.winner then break end
     local seat = g.state.turn.active
     local color = g.state.players[seat].color
-    local acts = UI.actions(g).buttons
+    local acts = UI.actions(g).all
     local b = acts[math.random(#acts)]
     -- End Turn less often, so turns get played out
     if b.id == "cz-end" and math.random() < 0.7 and #acts > 1 then b = acts[math.random(#acts)] end
@@ -24,6 +27,30 @@ for seed = 1, 200 do
     -- buy something affordable sometimes
     for i, uid in ipairs(g.state.market.row) do
       if uid ~= "" and math.random() < 0.3 then g:buy(seat, uid) end
+    end
+    if tts.deferTimers and math.random() < 0.3 then tts.runTimers() end
+    -- drop a random engine card somewhere: a play area, the scrap pile, a hand, or anywhere
+    if math.random() < 0.25 then
+      local objs = tts.live(function(o) return o.tags.cz_card and not o.locked end)
+      if #objs > 0 then
+        local o = objs[math.random(#objs)]
+        local L = g.layout
+        local spots = { L.market.scrap.position, L.seats[seat].play.position, L.seats[seat].hand.position, { math.random(-30, 30), 0, math.random(-20, 20) } }
+        local at = spots[math.random(#spots)]
+        o.position, o.zones = { at[1], 4, at[3] }, {}
+        onObjectDrop(math.random() < 0.8 and color or "Red", o)
+      end
+    end
+  end
+  tts.runTimers()
+  -- every pile is drawn with exactly its cards, once all flights have landed
+  for _, pile in ipairs(Cardalyzer.require("engine.board").piles(g)) do
+    local guids = g.state.view.piles[pile.key] or {}
+    if pile.style == "stack" then
+      assert(#guids == (#pile.uids > 0 and 1 or 0), "pile "..pile.key.." drawn seed "..seed)
+    else
+      assert(#guids == #pile.uids, "row "..pile.key.." has "..#guids.." objects for "..#pile.uids.." cards seed "..seed)
+      for i, gd in ipairs(guids) do assert(tts.objects[gd].data.GMNotes == pile.uids[i], "row "..pile.key.." order seed "..seed) end
     end
   end
   for _, b in ipairs(tts.broadcasts) do if b:find("%[Cardalyzer%]") then print("seed", seed, b) os.exit(1) end end

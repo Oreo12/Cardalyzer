@@ -103,8 +103,11 @@ Realms, Ascension, Dominion, and the card play in Clank-style games.
   haven't been played in TTS yet. Four seats need a table about 60 units wide;
   on a smaller one, lower `layout.seatSpread`.
 - **Cards moved by hand.** Cardalyzer tracks the game in its script, not by
-  where cards sit. If you drag a card somewhere it doesn't read, use Tidy table
-  to put everything back.
+  where cards sit. It understands a few drags: a card from your hand onto your
+  play area is played, and a market row card, or one you have in play, dropped
+  on the scrap pile is scrapped. Any other drag is undone: the card goes back
+  where it belongs. Engine cards never merge into decks. Moving a card on
+  someone else's behalf, or between players, isn't possible by hand.
 
 **Magic: The Gathering and similar games** aren't a good fit. They rely on the
 stack, instants, triggered and static abilities, coloured mana, blocking and
@@ -182,36 +185,59 @@ To play:
    `build/Global.lua`. If you use VS Code, the
    [TTS Editor extension](https://marketplace.visualstudio.com/items?itemName=sebaestschjin.tts-editor)
    can push it for you.
-3. Click **Save & Play**. The info panel appears on its own at the top centre of
-   the screen, with each player's line in their seat colour:
+3. Click **Save & Play**. The info panel appears on the right of the screen,
+   with no background: each player's name in their seat colour, their Health
+   as a heart with the number on it (and, once they have buildings in play, a
+   shield in front of it for each one, showing its defense), and their deck
+   and discard counts. **Tidy table** is a lone button below it, both clear of
+   TTS's own Notes button in the corner:
    ```
-   Ember Guilds
-   Press New Game to deal.
-      White: Gold 0 · Might 0 · Health 40 · Deck 0 · Discard 0
-      Red: Gold 0 · Might 0 · Health 40 · Deck 0 · Discard 0
-   [New Game] [Tidy table] [Tutorial]
+                     Ember Guilds
+          Press New Game to set up a game.
+                White        [♥ 40]
+                       Deck 0 · Discard 0
+                  Red        [♥ 40]
+                       Deck 0 · Discard 0
+               [Settings] [New Game]
+   ```
+   Messages, such as "It's not your turn" or "Ember Smith ally: +2 Might",
+   appear inside this panel (the last three for everyone, plus a private line
+   just above it for the player they concern), and are copied to chat.
+   Cardalyzer doesn't use TTS broadcasts for them, because TTS draws broadcast
+   text behind custom UI.
+4. Sit at White and press **New Game** (only the host can). A setup menu opens
+   in the middle of your screen:
+   ```
+   New Game
    Players [2] [3] [4]
+   [Play Game] [Tutorial] [Close]
    ```
-   The host can pick how many play. Before the first game the table is laid
-   out again straight away; during a game the choice waits for the next
-   **New Game**.
-   Messages, such as "It's not your turn", appear inside this panel (the last
-   three for everyone, plus a private line just below it for the player they
-   concern), and are copied to chat. Cardalyzer doesn't use TTS broadcasts for
-   them, because TTS draws broadcast text behind custom UI.
-4. Sit at White and press **New Game** (only the host can). Each seat
-   gets its starter deck, the first player draws 3 cards and everyone else
-   draws 5, and five cards fill the market row.
-5. Play your turn. A second panel at the top right shows only to the
-   player whose turn it is:
+   Pick how many play (the table is laid out for them straight away before
+   the first game) and press **Play Game**. The menu closes, each seat gets
+   its starter deck, the first player draws 3 cards and everyone else draws
+   5, and five cards are dealt into the market row. The menu remembers your
+   choices for next time.
+5. Play your turn. A row of buttons appears just above your hand, only for
+   the player whose turn it is, with Play all and End Turn larger and in gold.
+   Just above it, everyone sees the active player's Gold (a coin) and Might (a
+   reticle) whenever they're above 0. When a card asks you something, the
+   question and its options appear in the middle of the screen:
    ```
-   Choose one                        <- a card asked you something
-   [+3 Gold or +3 Might]
-   [Play all (3)]
-   [Attack Red (4 Might)]
-   [Scrap Hireling: +2 Might]
-   [End Turn]
+                 Choose one                     <- middle of the screen
+          [+3 Gold] [+3 Might]
+
+                    (3) (5)                     <- Gold and Might
+   [PLAY ALL (3)] [Attack Red (5 Might)] [Scrap Hireling] [END TURN]
+                                                <- just above your hand
    ```
+   **Settings**, next to New Game, is each player's own: **UI size** makes
+   all of Cardalyzer's UI smaller or bigger (70% to 155%) for you alone, and
+   **Action bar** moves your bar up or down to clear your on-screen hand
+   (TTS doesn't tell scripts how big that is), or resets it. Settings are
+   kept with the save. There's no resolution setting: TTS already scales
+   custom UI to each player's screen.
+   The market turns to face whoever's turn it is, so its cards always read
+   the right way up.
    - **Play a card** by dragging it from your hand into your play area (the
      row in front of you), or press **Play all**. Its effects apply at once,
      and the info panel shows your new totals.
@@ -226,9 +252,9 @@ To play:
    - **End Turn**. Your played cards and your hand go to your discard pile,
      buildings stay, you draw 5, and play passes to the next seat. When a deck runs out,
      the discard pile is shuffled into it automatically.
-6. If cards end up somewhere odd after a drag, press **Tidy table**. It redraws
-   every pile from the game state.
-7. New to the table? Press **Tutorial** in the info panel. It opens a short
+6. If cards end up somewhere odd, press **Tidy table**. It redraws every pile
+   from the game state.
+7. New to the table? Press **Tutorial** in the setup menu. It opens a short
    guide in the middle of your screen, only for you, covering what Cardalyzer
    does, where the info panel, action panel and messages are, and how the table
    is laid out. **Hide button** removes the Tutorial button for you (it stays
@@ -435,13 +461,14 @@ These are the fields in `games/<yours>/rules.lua`:
 | `name` | `"Ember Guilds"` | Title shown on the panel |
 | `seats` | `{ {color="White"}, {color="Red"} }` | Player colours in turn order; optional `name` per seat. Seats sit along the bottom of the table from left to right, then back along the top. A game for fewer players uses the first ones |
 | `players` | `{min=2, default=2}` | How many of the seats can play. The host picks from `min` to the number of seats in the info panel. Leave out to always use every seat |
-| `resources` | `{ {key="gold", label="Gold", spend="buy"} }` | Per-turn pools, reset at end of turn. `spend = "buy"` pays for cards, `spend = "attack"` powers attacks |
-| `stats` | `{ {key="health", label="Health", start=40} }` | Values that persist between turns |
+| `resources` | `{ {key="gold", label="Gold", spend="buy"} }` | Per-turn pools, reset at end of turn. `spend = "buy"` pays for cards, `spend = "attack"` powers attacks. Optional `icon` (see `ui.iconBaseUrl`) |
+| `stats` | `{ {key="health", label="Health", start=40} }` | Values that persist between turns. Optional `icon` |
 | `handSize` | `5` | Cards drawn at the end of each turn |
 | `openingHand` | `{3, 5}` or `5` | First hand per player in turn order; one number means everyone draws that many |
 | `firstSeat` | `1` | Which seat goes first |
 | `market.rowSize` | `5` | Face-up market slots |
 | `market.buyTo` | `"discard"` or `"deck_top"` | Where bought cards go |
+| `market.faceActive` | `false` | Leave out to turn the market's cards to face the player whose turn it is; `false` keeps them facing seat 1 |
 | `factions` | `forge = {label="Forge", color="#C8502D"}` | Faction labels and frame colours |
 | `cardTypes` | `wall = {persistent=true, guard=true}` | Types. Persistent ones stay in play and apply their effects again each turn; guard ones must be destroyed before their owner or other buildings can be attacked |
 | `mechanics` | `{allies=true, persistent=true, scrap=true}` | Turn whole mechanics on or off |
@@ -449,6 +476,9 @@ These are the fields in `games/<yours>/rules.lua`:
 | `art.baseUrl` | `"https://…/games/sample/"` | Where the card images are hosted (see [Using card art you already have](#using-card-art-you-already-have)) |
 | `layout` | `{seatDistance=10, cardSpacing=2.8, seatSpread=28}` | Table spacing; adjust if piles overlap your table's edge. `seatSpread` is how far apart two seats on the same side sit (default 10 × `cardSpacing`) |
 | `tutorial` | `false` | Leave out to show the Tutorial button; `false` removes it for everyone |
+| `animate` | `false` | Leave out to animate cards: each card flies to its new pile (dealt one after another; face down into a hand). `false` makes piles change instantly. Tidy table is always instant |
+| `ui.iconBaseUrl` | `"https://…/icons/"` | Where the counter symbols are: a folder with `coin.png`, `reticle.png`, `heart.png` and `shield.png` (draw them with `tools/make_icons.py`). Defaults to the ones in this repo. The buy resource shows as a coin, the attack resource as a reticle and the win stat as a heart; set `icon = "coin"` (or a full image URL) on any resource or stat to choose, and anything without one shows as text |
+| `outlines` | `false` | Leave out to outline every play area, deck, discard pile, the market row, market deck, fixed piles and scrap pile on the table (in seat colours and gold). Outlines are drawn at `layout.surfaceY`; set that to your table's surface height if they float. `false` turns them off |
 | `customEffects` | see below | Lua for unusual cards |
 
 ## Using card art you already have
@@ -514,9 +544,40 @@ panel. These kinds are built in:
 With more than one opponent left, `opponent_discard` uses that last prompt,
 so the player chooses who discards.
 
+Prompts take a few extra fields:
+
+- `free_buy`: `maxCost` (leave out for any cost), `cardType = "ship"` (only
+  that type), `includeFixed = true` (fixed piles too) and `toTop = true`
+  (onto the deck instead of the discard pile).
+- `scrap` and `discard`: `drawPerPick = 1` draws that many cards for each
+  card picked, once the prompt ends ("scrap up to two cards, then draw a card
+  for each").
+- `pick`: choose a card you have in play (`cardType` and `exclude = uid`
+  narrow it), then the custom effect named by `custom` runs its `onPick`.
+
 Setting `game.state.players[seat].flags.buyToTop = true` puts the next card
-that player buys on top of their deck, as in "put the next ship you acquire
-on top of your deck". Flags clear at the end of the turn.
+that player buys on top of their deck. Set it to a card type, such as
+`"ship"`, to wait for the next card of that type, as in "put the next ship you
+acquire on top of your deck". For "you *may* put the next ship...", set
+`flags.mayBuyToTop = "ship"` instead: when they buy one, the player picks the
+top of their deck or their discard pile. Flags clear at the end of the turn.
+
+While a required choice takes cards from the hand (an owed discard, or "scrap
+a card from your hand"), no card can be played until it's answered, so Play
+all can't play the cards away first.
+
+Besides `apply`, a custom effect can have:
+
+- `whenYouPlay = function(game, seat, ctx, played)`: runs each time the
+  card's owner plays another card while this one is in play. `played` is
+  `{ uid, card }`. Use it for "whenever you play a ship, gain 1 Combat".
+- `onPick = function(game, seat, uid, prompt)`: answers a `pick` prompt.
+
+`game.state.turn.played` lists the cards played this turn, in order.
+`game:copyCard(seat, uid, id)` makes card `uid` act as card `id` until the
+end of the turn, with both cards' factions, and applies the copied card's
+effects ("copy another ship you've played this turn").
+`game:cardOf(uid)` returns what a card acts as right now, copy included.
 
 ```lua
 customEffects = {
@@ -626,7 +687,8 @@ games/sample/
   rules.lua          everything game-specific (edit this)
   cards.json         generated by csv2json.py
   art/, art.json     generated by make_sheets.py
-tools/               csv2json.py, make_sheets.py, bundle.py
+tools/               csv2json.py, make_sheets.py, bundle.py, make_icons.py
+assets/icons/        the UI's counter symbols (coin, reticle, heart, shield)
 tests/               run.lua + fake TTS API
 ```
 
