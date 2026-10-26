@@ -46,11 +46,15 @@ function Effects.new(rules)
 
   -- Effects that need the player to pick something add a prompt; the player
   -- answers it from the action panel (see engine/actions.lua).
+  -- With more than one opponent left, the player picks which one discards.
   self:register("opponent_discard", {
     apply = function(game, seat, amount)
-      for _, other in ipairs(game:opponentsOf(seat)) do
-        local owed = game.state.players[other].owed
+      local others = game:opponentsOf(seat)
+      if #others == 1 then
+        local owed = game.state.players[others[1]].owed
         owed.discard = (owed.discard or 0) + amount
+      elseif #others > 1 then
+        game:prompt(seat, { kind = "opponent", owe = { discard = amount }, optional = false })
       end
     end,
     text = function(amount) return "Opponent discards " .. amount end,

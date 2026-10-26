@@ -24,6 +24,7 @@ Guilds**, a small original sample game with placeholder art:
 - [Tutorial: make your own game](#tutorial-make-your-own-game)
 - [Card spreadsheet reference](#card-spreadsheet-reference)
 - [Rules file reference](#rules-file-reference)
+- [Using card art you already have](#using-card-art-you-already-have)
 - [Custom effects](#custom-effects)
 - [When something is wrong](#when-something-is-wrong)
 - [How it works](#how-it-works)
@@ -39,19 +40,21 @@ Cardalyzer is early. Here's where each milestone stands:
 | 2. Core loop: starter decks, draw, End Turn cleanup and reshuffle | done; needs in-game testing |
 | 3. Market and buying | done; needs in-game testing |
 | 4. Effects: keyword effects, ally triggers, bases with defense, attacks | done; needs in-game testing |
-| 5. First real game fully playable | next: 2 to 4 players, reusing existing card art |
+| 5. First real game fully playable | 2 to 4 players and reusing existing card art done; needs in-game testing. Next: porting a real game |
 | 6. Generalize and build a second tiny game | |
 | 7. Workshop template and release | |
 
-So today you can play a full two-player game:
+So today you can play a full game for 2 to 4 players:
 
-- deal it from your spreadsheet,
+- deal it from your spreadsheet, for the number of players the host picks,
 - play cards by dragging them from your hand into your play area, and get their effects,
 - trigger ally effects, including cards with two factions and wild cards,
 - buy from the market row and fixed piles,
 - answer choices like "2 Gold or 2 Might" and "scrap a card" from an action panel,
-- attack your opponent and their buildings, with guard buildings that must fall first,
-- win, and save and reload at any point, including mid-choice.
+- attack any opponent and their buildings, with guard buildings that must fall first,
+- knock players out until one is left, who wins,
+- use card sheets you already host, such as ones on Steam Cloud,
+- save and reload at any point, including mid-choice.
 
 ## Limits and compatibility
 
@@ -94,8 +97,11 @@ Realms, Ascension, Dominion, and the card play in Clank-style games.
   on the table.
 - **Boards, tokens and maps.** Only cards are tracked.
 - **Hidden roles, trick-taking, bidding, or real-time play.**
-- **More than two players.** The layout is built for more, but only two-player
-  games have been tested. Support for 2 to 4 players is the next milestone.
+- **More than four players, or teams.** Up to four seats fit on the two long
+  sides of a rectangular table, and every game is a free-for-all: the last
+  player left wins. Three- and four-player games pass the automated tests but
+  haven't been played in TTS yet. Four seats need a table about 55 units wide;
+  on a smaller one, lower `layout.seatSpread`.
 - **Cards moved by hand.** Cardalyzer tracks the game in its script, not by
   where cards sit. If you drag a card somewhere it doesn't read, use Tidy table
   to put everything back.
@@ -183,15 +189,19 @@ To play:
    Press New Game to deal.
       White: Gold 0 · Might 0 · Health 40 · Deck 0 · Discard 0
       Red: Gold 0 · Might 0 · Health 40 · Deck 0 · Discard 0
-   [New Game] [Tidy table]
+   [New Game] [Tidy table] [Tutorial]
+   Players [2] [3] [4]
    ```
+   The host can pick how many play. Before the first game the table is laid
+   out again straight away; during a game the choice waits for the next
+   **New Game**.
    Messages, such as "It's not your turn", appear inside this panel (the last
    three for everyone, plus a private line just below it for the player they
    concern), and are copied to chat. Cardalyzer doesn't use TTS broadcasts for
    them, because TTS draws broadcast text behind custom UI.
 4. Sit at White and press **New Game** (only the host can). Each seat
-   gets its starter deck, the first player draws 3 cards and the second draws
-   5, and five cards fill the market row.
+   gets its starter deck, the first player draws 3 cards and everyone else
+   draws 5, and five cards fill the market row.
 5. Play your turn. A second panel at the top right shows only to the
    player whose turn it is:
    ```
@@ -210,10 +220,11 @@ To play:
    - **Answer prompts.** When a card needs a choice, such as picking an option,
      a card to scrap or a card to discard, the action panel lists your options
      as buttons.
-   - **Attack** with the Attack button: all your Might goes to the opponent's
-     Health. Guard buildings (the sample's Stone Wall) have to be destroyed first.
+   - **Attack** with an opponent's Attack button: all your Might goes to that
+     player's Health. Guard buildings (the sample's Stone Wall) have to be
+     destroyed first. A player at 0 Health is out, and the last one left wins.
    - **End Turn**. Your played cards and your hand go to your discard pile,
-     buildings stay, you draw 5, and play passes to Red. When a deck runs out,
+     buildings stay, you draw 5, and play passes to the next seat. When a deck runs out,
      the discard pile is shuffled into it automatically.
 6. If cards end up somewhere odd after a drag, press **Tidy table**. It redraws
    every pile from the game state.
@@ -422,7 +433,8 @@ These are the fields in `games/<yours>/rules.lua`:
 | Field | Example | Meaning |
 | --- | --- | --- |
 | `name` | `"Ember Guilds"` | Title shown on the panel |
-| `seats` | `{ {color="White"}, {color="Red"} }` | Player colours in turn order; optional `name` per seat |
+| `seats` | `{ {color="White"}, {color="Red"} }` | Player colours in turn order; optional `name` per seat. Seats sit along the bottom of the table from left to right, then back along the top. A game for fewer players uses the first ones |
+| `players` | `{min=2, default=2}` | How many of the seats can play. The host picks from `min` to the number of seats in the info panel. Leave out to always use every seat |
 | `resources` | `{ {key="gold", label="Gold", spend="buy"} }` | Per-turn pools, reset at end of turn. `spend = "buy"` pays for cards, `spend = "attack"` powers attacks |
 | `stats` | `{ {key="health", label="Health", start=40} }` | Values that persist between turns |
 | `handSize` | `5` | Cards drawn at the end of each turn |
@@ -433,11 +445,43 @@ These are the fields in `games/<yours>/rules.lua`:
 | `factions` | `forge = {label="Forge", color="#C8502D"}` | Faction labels and frame colours |
 | `cardTypes` | `wall = {persistent=true, guard=true}` | Types. Persistent ones stay in play and apply their effects again each turn; guard ones must be destroyed before their owner or other buildings can be attacked |
 | `mechanics` | `{allies=true, persistent=true, scrap=true}` | Turn whole mechanics on or off |
-| `win` | `{type="stat_depleted", stat="health", atOrBelow=0}` | Attacks lower this stat; the last player above it wins |
-| `art.baseUrl` | `"https://…/games/sample/"` | Where the card images are hosted |
-| `layout` | `{seatDistance=10, cardSpacing=2.8}` | Table spacing; adjust if piles overlap your table's edge |
+| `win` | `{type="stat_depleted", stat="health", atOrBelow=0}` | Attacks lower this stat. A player who drops to it is out (no more turns, can't be attacked); the last player left wins |
+| `art.baseUrl` | `"https://…/games/sample/"` | Where the card images are hosted (see [Using card art you already have](#using-card-art-you-already-have)) |
+| `layout` | `{seatDistance=10, cardSpacing=2.8, seatSpread=28}` | Table spacing; adjust if piles overlap your table's edge. `seatSpread` is how far apart two seats on the same side sit (default 10 × `cardSpacing`) |
 | `tutorial` | `false` | Leave out to show the Tutorial button; `false` removes it for everyone |
 | `customEffects` | see below | Lua for unusual cards |
+
+## Using card art you already have
+
+`art.json` tells the engine which image sheet and slot each card uses.
+`make_sheets.py` writes one with placeholder art, but if your game already
+has TTS card sheets (for example on Steam Cloud), write `art.json` yourself
+and don't run `make_sheets.py`, which would overwrite it:
+
+```json
+{
+  "back": "https://steamusercontent-a.akamaihd.net/ugc/…/back/",
+  "sheets": [
+    { "file": "https://steamusercontent-a.akamaihd.net/ugc/…/sheet1/", "numWidth": 10, "numHeight": 7 },
+    { "file": "https://…/sheet2/", "numWidth": 10, "numHeight": 7, "back": "https://…/other-back/" }
+  ],
+  "cards": {
+    "scout": { "sheet": 1, "index": 0 },
+    "viper": { "sheet": 1, "index": 1 }
+  }
+}
+```
+
+| Field | Meaning |
+| --- | --- |
+| `back` | The card back. A sheet can set its own `back` to override it |
+| `sheets[n].file` | The sheet image: a full `http(s)://` URL, or a path added to `rules.art.baseUrl` |
+| `sheets[n].numWidth`, `numHeight` | How many cards across and down the sheet holds |
+| `cards.<id>` | The card's sheet number (counting from 1) and slot (counting from 0, left to right, then down) |
+| `hiddenFace` | What other players see of a card in your hand: `"back"` (default) shows the card back, `"last_slot"` shows the sheet's last slot instead, as TTS does when "Back is hidden" is off. Set it at the top or per sheet. With `"last_slot"`, no card may use that slot |
+
+The engine checks `art.json` when the game loads and lists every card with
+no slot, a slot outside its sheet, or a card in a reserved last slot.
 
 ## Custom effects
 
@@ -448,7 +492,7 @@ with `custom:<name>`. The function gets three things:
   - `game.state.players[seat]` holds a player's `hand`, `deck`, `discard`,
     `play`, `bases`, `resources`, `stats` and `flags`.
   - `game:draw(seat, n)` draws cards.
-  - `game:opponentsOf(seat)` lists the other seats.
+  - `game:opponentsOf(seat)` lists the other seats still in the game.
   - `game:prompt(seat, prompt)` asks the player something (see below).
 - **`seat`**: the number of the player who played the card.
 - **`ctx`**: the card the effect came from: `ctx.uid` and `ctx.card` (its
@@ -465,6 +509,10 @@ panel. These kinds are built in:
 | Scrap from the market row | `game:prompt(seat, { kind = "scrap_row", count = 1, optional = true })` |
 | Destroy a building | `game:prompt(seat, { kind = "destroy_base", count = 1, optional = true })` |
 | Show a note | `game:prompt(seat, { kind = "reminder", text = "Look at your opponent's hand" })` |
+| Pick an opponent who owes something next turn | `game:prompt(seat, { kind = "opponent", owe = { discard = 1 } })` |
+
+With more than one opponent left, `opponent_discard` uses that last prompt,
+so the player chooses who discards.
 
 Setting `game.state.players[seat].flags.buyToTop = true` puts the next card
 that player buys on top of their deck, as in "put the next ship you acquire

@@ -671,5 +671,196 @@ test("prompts and owed discards survive save and reload", function()
   eq(restored.players[1].resources.gold, 3, "answerable after reload")
 end)
 
+---------------------------------------------------------------------------
+-- 2 to 4 players
+---------------------------------------------------------------------------
+
+local BLUE = { color = "Blue", host = false }
+
+-- A game dealt for n seats, picked from the info panel as the host would.
+local function startFor(n)
+  local game = boot()
+  click(HOST, "cz-players-" .. n)
+  DBE_start()
+  return game
+end
+
+-- Do two sized spots overlap on the table? Every yaw is 0 or 180, so a
+-- spot's size maps straight onto the world x and z axes.
+local function overlap(a, b)
+  return math.abs(a.position[1] - b.position[1]) < (a.size[1] + b.size[1]) / 2
+    and math.abs(a.position[3] - b.position[3]) < (a.size[3] + b.size[3]) / 2
+end
+
+test("3 and 4 seats sit on the two long sides without overlapping", function()
+  local game = boot()
+  local Zones = Cardalyzer.require("engine.zones")
+  for _, n in ipairs({ 3, 4 }) do
+    local layout = Zones.layout(game.rules, game.fixedIds, n)
+    eq(#layout.seats, n, n .. " seats")
+    local boxes = { { seat = 0, name = "market", spot = layout.market.area } }
+    for seat, s in ipairs(layout.seats) do
+      local bottom = seat <= math.ceil(n / 2)
+      assert((s.play.position[3] < 0) == bottom, n .. " seats: seat " .. seat .. " is on the wrong side")
+      assert(s.hand.position[3] * (bottom and 1 or -1) < s.play.position[3] * (bottom and 1 or -1), "hand behind play")
+      eq(s.hand.rotation[2], bottom and 0 or 180, "seat " .. seat .. " hand zone faces its seat")
+      for _, name in ipairs({ "play", "bases", "deck", "discard", "hand" }) do
+        boxes[#boxes + 1] = { seat = seat, name = name, spot = s[name] }
+      end
+    end
+    for i = 1, #boxes do
+      for j = i + 1, #boxes do
+        local a, b = boxes[i], boxes[j]
+        if a.seat ~= b.seat and overlap(a.spot, b.spot) then
+          error(n .. " seats: seat " .. a.seat .. " " .. a.name .. " overlaps seat " .. b.seat .. " " .. b.name)
+        end
+      end
+    end
+  end
+  -- Turn order runs along the bottom, then back along the top.
+  local four = Zones.layout(game.rules, game.fixedIds, 4).seats
+  assert(four[1].play.position[1] < four[2].play.position[1], "seat 2 is right of seat 1")
+  assert(four[3].play.position[1] > 0 and four[4].play.position[1] < 0, "seat 3 is across from seat 2, seat 4 from seat 1")
+  -- Like two seats, the four sit point-symmetrically: seat 3 is seat 1 turned 180 degrees about the centre.
+  for _, name in ipairs({ "play", "bases", "deck", "discard", "hand" }) do
+    assert(math.abs(four[1][name].position[1] + four[3][name].position[1]) < 1e-9, name .. " x")
+    assert(math.abs(four[1][name].position[3] + four[3][name].position[3]) < 1e-9, name .. " z")
+  end
+end)
+
+test("the host picks 2 to 4 players and the table is laid out for them", function()
+  local game = boot()
+  assert(tts.ui.xml:find('id="cz-players-4"', 1, true), "player-count buttons")
+  click(GUEST, "cz-players-3")
+  eq(#game.state.players, 2, "guests can't change it")
+  click(HOST, "cz-players-4")
+  eq(#game.state.players, 4, "four seats")
+  eq(count(ofType("ScriptingTrigger")), 17, "4 zones per seat + market")
+  eq(count(ofType("HandTrigger")), 4, "hand zones")
+  click(HOST, "cz-players-3")
+  eq(count(ofType("ScriptingTrigger")), 13, "the fourth seat's zones are removed")
+  click(HOST, "cz-players-5")
+  eq(#game.state.players, 3, "out of range refused")
+
+  DBE_start()
+  local s = game.state
+  eq(#s.players, 3, "dealt for three")
+  eq(#s.players[1].hand, 3, "first player draws 3")
+  eq(#s.players[2].hand, 5, "second draws 5")
+  eq(#s.players[3].hand, 5, "third draws 5")
+  assertConserved(game)
+  assert(tts.ui.xml:find('id="cz_seat_3"', 1, true), "a line per seat")
+
+  -- During a game the choice waits for the next New Game.
+  click(HOST, "cz-players-2")
+  eq(#s.players, 3, "current game unchanged")
+  assert(tts.ui.xml:find("Next game: 2 players", 1, true), "shown as the next game's count")
+  DBE_start()
+  eq(#game.state.players, 2, "next game seats 2")
+  eq(count(ofType("ScriptingTrigger")), 9, "back to two seats of zones")
+end)
+
+test("with three players, turns go round and a player at 0 health is out", function()
+  local game = startFor(3)
+  local s = game.state
+  click(HOST, "cz-end"); eq(s.turn.active, 2, "seat 2")
+  click(GUEST, "cz-end"); eq(s.turn.active, 3, "seat 3")
+  click(BLUE, "cz-end"); eq(s.turn.active, 1, "back to seat 1")
+
+  s.players[2].stats.health = 2
+  s.players[2].owed.discard = 1
+  s.players[1].resources.might = 5
+  click(HOST, "cz-attack-2")
+  eq(s.players[2].out, true, "Red is out")
+  eq(s.winner, nil, "two players left")
+  eq(s.players[2].owed.discard, nil, "owes nothing once out")
+  assert(tts.ui.xml:find("Red: out", 1, true), "shown as out")
+  s.players[1].resources.might = 3
+  game:refreshUI()
+  assert(not tts.ui.xml:find("cz-attack-2", 1, true), "no attack button for a player who is out")
+  eq(game:attack(1, 2), false, "can't attack a player who is out")
+  click(HOST, "cz-end"); eq(s.turn.active, 3, "Red's turn is skipped")
+
+  s.players[1].stats.health = 1
+  s.players[3].resources.might = 1
+  click(BLUE, "cz-attack-1")
+  eq(s.winner, 3, "last player left wins")
+  assert(tts.ui.xml:find("Blue wins!", 1, true), "announced")
+end)
+
+test("with more than one opponent, an opponent discard asks which one", function()
+  local game = startFor(3)
+  local p1 = game.state.players[1]
+  game.effects:apply(game, 1, Cardalyzer.require("engine.cards").parseEffects("opponent_discard:1"))
+  game:refreshUI()
+  eq(p1.prompts[1].kind, "opponent", "asks")
+  assert(tts.ui.xml:find("Choose an opponent to discard 1 card next turn", 1, true), "prompt text")
+  assert(tts.ui.xml:find('id="cz-pick-2"', 1, true) and tts.ui.xml:find('id="cz-pick-3"', 1, true), "both opponents offered")
+  click(HOST, "cz-end")
+  eq(game.state.turn.active, 1, "must choose first")
+  click(HOST, "cz-pick-3")
+  eq(game.state.players[3].owed.discard, 1, "Blue owes it")
+  eq(game.state.players[2].owed.discard, nil, "Red doesn't")
+  eq(#p1.prompts, 0, "answered")
+end)
+
+test("a three-player game saves and reloads with its layout", function()
+  local game = startFor(3)
+  click(HOST, "cz-end")
+  local saved = onSave()
+  local objects, order = tts.objects, tts.order
+  dofile("build/Global.lua")
+  tts.objects, tts.order = objects, order
+  local before = count(ofType("ScriptingTrigger"))
+  onLoad(saved)
+  local restored = Cardalyzer.game
+  eq(#restored.state.players, 3, "three players")
+  eq(#restored.layout.seats, 3, "laid out for three")
+  eq(count(ofType("ScriptingTrigger")), before, "no new zones")
+  eq(restored.state.turn.active, 2, "turn restored")
+  assertConserved(restored)
+  assert(game)
+end)
+
+---------------------------------------------------------------------------
+-- Art
+---------------------------------------------------------------------------
+
+test("a sheet can use its own back and the last slot as the hidden face", function()
+  local game = boot()
+  DBE_start()
+  local Board = Cardalyzer.require("engine.board")
+  local uid = game.state.market.row[1]
+  local deck = Board.cardData(game, uid).CustomDeck[1]
+  eq(deck.BackURL, "art/back.jpg", "art.json back by default")
+  eq(deck.BackIsHidden, true, "hidden cards show the back by default")
+  game.art.sheets[1].back = "https://example.com/other-back.jpg"
+  game.art.sheets[1].hiddenFace = "last_slot"
+  deck = Board.cardData(game, uid).CustomDeck[1]
+  eq(deck.BackURL, "https://example.com/other-back.jpg", "the sheet's own back")
+  eq(deck.BackIsHidden, false, "hidden cards show the sheet's last slot")
+  game.art.sheets[1].back, game.art.sheets[1].hiddenFace = nil, nil
+end)
+
+test("art.json problems are reported when the game loads", function()
+  boot()
+  local Board = Cardalyzer.require("engine.board")
+  local Game = Cardalyzer.require("engine.game")
+  local game = Cardalyzer.game
+  local art = {
+    back = "back.jpg",
+    sheets = { { file = "s.jpg", numWidth = 2, numHeight = 2, hiddenFace = "last_slot" } },
+    cards = { apprentice = { sheet = 1, index = 3 }, squire = { sheet = 1, index = 4 }, hireling = { sheet = 2, index = 0 } },
+  }
+  local found = table.concat(Board.checkArt(art, game.cards), "\n")
+  assert(found:find("'apprentice' is in sheet 1's last slot", 1, true), "last slot reserved")
+  assert(found:find("'squire' slot 4 is outside sheet 1", 1, true), "slot out of range")
+  assert(found:find("'hireling' is on sheet 2", 1, true), "unknown sheet")
+  assert(found:find("'ember_smith' has no entry", 1, true), "missing card")
+  local ok, err = pcall(Game.new, { rules = game.rules, cards = Cardalyzer.require("game.cards"), art = art })
+  eq(ok, false, "Game.new refuses bad art")
+  assert(tostring(err):find("art.json", 1, true), "says why")
+end)
+
 print(string.format("\n%d passed, %d failed", passed, failed))
 if failed > 0 then os.exit(1) end

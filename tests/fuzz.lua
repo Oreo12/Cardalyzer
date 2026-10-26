@@ -1,4 +1,4 @@
--- Random-play soak test: 200 seeded games of random clicks and buys against
+-- Random-play soak test: 200 seeded games (2 to 4 players) of random clicks and buys against
 -- the bundled build. Checks for script errors, cards lost or duplicated
 -- between piles, and spawned objects that leak.
 -- Usage: python tools/bundle.py games/sample && lua tests/fuzz.lua
@@ -6,6 +6,8 @@ local tts = dofile("tests/tts_stub.lua")
 for seed = 1, 200 do
   tts.reset(); math.randomseed(seed)
   dofile("build/Global.lua"); onLoad("")
+  -- 2, 3 and 4 players in turn
+  Cardalyzer_onUI({color="White", host=true}, "-1", "cz-players-" .. (2 + seed % 3))
   Cardalyzer_onStartGame({color="White", host=true})
   local g = Cardalyzer.game
   local Actions = Cardalyzer.require("engine.actions")
@@ -37,6 +39,8 @@ for seed = 1, 200 do
   local tracked = 0; for _, guids in pairs(g.state.view.piles) do tracked = tracked + #guids end
   local live = #tts.live(function(o) return o.tags.cz_card end)
   assert(live == tracked, "leaked objects seed "..seed.." live "..live.." tracked "..tracked)
-  if seed % 50 == 0 then print("seed", seed, "turns", g.state.turn.number, "winner", tostring(g.state.winner)) end
+  assert(#g.state.players == 2 + seed % 3, "player count seed "..seed)
+  if not g.state.winner then assert(not g.state.players[g.state.turn.active].out, "active player is out seed "..seed) end
+  if seed % 50 == 0 then print("seed", seed, "players", #g.state.players, "turns", g.state.turn.number, "winner", tostring(g.state.winner)) end
 end
 print("fuzz ok")

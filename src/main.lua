@@ -71,6 +71,12 @@ function Cardalyzer_onUI(player, _, id)
   if action == "new" then return Cardalyzer_onStartGame(player) end
   if action == "tidy" then return run(player.color, game.tidy) end
   if action == "end" then return Cardalyzer_onEndTurn(player) end
+  if action == "players" then
+    if not player.host and not player.promoted then
+      return tell(player.color, "Only the host can change the number of players.")
+    end
+    return run(player.color, game.setPlayers, tonumber(arg))
+  end
   if action:sub(1, 3) == "tut" then return game:tutorial(player.color, action) end
 
   local seat = game:seatOfColor(player.color)

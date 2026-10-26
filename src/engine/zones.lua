@@ -19,15 +19,32 @@ local function layoutValue(rules, key)
   return DEFAULT_LAYOUT[key]
 end
 
--- Seats are spread evenly around the table; seat 1 sits at -z (the bottom).
-local function seatFrame(seat, count, distance)
-  local a = 2 * math.pi * (seat - 1) / count
-  local toSeat = { x = math.sin(a), z = -math.cos(a) }
+-- How many seats a new game deals for: rules.players.default, else its min,
+-- else every seat in rules.seats.
+function Zones.defaultCount(rules)
+  local players = rules.players or {}
+  return math.min(players.default or players.min or #rules.seats, #rules.seats)
+end
+
+-- Seats sit on the two long sides of the table, facing the centre, so a
+-- rectangular table fits four. Seat 1 is at the bottom (-z) left, and play
+-- goes along the bottom from left to right, then back along the top, so each
+-- player's neighbours are next in turn order. Two seats face each other
+-- across the centre.
+local function seatFrame(seat, count, distance, spread, shift)
+  local bottom = math.ceil(count / 2)
+  local top = seat > bottom
+  local n = top and count - bottom or bottom
+  local i = top and seat - bottom or seat
+  -- A seat's piles reach further to its right (bases) than its left, so a
+  -- shared side is shifted to keep the pair centred on the table.
+  local along = (i - (n + 1) / 2) * spread - (n > 1 and shift or 0)
+  local s = top and -1 or 1
   return {
-    origin = { x = toSeat.x * distance, z = toSeat.z * distance },
-    forward = { x = -toSeat.x, z = -toSeat.z }, -- toward the table centre
-    right = { x = math.cos(a), z = math.sin(a) },
-    yaw = math.deg(a),
+    origin = { x = s * along, z = -s * distance },
+    forward = { x = 0, z = s }, -- toward the table centre
+    right = { x = s, z = 0 },
+    yaw = top and 180 or 0,
   }
 end
 
@@ -46,17 +63,20 @@ end
 
 -- Returns { seats = { [seat] = { play, bases, deck, discard, hand } },
 --           market = { deck, row = {...}, fixed = { [id] = spot }, scrap, area } }
--- `fixedIds` lists the fixed-pile card ids in display order.
-function Zones.layout(rules, fixedIds)
+-- `fixedIds` lists the fixed-pile card ids in display order; `count` is how
+-- many seats are playing (default Zones.defaultCount).
+function Zones.layout(rules, fixedIds, count)
   local y = layoutValue(rules, "surfaceY") + 0.4
   local gap = layoutValue(rules, "cardSpacing")
   local yaw = layoutValue(rules, "cardYaw")
   local distance = layoutValue(rules, "seatDistance")
-  local count = #rules.seats
+  -- Seats sharing a side are this far apart (piles span -3.5 to +5.75 gaps).
+  local spread = (rules.layout and rules.layout.seatSpread) or gap * 10
+  count = count or Zones.defaultCount(rules)
 
   local result = { seats = {}, market = { row = {}, fixed = {} } }
   for seat = 1, count do
-    local f = seatFrame(seat, count, distance)
+    local f = seatFrame(seat, count, distance, spread, gap * 1.125)
     result.seats[seat] = {
       play = spot(f, y, 0, 2, yaw, { gap * 6, 3, 4 }),
       bases = spot(f, y, gap * 4.5, 2, yaw, { gap * 2.5, 3, 4 }),
@@ -71,7 +91,7 @@ function Zones.layout(rules, fixedIds)
   end
 
   -- The market runs along the x axis through the table centre, read by seat 1.
-  local centre = seatFrame(1, 1, 0)
+  local centre = seatFrame(1, 1, 0, 0, 0)
   local n = rules.market.rowSize
   local first = -(n - 1) / 2 * gap
   for i = 1, n do
@@ -118,9 +138,19 @@ local function place(obj, s)
 end
 
 -- Spawns any scripting zone that is missing, reuses the ones whose GUIDs are
--- saved in state.view.zones, and moves each seat's hand zone into place.
+-- saved in state.view.zones, removes those of seats no longer playing, and
+-- moves each seat's hand zone into place.
 function Zones.build(game, layout)
   local view = game.state.view
+  local wanted = {}
+  for _, entry in ipairs(Zones.zoneSpots(layout)) do wanted[entry.key] = true end
+  for key, guid in pairs(view.zones) do
+    if not wanted[key] then
+      local obj = getObjectFromGUID(guid)
+      if obj then obj.destruct() end
+      view.zones[key] = nil
+    end
+  end
   for _, entry in ipairs(Zones.zoneSpots(layout)) do
     local obj = view.zones[entry.key] and getObjectFromGUID(view.zones[entry.key])
     if obj then

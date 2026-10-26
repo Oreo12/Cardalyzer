@@ -38,8 +38,8 @@ function Turn.setup(state, rules, cards, random)
 
   Turn.fillMarket(state)
 
-  local first = rules.firstSeat or 1
   local count = #state.players
+  local first = math.min(rules.firstSeat or 1, count)
   for order = 1, count do
     local seat = (first + order - 2) % count + 1
     Turn.draw(state, seat, openingHandSize(rules, order))
@@ -87,9 +87,19 @@ function Turn.isPersistent(rules, card)
   return def ~= nil and def.persistent == true and rules.mechanics.persistent ~= false
 end
 
+-- The seat after `seat` in turn order, skipping players who are out.
+function Turn.nextSeat(state, seat)
+  local count = #state.players
+  for step = 1, count do
+    local next = (seat + step - 1) % count + 1
+    if not state.players[next].out then return next end
+  end
+  return seat
+end
+
 -- End-of-turn cleanup for the active seat: played cards and hand go to the
 -- discard pile (persistent cards stay in play), resource pools reset, a new
--- hand is drawn, and play passes to the next seat.
+-- hand is drawn, and play passes to the next seat still in the game.
 function Turn.endTurn(state, rules, random)
   local seat = state.turn.active
   local player = state.players[seat]
@@ -98,7 +108,7 @@ function Turn.endTurn(state, rules, random)
   State.resetResources(player, rules)
   Turn.draw(state, seat, rules.handSize, random)
 
-  state.turn.active = seat % #state.players + 1
+  state.turn.active = Turn.nextSeat(state, seat)
   state.turn.number = state.turn.number + 1
   return seat
 end

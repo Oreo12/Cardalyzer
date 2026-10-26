@@ -2,7 +2,7 @@
 -- player sees (prompts, Play all, attacks, scrap abilities, End Turn).
 -- The whole XML is rebuilt on every refresh. Every button calls
 -- Cardalyzer_onUI in main.lua, which reads the action from the button id:
---   cz-new  cz-tidy  cz-end  cz-playall  cz-done
+--   cz-new  cz-tidy  cz-end  cz-playall  cz-done  cz-players-<n>
 --   cz-pick-<value>  cz-attack-<seat>  cz-hit-<seat>-<uid>  cz-scrap-<uid>
 local Util = require("engine.util")
 local State = require("engine.state")
@@ -40,7 +40,27 @@ function UI_.seatLine(game, seat)
   parts[#parts + 1] = "Deck " .. #p.deck
   parts[#parts + 1] = "Discard " .. #p.discard
   local marker = (game.state.started and game.state.turn.active == seat) and "▶ " or "   "
+  if p.out then return marker .. p.name .. ": out" end
   return marker .. p.name .. ": " .. table.concat(parts, " · ")
+end
+
+-- Player-count buttons (cz-players-<n>) for games that seat more than one
+-- number of players. Only the host's clicks count (see main.lua).
+function UI_.playersRow(game)
+  local range = game.playerRange(game.rules)
+  if range.min >= range.max then return nil end
+  local state = game.state
+  local current = state.nextPlayers or #state.players
+  local label = state.started and state.nextPlayers and ("Next game: " .. current .. " players") or "Players"
+  local xml = text("cz_players", label, 14, 'preferredWidth="190"')
+  for n = range.min, range.max do
+    local id = "cz-players-" .. n
+    local b = button(id, tostring(n)):gsub("<Button ", '<Button preferredWidth="60" ')
+    if n == current then b = b:gsub("<Button ", '<Button fontStyle="Bold" textColor="#E8B84A" ') end
+    xml = xml .. b
+  end
+  return '<HorizontalLayout spacing="8" preferredHeight="28" childForceExpandWidth="false" childAlignment="MiddleCenter">'
+    .. xml .. '</HorizontalLayout>'
 end
 
 function UI_.turnLine(game)
@@ -132,6 +152,8 @@ function UI_.infoPanel(game)
   end
   row('<HorizontalLayout spacing="8" preferredHeight="28" childForceExpandWidth="false" childAlignment="MiddleCenter">'
     .. buttons:gsub("<Button ", '<Button preferredWidth="150" ') .. '</HorizontalLayout>', 28)
+  local players = UI_.playersRow(game)
+  if players then row(players, 28) end
 
   return '<Panel id="cz_panel" width="620" height="' .. height .. '" rectAlignment="UpperCenter" offsetXY="0 -50"'
     .. PANEL .. '><VerticalLayout spacing="4" childForceExpandHeight="false">' .. table.concat(rows)

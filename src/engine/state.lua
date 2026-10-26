@@ -8,7 +8,8 @@ local State = {}
 State.VERSION = 2
 State.EMPTY = "" -- marks an empty market slot (JSON can't hold holes in arrays)
 
-function State.new(rules)
+-- `count` seats play: the first `count` entries of rules.seats (default all).
+function State.new(rules, count)
   local state = {
     version = State.VERSION,
     started = false,
@@ -20,7 +21,8 @@ function State.new(rules)
     winner = nil, -- seat number once someone has won
     view = { piles = {}, sig = {}, zones = {}, hands = {} }, -- spawned objects, owned by board/zones
   }
-  for seat, def in ipairs(rules.seats) do
+  for seat = 1, count or #rules.seats do
+    local def = rules.seats[seat]
     local player = {
       seat = seat,
       color = def.color,
@@ -30,6 +32,7 @@ function State.new(rules)
       prompts = {}, -- choices waiting on this player, answered in order (engine/actions.lua)
       owed = {},    -- things owed at the start of their next turn, e.g. { discard = 1 }
       flags = {},   -- this turn only, e.g. flags.buyToTop for "put the next card you buy on top"
+      out = false,  -- knocked out (see Actions.checkWin); turns skip them
     }
     State.resetResources(player, rules)
     for _, stat in ipairs(rules.stats or {}) do

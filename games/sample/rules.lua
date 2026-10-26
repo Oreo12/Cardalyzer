@@ -3,10 +3,16 @@
 local rules = {
   name = "Ember Guilds",
 
+  -- Seats in turn order. They sit along the bottom of the table from left to
+  -- right, then back along the top (two seats face each other).
   seats = {
     { color = "White", name = "White" },
     { color = "Red", name = "Red" },
+    { color = "Blue", name = "Blue" },
+    { color = "Green", name = "Green" },
   },
+  -- How many of those seats can play; the host picks in the info panel.
+  players = { min = 2, default = 2 },
 
   -- Per-turn pools. Each key becomes an effect keyword ("gold:2").
   resources = {
@@ -23,7 +29,7 @@ local rules = {
   win = { type = "stat_depleted", stat = "health", atOrBelow = 0 },
 
   handSize = 5,
-  openingHand = { 3, 5 }, -- first player draws 3, second draws 5
+  openingHand = { 3, 5 }, -- first player draws 3, everyone after draws 5
   firstSeat = 1,
 
   market = {

@@ -195,12 +195,17 @@ function Actions.destroyBase(game, owner, uid)
   return false
 end
 
+-- A player whose win stat drops to `atOrBelow` is out: they take no more
+-- turns, can't be attacked and owe nothing. The last player left wins.
 function Actions.checkWin(game)
   local win = game.rules.win
   if not win or win.type ~= "stat_depleted" then return end
   local alive = {}
   for seat, p in ipairs(game.state.players) do
-    if (p.stats[win.stat] or 0) > (win.atOrBelow or 0) then alive[#alive + 1] = seat end
+    if not p.out and (p.stats[win.stat] or 0) <= (win.atOrBelow or 0) then
+      p.out, p.prompts, p.owed = true, {}, {}
+    end
+    if not p.out then alive[#alive + 1] = seat end
   end
   if #alive == 1 then game.state.winner = alive[1] end
 end
@@ -212,6 +217,7 @@ function Actions.attack(game, seat, target, baseUid)
   if not ok then return fail(why) end
   local victim = game.state.players[target]
   if target == seat or not victim then return fail("Pick an opponent to attack.") end
+  if victim.out then return fail(victim.name .. " is already out.") end
   local key, label = Actions.resourceFor(game.rules, "attack")
   if not key then return fail("These rules have no resource with spend = \"attack\".") end
   local player = game.state.players[seat]
@@ -242,8 +248,9 @@ end
 ---------------------------------------------------------------------------
 -- Prompts: choices a player answers from the action panel, first in first out.
 -- A prompt is plain data so it survives onSave:
---   { kind, count, optional, text?, from?, options?, maxCost?, uid? }
--- kinds: choice, scrap, discard, scrap_row, destroy_base, free_buy, reminder
+--   { kind, count, optional, text?, from?, options?, maxCost?, uid?, owe? }
+-- kinds: choice, scrap, discard, scrap_row, destroy_base, free_buy, reminder,
+-- opponent (pick an opponent; `owe` such as { discard = 1 } is added to theirs)
 ---------------------------------------------------------------------------
 
 function Actions.prompt(game, seat, prompt)
@@ -265,6 +272,10 @@ function Actions.promptText(game, prompt)
   if kind == "scrap_row" then return "Scrap up to " .. plural(n, "card") .. " from the market row" end
   if kind == "destroy_base" then return "Destroy up to " .. plural(n, "base") end
   if kind == "free_buy" then return "Take a card costing " .. prompt.maxCost .. " or less from the market row" end
+  if kind == "opponent" then
+    local owed = prompt.owe and prompt.owe.discard
+    return owed and ("Choose an opponent to discard " .. plural(owed, "card") .. " next turn") or "Choose an opponent"
+  end
   return kind
 end
 
@@ -294,6 +305,10 @@ function Actions.targets(game, seat, prompt)
   elseif kind == "destroy_base" then
     for _, other in ipairs(game:opponentsOf(seat)) do
       for _, uid in ipairs(state.players[other].bases) do add(uid, state.players[other].name) end
+    end
+  elseif kind == "opponent" then
+    for _, other in ipairs(game:opponentsOf(seat)) do
+      out[#out + 1] = { value = tostring(other), label = state.players[other].name }
     end
   end
   return out
@@ -341,6 +356,9 @@ function Actions.pick(game, seat, value)
     Actions.buy(game, seat, value, true)
   elseif kind == "destroy_base" then
     for _, other in ipairs(game:opponentsOf(seat)) do Actions.destroyBase(game, other, value) end
+  elseif kind == "opponent" then
+    local owed = state.players[tonumber(value)].owed
+    for key, n in pairs(prompt.owe or {}) do owed[key] = (owed[key] or 0) + n end
   end
 
   prompt.count = prompt.count - 1
