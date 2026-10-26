@@ -24,12 +24,17 @@ function Game.new(opts)
   self.random = opts.random or math.random
 
   local problems = self.effects:validate(self.cards)
+  for _, p in ipairs(Board.checkArt(self.art, self.cards)) do problems[#problems + 1] = p end
+  local range = Game.playerRange(self.rules)
+  if range.min > range.max then
+    problems[#problems + 1] = "rules.players.min is " .. range.min .. " but rules.seats only lists " .. range.max
+  end
   if #problems > 0 then error("card data problems:\n  " .. table.concat(problems, "\n  "), 0) end
 
   self.fixedIds = {}
   for _, card in ipairs(self.cards:inDeck("fixed")) do self.fixedIds[#self.fixedIds + 1] = card.id end
-  self.layout = Zones.layout(self.rules, self.fixedIds)
-  self.state = State.new(self.rules)
+  self.state = State.new(self.rules, Zones.defaultCount(self.rules))
+  self:relayout()
   -- Messages shown inside the UI (not saved): the latest few for everyone,
   -- and the latest one for each player colour.
   self.notices = { all = {}, byColor = {} }
@@ -47,12 +52,24 @@ function Game:seatOfColor(color)
   return nil
 end
 
+-- The other seats still in the game (players who are out are left out).
 function Game:opponentsOf(seat)
   local out = {}
-  for other = 1, #self.state.players do
-    if other ~= seat then out[#out + 1] = other end
+  for other, p in ipairs(self.state.players) do
+    if other ~= seat and not p.out then out[#out + 1] = other end
   end
   return out
+end
+
+-- How many players a game can seat: { min, max }. max is #rules.seats.
+function Game.playerRange(rules)
+  local players = rules.players or {}
+  return { min = players.min or #rules.seats, max = #rules.seats }
+end
+
+-- Positions every pile for the number of seats in the current state.
+function Game:relayout()
+  self.layout = Zones.layout(self.rules, self.fixedIds, #self.state.players)
 end
 
 function Game:draw(seat, n)
@@ -65,9 +82,12 @@ function Game:prompt(seat, prompt)
   Actions.prompt(self, seat, prompt)
 end
 
+-- Deals a new game for state.nextPlayers seats (set by Game:setPlayers),
+-- or as many as are playing now.
 function Game:setupState()
   local view = self.state.view
-  self.state = State.new(self.rules)
+  local count = self.state.nextPlayers or #self.state.players
+  self.state = State.new(self.rules, count)
   self.state.view = view -- keep zone GUIDs so zones aren't respawned
   Turn.setup(self.state, self.rules, self.cards, self.random)
   Actions.startTurn(self, self.state.turn.active)
@@ -82,7 +102,10 @@ function Game:loadState(saved)
   if saved == nil or saved == "" then return false end
   local ok, data = pcall(JSON.decode, saved)
   if not ok or type(data) ~= "table" or data.version ~= State.VERSION then return false end
+  local players = type(data.players) == "table" and #data.players or 0
+  if players < 1 or players > #self.rules.seats then return false end
   self.state = data
+  self:relayout()
   return true
 end
 
@@ -148,8 +171,31 @@ end
 function Game:newGame()
   Board.sweep(self)
   self:setupState()
+  self:relayout()
+  Zones.build(self, self.layout)
   Board.sync(self)
   self:refreshUI()
+end
+
+-- Sets how many players the next New Game deals for. Before the first game
+-- the table is laid out for them straight away.
+function Game:setPlayers(n)
+  local range = Game.playerRange(self.rules)
+  if not n or n < range.min or n > range.max then
+    return false, "This game seats " .. range.min .. " to " .. range.max .. " players."
+  end
+  if self.state.started then
+    self.state.nextPlayers = n ~= #self.state.players and n or nil
+    self:notify("The next New Game deals for " .. n .. " players.")
+    return true
+  end
+  local view = self.state.view
+  self.state = State.new(self.rules, n)
+  self.state.view = view
+  self:relayout()
+  Zones.build(self, self.layout)
+  self:refreshUI()
+  return true
 end
 
 -- Destroys and respawns every pile from the state, e.g. after cards were

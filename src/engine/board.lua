@@ -42,18 +42,62 @@ function Board.describe(game, card)
   return table.concat(lines, "\n")
 end
 
+-- What other players see of a hidden card (one in someone's hand, or face
+-- down): "back" shows the back image; "last_slot" shows the sheet's last
+-- slot, which then can't hold a card. A sheet's setting overrides art.json's.
+local function hiddenFace(art, sheet)
+  return sheet.hiddenFace or art.hiddenFace or "back"
+end
+
+-- A sheet may set its own `back`; otherwise art.json's `back` is used.
 local function customDeck(game, sheetNo)
   local rules, art = game.rules, game.art
   local sheet = art.sheets[sheetNo]
   return {
     FaceURL = Board.imageUrl(rules, sheet.file),
-    BackURL = Board.imageUrl(rules, art.back),
+    BackURL = Board.imageUrl(rules, sheet.back or art.back),
     NumWidth = sheet.numWidth,
     NumHeight = sheet.numHeight,
-    BackIsHidden = true,
+    BackIsHidden = hiddenFace(art, sheet) == "back",
     UniqueBack = false,
     Type = 0,
   }
+end
+
+-- Problems with art.json for these cards, e.g. a card with no slot, a slot
+-- outside its sheet, or a card in the slot reserved for the hidden face.
+function Board.checkArt(art, cards)
+  local problems = {}
+  local function bad(msg) problems[#problems + 1] = "art.json: " .. msg end
+  if type(art) ~= "table" or type(art.sheets) ~= "table" or type(art.cards) ~= "table" then
+    bad("needs sheets and cards (run tools/make_sheets.py or write it by hand)")
+    return problems
+  end
+  for i, sheet in ipairs(art.sheets) do
+    if not sheet.file or not (sheet.back or art.back) then bad("sheet " .. i .. " needs a file and a back") end
+    local hidden = hiddenFace(art, sheet)
+    if hidden ~= "back" and hidden ~= "last_slot" then
+      bad("sheet " .. i .. " hiddenFace must be \"back\" or \"last_slot\", got \"" .. tostring(hidden) .. "\"")
+    end
+  end
+  for _, card in ipairs(cards.list) do
+    local where = art.cards[card.id]
+    local sheet = where and art.sheets[where.sheet]
+    if not where then
+      bad("card '" .. card.id .. "' has no entry in cards")
+    elseif not sheet then
+      bad("card '" .. card.id .. "' is on sheet " .. tostring(where.sheet) .. ", which isn't listed")
+    else
+      local slots = (sheet.numWidth or 0) * (sheet.numHeight or 0)
+      if type(where.index) ~= "number" or where.index < 0 or where.index >= slots then
+        bad("card '" .. card.id .. "' slot " .. tostring(where.index) .. " is outside sheet " .. where.sheet
+          .. " (slots 0 to " .. (slots - 1) .. ")")
+      elseif hiddenFace(art, sheet) == "last_slot" and where.index == slots - 1 then
+        bad("card '" .. card.id .. "' is in sheet " .. where.sheet .. "'s last slot, which shows hidden cards")
+      end
+    end
+  end
+  return problems
 end
 
 local function transform(scale)
