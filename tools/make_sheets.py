@@ -62,23 +62,42 @@ def faction_color(name):
     return int(r * 255), int(g * 255), int(b * 255)
 
 
+WORDS = {
+    "draw": "Draw {n}",
+    "opponent_discard": "Opponent discards {n}",
+    "scrap_hand": "Scrap up to {n} from hand or discard",
+    "scrap_row": "Scrap {n} from the market row",
+    "destroy_base": "Destroy {n} base",
+    "draw_discard": "Draw {n}, then discard {n}",
+}
+
+
+def one_effect(part):
+    if part == "reminder":
+        return "See text"
+    key, _, value = part.partition(":")
+    key, value = key.strip(), value.strip()
+    if key == "custom":
+        return "Special"
+    if key in WORDS:
+        return WORDS[key].format(n=value)
+    sign = "" if value.startswith("-") else "+"
+    return f"{sign}{value} {key.replace('_', ' ').title()}"
+
+
 def effect_text(effects):
     parts = []
     for part in filter(None, (p.strip() for p in effects.split(";"))):
-        key, _, value = part.partition(":")
-        key, value = key.strip(), value.strip()
-        if key == "custom":
-            parts.append("Special")
-        elif key == "draw":
-            parts.append(f"Draw {value}")
-        else:
-            sign = "" if value.startswith("-") else "+"
-            parts.append(f"{sign}{value} {key.replace('_', ' ').title()}")
+        faction, sep, rest = part.partition("=")
+        prefix = f"({faction.strip().replace('_', ' ').title()}) " if sep else ""
+        body = rest if sep else part
+        parts.append(prefix + " or ".join(one_effect(o.strip()) for o in body.split("|")))
     return ", ".join(parts)
 
 
 def draw_card(card):
-    color = faction_color(card.get("faction", "none"))
+    factions = card.get("faction", "none").split("/")
+    color = faction_color(factions[0])
     img = Image.new("RGB", (CARD_W, CARD_H), (245, 242, 235))
     d = ImageDraw.Draw(img)
     d.rectangle([0, 0, CARD_W - 1, CARD_H - 1], outline=color, width=14)
@@ -91,7 +110,8 @@ def draw_card(card):
     name_font = font(30 if len(card["name"]) <= 14 else 24)
     d.text((CARD_W / 2 + 34, 56), card["name"], font=name_font, fill="white", anchor="mm")
 
-    subtitle = f"{card.get('faction', 'none').title()} · {card.get('type', 'unit').title()}"
+    names = " / ".join(f.replace("_", " ").title() for f in factions)
+    subtitle = f"{names} · {card.get('type', 'unit').title()}"
     if card.get("faction") in (None, "", "none"):
         subtitle = card.get("type", "unit").title()
     d.text((CARD_W / 2, 122), subtitle, font=font(20), fill=(80, 80, 80), anchor="mm")

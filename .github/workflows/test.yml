@@ -20,3 +20,4 @@ jobs:
           git diff --exit-code -- games/sample/cards.json games/sample/art.json
       - run: python tools/bundle.py games/sample
       - run: lua tests/run.lua
+      - run: lua tests/fuzz.lua

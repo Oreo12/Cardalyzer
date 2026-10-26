@@ -18,6 +18,7 @@ Guilds**, a small original sample game with placeholder art:
 ## Contents
 
 - [What works today](#what-works-today)
+- [Limits and compatibility](#limits-and-compatibility)
 - [Install](#install)
 - [Try the sample game](#try-the-sample-game)
 - [Tutorial: make your own game](#tutorial-make-your-own-game)
@@ -36,20 +37,77 @@ Cardalyzer is early. Here's where each milestone stands:
 | --- | --- |
 | 1. Table and zones: two seats, deck/hand/play/discard zones, market row | done |
 | 2. Core loop: starter decks, draw, End Turn cleanup and reshuffle | done; needs in-game testing |
-| 3. Market and buying | next |
-| 4. Effects: keyword effects, ally triggers, bases with defense | the keyword parser and registry are done; playing a card from your hand doesn't trigger its effects yet |
-| 5. First real game fully playable | |
+| 3. Market and buying | done; needs in-game testing |
+| 4. Effects: keyword effects, ally triggers, bases with defense, attacks | done; needs in-game testing |
+| 5. First real game fully playable | next: 2 to 4 players, reusing existing card art |
 | 6. Generalize and build a second tiny game | |
 | 7. Workshop template and release | |
 
-So today you can:
+So today you can play a full two-player game:
 
-- deal a full game from your spreadsheet,
-- see the market row filled,
-- press **End Turn** to discard, draw a new hand and reshuffle,
-- save and reload the game.
+- deal it from your spreadsheet,
+- play cards by dragging them from your hand into your play area, and get their effects,
+- trigger ally effects, including cards with two factions and wild cards,
+- buy from the market row and fixed piles,
+- answer choices like "2 Gold or 2 Might" and "scrap a card" from an action panel,
+- attack your opponent and their buildings, with guard buildings that must fall first,
+- win, and save and reload at any point, including mid-choice.
 
-Buying cards and playing them for their effects come in the next milestones.
+## Limits and compatibility
+
+Cardalyzer is built for one kind of card game, and it's best to know that
+before you start.
+
+**What it's made for.** Games where, on your turn, you play cards from your
+hand, the cards give you resources or effects, you spend those resources, and
+then you clean up and draw. That covers deck-builders like Star Realms, Hero
+Realms, Ascension, Dominion, and the card play in Clank-style games.
+
+**What it handles:**
+
+- Resources that reset each turn (for buying, attacking, or anything you name)
+  and stats that last, like health or points.
+- Keyword effects written in the spreadsheet: gain, draw, make an opponent
+  discard, scrap from hand or the market, destroy a base, and "choose one".
+- Faction ally bonuses, cards that stay in play (bases), and guard cards that
+  must be destroyed first.
+- A market row with any number of slots (0 removes it), piles that are always
+  for sale, and bought cards going to your discard pile or the top of your deck.
+- Turning whole mechanics on or off (allies, bases, scrapping).
+- Lua for the occasional card that does something no keyword covers.
+
+**What it doesn't handle yet:**
+
+- **Acting on another player's turn.** There is no stack and no responses, so
+  there are no instants, counter-spells or interrupts. Effects happen when a
+  card is played, on its owner's turn.
+- **Triggered or always-on abilities** beyond ally bonuses and bases, such as
+  "whenever an opponent draws" or "your other cards cost 1 less".
+- **Combat between cards.** Attacks go at a player or at their bases. There's
+  no blocking and no damage to individual creatures.
+- **Coloured or typed costs.** A card costs one number of one buy resource.
+- **Targeting** beyond the built-in choices (a card to scrap or discard, a
+  base to destroy).
+- **Different market behaviour.** You can resize or remove the row, but not
+  change how it works: a shop that refreshes each round, a draft, or bidding
+  would need new engine code. With the row removed, its empty zones still sit
+  on the table.
+- **Boards, tokens and maps.** Only cards are tracked.
+- **Hidden roles, trick-taking, bidding, or real-time play.**
+- **More than two players.** The layout is built for more, but only two-player
+  games have been tested. Support for 2 to 4 players is the next milestone.
+- **Cards moved by hand.** Cardalyzer tracks the game in its script, not by
+  where cards sit. If you drag a card somewhere it doesn't read, use Tidy table
+  to put everything back.
+
+**Magic: The Gathering and similar games** aren't a good fit. They rely on the
+stack, instants, triggered and static abilities, coloured mana, blocking and
+targeting, none of which Cardalyzer has. Only a small share of simple cards
+would map to the current keywords; the rest would all be custom Lua.
+
+**Other games** can work if their turn looks like "play cards, gain things,
+spend them". Each mechanic lives in its own module that a game turns on or
+off, so the engine can grow to cover more kinds of game over time.
 
 ## Install
 
@@ -118,20 +176,52 @@ To play:
    `build/Global.lua`. If you use VS Code, the
    [TTS Editor extension](https://marketplace.visualstudio.com/items?itemName=sebaestschjin.tts-editor)
    can push it for you.
-3. Click **Save & Play**. A panel appears at the top left:
+3. Click **Save & Play**. The info panel appears on its own at the top centre of
+   the screen, with each player's line in their seat colour:
    ```
    Ember Guilds
    Press New Game to deal.
       White: Gold 0 · Might 0 · Health 40 · Deck 0 · Discard 0
       Red: Gold 0 · Might 0 · Health 40 · Deck 0 · Discard 0
-   [New Game] [End Turn]
+   [New Game] [Tidy table]
    ```
+   Messages, such as "It's not your turn", appear inside this panel (the last
+   three for everyone, plus a private line just below it for the player they
+   concern), and are copied to chat. Cardalyzer doesn't use TTS broadcasts for
+   them, because TTS draws broadcast text behind custom UI.
 4. Sit at White and press **New Game** (only the host can). Each seat
    gets its starter deck, the first player draws 3 cards and the second draws
    5, and five cards fill the market row.
-5. Press **End Turn** on your turn. Your hand goes to your discard pile, you draw
-   5, and play passes to Red. When a deck runs out, the discard pile is
-   shuffled into it automatically.
+5. Play your turn. A second panel at the top right shows only to the
+   player whose turn it is:
+   ```
+   Choose one                        <- a card asked you something
+   [+3 Gold or +3 Might]
+   [Play all (3)]
+   [Attack Red (4 Might)]
+   [Scrap Hireling: +2 Might]
+   [End Turn]
+   ```
+   - **Play a card** by dragging it from your hand into your play area (the
+     row in front of you), or press **Play all**. Its effects apply at once,
+     and the info panel shows your new totals.
+   - **Buy** with the **Buy** button on a market card or the Hireling pile.
+     It goes to your discard pile, and the empty slot refills.
+   - **Answer prompts.** When a card needs a choice, such as picking an option,
+     a card to scrap or a card to discard, the action panel lists your options
+     as buttons.
+   - **Attack** with the Attack button: all your Might goes to the opponent's
+     Health. Guard buildings (the sample's Stone Wall) have to be destroyed first.
+   - **End Turn**. Your played cards and your hand go to your discard pile,
+     buildings stay, you draw 5, and play passes to Red. When a deck runs out,
+     the discard pile is shuffled into it automatically.
+6. If cards end up somewhere odd after a drag, press **Tidy table**. It redraws
+   every pile from the game state.
+7. New to the table? Press **Tutorial** in the info panel. It opens a short
+   guide in the middle of your screen, only for you, covering what Cardalyzer
+   does, where the info panel, action panel and messages are, and how the table
+   is laid out. **Hide button** removes the Tutorial button for you (it stays
+   hidden after a reload); type `!tutorial` in chat to get it back.
 
 ## Tutorial: make your own game
 
@@ -187,12 +277,15 @@ return {
   seats = { { color = "Blue" }, { color = "Green" } },
 
   -- Each key becomes an effect keyword: doubloons:2, cannons:4
+  -- spend says what the Buy and Attack buttons use.
   resources = {
-    { key = "doubloons", label = "Doubloons" },
-    { key = "cannons", label = "Cannons" },
+    { key = "doubloons", label = "Doubloons", spend = "buy" },
+    { key = "cannons", label = "Cannons", spend = "attack" },
   },
   -- Stats persist between turns and are keywords too: hull:1
   stats = { { key = "hull", label = "Hull", start = 20 } },
+  -- Attacks lower Hull; a captain at 0 is sunk.
+  win = { type = "stat_depleted", stat = "hull", atOrBelow = 0 },
 
   handSize = 5,
   openingHand = 5,
@@ -273,12 +366,12 @@ One row per card. The column order doesn't matter, but the names do.
 | `id` | yes | Unique id: lowercase letters, digits, `_` | `war_anvil` |
 | `name` | yes | Name shown on the card | `War Anvil` |
 | `deck` | no (default `market`) | Which pile the card starts in: `starter`, `market` or `fixed` (see below) | `market` |
-| `faction` | no (default `none`) | Faction for ally effects and frame colour | `forge` |
+| `faction` | no (default `none`) | Faction for ally effects and frame colour. Two factions: `forge/grove`. `any` counts as every faction | `forge` |
 | `type` | no (default `unit`) | A type from `cardTypes` in the rules | `building` |
 | `cost` | yes | Price in the market | `4` |
 | `copies` | yes | How many copies exist (see `deck`) | `1` |
 | `effects` | yes (may be empty) | What happens when it's played | `might:3` |
-| `ally_effects` | no | Extra effects when another card of its faction is in play | `draw:1` |
+| `ally_effects` | no | Extra effects when another card sharing a faction is in play; once per turn | `draw:1` |
 | `scrap_effects` | no | Effects when you scrap it (remove it from the game) | `might:2` |
 | `defense` | no | Damage needed to destroy a persistent card | `5` |
 | `text` | no | Extra rules text shown on the card | `Ally: take a free card.` |
@@ -300,19 +393,27 @@ fine.
 | `gold:2` | +2 to the `gold` resource this turn |
 | `health:-3` | Lose 3 from the `health` stat |
 | `draw:1` | Draw a card (reshuffling if needed) |
-| `opponent_discard:1` | Each opponent discards a card on their turn |
+| `opponent_discard:1` | Each opponent discards a card at the start of their next turn |
 | `scrap_hand:1` | You may scrap a card from your hand or discard pile |
+| `scrap_row:1` | You may scrap a card from the market row (it refills) |
+| `destroy_base:1` | You may destroy an opponent's building, ignoring guards |
+| `draw_discard:1` | Draw a card, then discard a card |
+| `reminder` | Show the card's `text` to the player until they click Done (for rules not automated yet) |
 | `gold:2; draw:1` | Both |
+| `gold:3 \| might:3` | The player picks one |
 | `custom:luckyParrot` | Run `rules.customEffects.luckyParrot` |
+
+In `ally_effects` only, an effect can name the faction it needs:
+`veil=scrap_row:1` fires when a Veil card is in play, whatever the card's own
+faction. Without a prefix, an ally effect needs any card that shares one of
+its factions. Each ally effect fires at most once per turn.
 
 Some keywords are always available:
 
-- `draw`, `opponent_discard` and `scrap_hand`.
+- `draw`, `opponent_discard`, `scrap_hand`, `scrap_row`, `destroy_base`,
+  `draw_discard` and `reminder`.
 - `custom:<name>`.
 - One keyword per resource and stat in your rules, using its `key`.
-
-`opponent_discard` and `scrap_hand` only record what's owed for now. The
-prompts that let a player choose a card come in milestone 4.
 
 ## Rules file reference
 
@@ -322,19 +423,20 @@ These are the fields in `games/<yours>/rules.lua`:
 | --- | --- | --- |
 | `name` | `"Ember Guilds"` | Title shown on the panel |
 | `seats` | `{ {color="White"}, {color="Red"} }` | Player colours in turn order; optional `name` per seat |
-| `resources` | `{ {key="gold", label="Gold"} }` | Per-turn pools, reset at end of turn |
+| `resources` | `{ {key="gold", label="Gold", spend="buy"} }` | Per-turn pools, reset at end of turn. `spend = "buy"` pays for cards, `spend = "attack"` powers attacks |
 | `stats` | `{ {key="health", label="Health", start=40} }` | Values that persist between turns |
 | `handSize` | `5` | Cards drawn at the end of each turn |
 | `openingHand` | `{3, 5}` or `5` | First hand per player in turn order; one number means everyone draws that many |
 | `firstSeat` | `1` | Which seat goes first |
 | `market.rowSize` | `5` | Face-up market slots |
-| `market.buyTo` | `"discard"` | Where bought cards go (milestone 3) |
+| `market.buyTo` | `"discard"` or `"deck_top"` | Where bought cards go |
 | `factions` | `forge = {label="Forge", color="#C8502D"}` | Faction labels and frame colours |
-| `cardTypes` | `building = {persistent=true}` | Types; persistent ones stay in play |
+| `cardTypes` | `wall = {persistent=true, guard=true}` | Types. Persistent ones stay in play and apply their effects again each turn; guard ones must be destroyed before their owner or other buildings can be attacked |
 | `mechanics` | `{allies=true, persistent=true, scrap=true}` | Turn whole mechanics on or off |
-| `win` | `{type="stat_depleted", stat="health", atOrBelow=0}` | Win condition (milestone 4) |
+| `win` | `{type="stat_depleted", stat="health", atOrBelow=0}` | Attacks lower this stat; the last player above it wins |
 | `art.baseUrl` | `"https://…/games/sample/"` | Where the card images are hosted |
 | `layout` | `{seatDistance=10, cardSpacing=2.8}` | Table spacing; adjust if piles overlap your table's edge |
+| `tutorial` | `false` | Leave out to show the Tutorial button; `false` removes it for everyone |
 | `customEffects` | see below | Lua for unusual cards |
 
 ## Custom effects
@@ -344,11 +446,29 @@ with `custom:<name>`. The function gets three things:
 
 - **`game`**: the running game.
   - `game.state.players[seat]` holds a player's `hand`, `deck`, `discard`,
-    `play`, `resources`, `stats` and `pending`.
+    `play`, `bases`, `resources`, `stats` and `flags`.
   - `game:draw(seat, n)` draws cards.
   - `game:opponentsOf(seat)` lists the other seats.
+  - `game:prompt(seat, prompt)` asks the player something (see below).
 - **`seat`**: the number of the player who played the card.
-- **`ctx`**: extra information about the play. It's an empty table for now.
+- **`ctx`**: the card the effect came from: `ctx.uid` and `ctx.card` (its
+  name, cost, factions and so on).
+
+To ask the player something, queue a prompt. It appears on their action
+panel. These kinds are built in:
+
+| Prompt | Example |
+| --- | --- |
+| Take a market card for free | `game:prompt(seat, { kind = "free_buy", maxCost = 4, optional = true })` |
+| Scrap from hand or discard | `game:prompt(seat, { kind = "scrap", count = 2, optional = true, from = {"hand", "discard"} })` |
+| Discard | `game:prompt(seat, { kind = "discard", count = 1 })` |
+| Scrap from the market row | `game:prompt(seat, { kind = "scrap_row", count = 1, optional = true })` |
+| Destroy a building | `game:prompt(seat, { kind = "destroy_base", count = 1, optional = true })` |
+| Show a note | `game:prompt(seat, { kind = "reminder", text = "Look at your opponent's hand" })` |
+
+Setting `game.state.players[seat].flags.buyToTop = true` puts the next card
+that player buys on top of their deck, as in "put the next ship you acquire
+on top of your deck". Flags clear at the end of the turn.
 
 ```lua
 customEffects = {
@@ -412,11 +532,13 @@ print(Cardalyzer.game.state.market.row[1])       -- uid in the first market slot
 ### Running the tests
 
 ```sh
-python tools/bundle.py games/sample && lua tests/run.lua
+python tools/bundle.py games/sample
+lua tests/run.lua    # 35 tests of setup, buying, playing, allies, prompts, attacks, saving
+lua tests/fuzz.lua   # 200 random games: no errors, no lost cards, no leaked objects
 ```
 
-This runs the real bundled script against a fake TTS. You should see
-`14 passed, 0 failed`. On macOS and Linux, `make all` rebuilds everything and
+Both run the real bundled script against a fake TTS. You should see
+`35 passed, 0 failed` and `fuzz ok`. On macOS and Linux, `make all` rebuilds everything and
 then runs the tests.
 
 ## How it works
@@ -426,9 +548,12 @@ then runs the tests.
   its id in its GM Notes.
 - **The table is a picture of the state.** To redraw a pile, Cardalyzer
   removes what it spawned there and spawns it again. A card dragged to the
-  wrong place therefore can't break the game. Later milestones will treat
-  player actions, like dragging a card into the play zone, as requests that
-  update the state.
+  wrong place therefore can't break the game. Only piles whose contents
+  changed are redrawn.
+- **Player actions are requests.** Dropping a card into your play area,
+  clicking Buy or answering a prompt asks the engine to change the state. The
+  engine checks it (whose turn, enough Gold, a guard in the way) and either
+  applies it or tells you why not.
 - **Reload-safe.** `onSave` stores the whole state, so loading a save
   continues the same game.
 
@@ -442,9 +567,11 @@ src/
     effects.lua      keyword registry (resources, stats, draw, custom:...)
     state.lua        game state tables (saved with onSave)
     turn.lua         setup, draw/reshuffle, market refill, end-of-turn cleanup
+    actions.lua      buy, play, allies, scrap, attack, prompts, turn start/end
     zones.lua        table layout maths + spawning scripting/hand zones
     board.lua        renders state as TTS objects
-    ui.lua           XML status panel and buttons
+    ui.lua           XML info panel, messages and the active player's action panel
+    tutorial.lua     the in-game Tutorial pages and its hide/show option
     game.lua         facade that wires the modules together
 games/sample/
   cards.csv          the card spreadsheet (edit this)

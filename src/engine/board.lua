@@ -24,7 +24,11 @@ function Board.describe(game, card)
   local fx = game.effects
   local lines = {}
   local header = "Cost " .. card.cost
-  if card.faction ~= "none" then header = header .. " · " .. Util.titleCase(card.faction) end
+  if card.faction ~= "none" then
+    local names = {}
+    for _, f in ipairs(card.factions) do names[#names + 1] = Util.titleCase(f) end
+    header = header .. " · " .. table.concat(names, " / ")
+  end
   lines[#lines + 1] = header .. " · " .. Util.titleCase(card.type)
   if #card.effects > 0 then lines[#lines + 1] = fx:describe(card.effects, card.text) end
   if #card.allyEffects > 0 then
@@ -106,8 +110,8 @@ function Board.piles(game)
   local state, layout = game.state, game.layout
   local gap = (game.rules.layout and game.rules.layout.cardSpacing) or 2.8
   local list = {}
-  local function add(key, uids, spot, style, faceUp)
-    list[#list + 1] = { key = key, uids = uids, spot = spot, style = style, faceUp = faceUp, gap = gap }
+  local function add(key, uids, spot, style, faceUp, buyable)
+    list[#list + 1] = { key = key, uids = uids, spot = spot, style = style, faceUp = faceUp, gap = gap, buyable = buyable }
   end
   for seat, p in ipairs(state.players) do
     local s = layout.seats[seat]
@@ -120,10 +124,10 @@ function Board.piles(game)
   local m = state.market
   add("market.deck", m.deck, layout.market.deck, "stack", false)
   for i, uid in ipairs(m.row) do
-    add("market.row." .. i, uid == State.EMPTY and {} or { uid }, layout.market.row[i], "stack", true)
+    add("market.row." .. i, uid == State.EMPTY and {} or { uid }, layout.market.row[i], "stack", true, true)
   end
   for _, id in ipairs(game.fixedIds) do
-    add("fixed." .. id, m.fixed[id] or {}, layout.market.fixed[id], "stack", true)
+    add("fixed." .. id, m.fixed[id] or {}, layout.market.fixed[id], "stack", true, true)
   end
   add("market.scrap", m.scrap, layout.market.scrap, "stack", true)
   return list
@@ -144,23 +148,48 @@ end
 -- TTS side
 ---------------------------------------------------------------------------
 
+-- Cards use the spot's own yaw, except in a hand, whose zone faces the seat
+-- but whose cards still need the card yaw (see Zones.layout).
 local function rotation(spot, faceUp)
-  return { 0, spot.rotation[2], faceUp and 0 or FACE_DOWN }
+  local yaw = (spot.cardRotation or spot.rotation)[2]
+  return { 0, yaw, faceUp and 0 or FACE_DOWN }
 end
 
-local function spawn(game, data, position, rot)
-  local obj = spawnObjectData({ data = data, position = position, rotation = rot })
+-- Buy button on a market card or fixed pile; clicks go to Cardalyzer_onBuy in main.lua.
+local function addBuyButton(obj, cost)
+  obj.createButton({
+    click_function = "Cardalyzer_onBuy",
+    function_owner = Global,
+    label = "Buy · " .. cost,
+    position = { 0, 0.6, 1.7 },
+    width = 900, height = 260, font_size = 150,
+    color = { 0.1, 0.1, 0.1, 0.9 }, font_color = { 1, 0.85, 0.35 },
+  })
+end
+
+local function spawn(game, data, position, rot, buyCost)
+  local obj = spawnObjectData({
+    data = data, position = position, rotation = rot,
+    callback_function = buyCost and function(o) addBuyButton(o, buyCost) end or nil,
+  })
   return obj.getGUID()
 end
 
 function Board.clearPile(game, key)
   local guids = game.state.view.piles[key]
-  if not guids then return end
-  for _, guid in ipairs(guids) do
-    local obj = getObjectFromGUID(guid)
-    if obj then obj.destruct() end
+  if guids then
+    for _, guid in ipairs(guids) do
+      local obj = getObjectFromGUID(guid)
+      if obj then obj.destruct() end
+    end
   end
   game.state.view.piles[key] = nil
+  game.state.view.sig[key] = nil
+end
+
+-- A pile's signature: its uids in order. Unchanged signature = nothing to redraw.
+local function signature(pile)
+  return table.concat(pile.uids, ",")
 end
 
 function Board.renderPile(game, pile)
@@ -170,7 +199,9 @@ function Board.renderPile(game, pile)
   if n > 0 then
     local rot = rotation(pile.spot, pile.faceUp)
     if pile.style == "stack" then
-      guids[1] = spawn(game, Board.stackData(game, pile.uids), pile.spot.position, rot)
+      local top = game.cards:get(State.cardId(game.state, pile.uids[n]))
+      local cost = pile.buyable and top.cost or nil
+      guids[1] = spawn(game, Board.stackData(game, pile.uids), pile.spot.position, rot, cost)
     else
       local gap = pile.style == "hand" and pile.gap * 0.8 or pile.gap
       local positions = Board.rowPositions(pile.spot, n, gap)
@@ -180,18 +211,24 @@ function Board.renderPile(game, pile)
     end
   end
   game.state.view.piles[pile.key] = guids
+  game.state.view.sig[pile.key] = signature(pile)
 end
 
--- Redraws the piles whose key starts with one of the given prefixes, or
--- every pile when `prefixes` is nil. Example: Board.render(game, {"1.", "market."}).
-function Board.render(game, prefixes)
+-- Redraws only the piles whose contents changed since they were last drawn.
+function Board.sync(game)
   for _, pile in ipairs(Board.piles(game)) do
-    local match = prefixes == nil
-    for _, prefix in ipairs(prefixes or {}) do
-      if pile.key:sub(1, #prefix) == prefix then match = true end
-    end
-    if match then Board.renderPile(game, pile) end
+    if game.state.view.sig[pile.key] ~= signature(pile) then Board.renderPile(game, pile) end
   end
+end
+
+-- The pile key ("fixed.hireling") that spawned the object with this GUID.
+function Board.pileOf(game, guid)
+  for key, guids in pairs(game.state.view.piles) do
+    for _, g in ipairs(guids) do
+      if g == guid then return key end
+    end
+  end
+  return nil
 end
 
 -- Destroys every card the engine ever spawned, including strays that were
@@ -199,6 +236,7 @@ end
 function Board.sweep(game)
   for _, obj in ipairs(getObjectsWithTag("cz_card")) do obj.destruct() end
   game.state.view.piles = {}
+  game.state.view.sig = {}
 end
 
 return Board

@@ -166,7 +166,7 @@
     "type": "unit",
     "cost": 3,
     "copies": 2,
-    "effects": "gold:3",
+    "effects": "gold:3 | might:3",
     "ally_effects": "gold:2",
     "scrap_effects": "gold:2",
     "text": ""
@@ -219,7 +219,7 @@
     "type": "unit",
     "cost": 3,
     "copies": 2,
-    "effects": "might:3;draw:1",
+    "effects": "might:2;draw_discard:1",
     "ally_effects": "",
     "scrap_effects": "might:2",
     "text": ""
@@ -249,6 +249,60 @@
     "effects": "might:5;opponent_discard:1",
     "ally_effects": "custom:freeRecruit",
     "scrap_effects": "",
-    "text": "Ally: take a card costing 4 or less from the market row for free."
+    "text": ""
+  },
+  {
+    "id": "stone_wall",
+    "name": "Stone Wall",
+    "deck": "market",
+    "faction": "forge/grove",
+    "type": "wall",
+    "cost": 4,
+    "copies": 2,
+    "effects": "might:1 | health:2",
+    "ally_effects": "",
+    "scrap_effects": "",
+    "defense": 5,
+    "text": "Guard: must be destroyed before you or your other buildings can be attacked."
+  },
+  {
+    "id": "storm_caller",
+    "name": "Storm Caller",
+    "deck": "market",
+    "faction": "tide",
+    "type": "unit",
+    "cost": 5,
+    "copies": 1,
+    "effects": "might:3;destroy_base:1",
+    "ally_effects": "veil=scrap_row:1",
+    "scrap_effects": "",
+    "text": ""
+  },
+  {
+    "id": "wild_shrine",
+    "name": "Wild Shrine",
+    "deck": "market",
+    "faction": "any",
+    "type": "building",
+    "cost": 5,
+    "copies": 1,
+    "effects": "health:2",
+    "ally_effects": "",
+    "scrap_effects": "",
+    "defense": 5,
+    "text": "Counts as every faction for allies."
+  },
+  {
+    "id": "oracle",
+    "name": "Oracle",
+    "deck": "market",
+    "faction": "veil",
+    "type": "unit",
+    "cost": 3,
+    "copies": 1,
+    "effects": "might:1;reminder",
+    "ally_effects": "",
+    "scrap_effects": "",
+    "text": "Look at the top card of the market deck and put it back."
   }
 ]
