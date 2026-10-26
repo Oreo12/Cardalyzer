@@ -265,7 +265,8 @@ local function seatRow(game, seat)
         or text("cz_stat_" .. seat .. "_" .. st.key, (st.label or Util.titleCase(st.key)) .. " " .. value, 14, FX))
     end
   end
-  local goals = rules.objectives and (" · " .. (rules.objectives.label or "Goals") .. " " .. #p.completed
+  -- only in a game that dealt objectives (their set may be switched off)
+  local goals = rules.objectives and #p.completed + #p.objectives > 0 and (" · " .. (rules.objectives.label or "Goals") .. " " .. #p.completed
     .. "/" .. (rules.objectives.toWin or #p.completed + #p.objectives)) or ""
   local piles = text("cz_seat_" .. seat .. "_piles", "Deck " .. #p.deck .. " · Discard " .. #p.discard .. goals, 11,
     'color="#C8CED6" alignment="MiddleRight" preferredHeight="14"' .. FX)
