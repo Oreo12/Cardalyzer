@@ -1890,6 +1890,37 @@ test("an event that empties the market row while it fills doesn't trip the refil
   oracle.type = "unit"
 end)
 
+test("dealt cards: each player gets rules.deal.count into play at the start", function()
+  local game = boot()
+  for _, id in ipairs({ "oracle", "wild_shrine" }) do game.cards:get(id).deck = "dealt" end
+  game.rules.deal = { count = 1 }
+  Cardalyzer_onStartGame(HOST)
+  local got = {}
+  for seat, p in ipairs(game.state.players) do
+    eq(#p.bases, 1, "seat " .. seat .. " dealt one")
+    got[game.state.cards[p.bases[1]]] = true
+  end
+  assert(got.oracle and got.wild_shrine, "both dealt cards handed out")
+  for _, uid in ipairs(game.state.market.deck) do
+    local id = game.state.cards[uid]
+    assert(id ~= "oracle" and id ~= "wild_shrine", "not in the market")
+  end
+  game.rules.deal = nil
+  for _, id in ipairs({ "oracle", "wild_shrine" }) do game.cards:get(id).deck = "market" end
+end)
+
+test("whenAttacked lets the defender's cards reduce the damage", function()
+  local game, put = blank()
+  game.effects:registerCustom("shield1", { whenAttacked = function(g, seat, ctx, hit) hit.damage = hit.damage - 1 end })
+  game.cards:get("hidden_den").effects = { { key = "custom", fn = "shield1" } }
+  game.cards:get("hidden_den").type = "unit" -- not a base: it can't be targeted instead
+  put(2, "bases", "hidden_den")
+  local before = game.state.players[2].stats.health
+  game.state.players[1].resources.might = 5
+  click(WHITE, "cz-attack-2")
+  eq(game.state.players[2].stats.health, before - 4, "5 Might, 1 blocked")
+end)
+
 test("any player's waiting choice shows on their own screen", function()
   local game = blank()
   game:prompt(2, { kind = "choice", options = { { key = "gold", amount = 1 }, { key = "might", amount = 1 } } })

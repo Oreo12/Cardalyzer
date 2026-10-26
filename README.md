@@ -402,7 +402,7 @@ One row per card. The column order doesn't matter, but the names do.
 | --- | --- | --- | --- |
 | `id` | yes | Unique id: lowercase letters, digits, `_` | `war_anvil` |
 | `name` | yes | Name shown on the card | `War Anvil` |
-| `deck` | no (default `market`) | Which pile the card starts in: `starter`, `market` or `fixed` (see below) | `market` |
+| `deck` | no (default `market`) | Which pile the card starts in: `starter`, `market`, `fixed` or `dealt` (see below) | `market` |
 | `faction` | no (default `none`) | Faction for ally effects and frame colour. Two factions: `forge/grove`. `any` counts as every faction | `forge` |
 | `type` | no (default `unit`) | A type from `cardTypes` in the rules | `building` |
 | `cost` | yes | Price in the market | `4` |
@@ -421,6 +421,8 @@ The `deck` values work like this:
 - **`market`**: `copies` are shuffled into the market deck, which refills the row.
 - **`fixed`**: a pile of `copies` that's always available next to the row.
   The sample's Hireling works this way.
+- **`dealt`**: at the start, each player is dealt `rules.deal.count` of these
+  at random, straight into play (Star Realms' Gambits).
 
 ### Writing effects
 
@@ -477,6 +479,7 @@ These are the fields in `games/<yours>/rules.lua`:
 | `firstSeat` | `1` | Which seat goes first |
 | `market.rowSize` | `5` | Face-up market slots |
 | `market.buyTo` | `"discard"` or `"deck_top"` | Where bought cards go |
+| `deal` | `{count=2}` | How many `dealt` cards each player gets at the start |
 | `market.returnScrapped` | `true` | A scrapped card from a fixed pile goes back to its pile instead of the scrap pile (Star Realms' Explorers) |
 | `sets` | `{ {key="base", label="Base Game", always=true}, {key="exp1", label="Expansion", default=true} }` | Sets of cards (named in the `set` column) the host switches in or out in the New Game menu. `always` sets can't be switched off; `default` ones start on. Cards with no `set` are always in |
 | `market.faceActive` | `false` | Leave out to turn the market's cards to face the player whose turn it is; `false` keeps them facing seat 1 |
@@ -611,6 +614,8 @@ More hooks a custom effect can have:
 - `whenTurnEnds = function(game, seat, ctx)`: for a card in play at the end
   of the turn; returning `"hand"` keeps it, back in the hand after the new
   hand is drawn ("docking").
+- `whenAttacked = function(game, seat, ctx, hit)`: while in play, runs when
+  its owner (not their bases) is attacked; it can lower `hit.damage`.
 - `atTurnEnd = function(game, seat, job)`: runs for jobs queued with
   `game:atTurnEnd({ custom = "<name>", ... })` this turn.
 

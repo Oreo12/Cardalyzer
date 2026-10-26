@@ -50,6 +50,20 @@ function Turn.setup(state, rules, cards, random, opening, sets)
     Util.shuffle(player.deck, random)
   end
 
+  -- Cards dealt into play: each player gets rules.deal.count at random.
+  local pool = {}
+  for _, card in ipairs(inDeck("dealt")) do
+    for _ = 1, card.copies do pool[#pool + 1] = card.id end
+  end
+  if #pool > 0 and rules.deal then
+    Util.shuffle(pool, random)
+    for _, player in ipairs(state.players) do
+      for _ = 1, rules.deal.count or 1 do
+        if #pool > 0 then player.bases[#player.bases + 1] = State.newCard(state, table.remove(pool)) end
+      end
+    end
+  end
+
   for _, card in ipairs(inDeck("market")) do
     for _ = 1, card.copies do
       state.market.deck[#state.market.deck + 1] = State.newCard(state, card.id)
