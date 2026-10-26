@@ -2546,5 +2546,39 @@ test("seating: around the table, along one side, or at exact spots", function()
   game.rules.layout = nil
 end)
 
+test("the whole market turns to face the player whose turn it is", function()
+  local game = boot()
+  game.rules.layout = { seating = "around" }
+  game.rules.market.turnsWithPlayer = true
+  click(HOST, "cz-players-4")
+  Cardalyzer_onStartGame(HOST)
+  local function near(a, b) return math.abs(a - b) < 0.01 end
+  local function rowDirection()
+    local row = game.layout.market.row
+    return row[#row].position[1] - row[1].position[1], row[#row].position[3] - row[1].position[3]
+  end
+  local dx, dz = rowDirection()
+  assert(dx > 0 and near(dz, 0), "seat 1's turn: the row runs left to right for them")
+  local slot1 = game.state.market.row[1]
+  local Board = Cardalyzer.require("engine.board")
+  local before = game.state.view.piles["market.row.1"][1]
+  local outline = tts.lines[#tts.lines].points[1]
+  Cardalyzer_onEndTurn(HOST)
+  eq(game.state.turn.active, 2, "seat 2's turn")
+  dx, dz = rowDirection()
+  local right = game.layout.seats[2].play.right
+  assert(near(dx * right[2] - dz * right[1], 0) and dx * right[1] + dz * right[2] > 0, "the row now runs along seat 2's right")
+  local zone = getObjectFromGUID(game.state.view.zones["market.row"])
+  eq(zone.rotation[2], game.layout.market.area.rotation[2], "the market zone turned too")
+  local moved = tts.lines[#tts.lines].points[1]
+  assert(not (near(moved[1], outline[1]) and near(moved[3], outline[3])), "and its outlines")
+  if game.state.market.row[1] == slot1 then
+    local obj = getObjectFromGUID(before)
+    local to = game.layout.market.row[1].position
+    assert(obj and near(obj.position[1], to[1]) and near(obj.position[3], to[3]), "the card in slot 1 glided to its new spot")
+  end
+  game.rules.layout, game.rules.market.turnsWithPlayer = nil, nil
+end)
+
 print(string.format("\n%d passed, %d failed", passed, failed))
 if failed > 0 then os.exit(1) end
