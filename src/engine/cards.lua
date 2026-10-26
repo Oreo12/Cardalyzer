@@ -79,7 +79,10 @@ local function parseRow(row, index)
   local function fail(msg) error("card '" .. id .. "': " .. msg, 0) end
 
   local deck = blank(row.deck) and "market" or row.deck
-  if not Cards.DECKS[deck] then fail("deck must be starter, market, fixed, dealt or objective, got '" .. deck .. "'") end
+  -- "market:<key>" puts a card in one of the extra markets (rules.markets)
+  if not Cards.DECKS[deck] and not deck:match("^market:[%w_]+$") then
+    fail("deck must be starter, market, market:<key>, fixed, dealt or objective, got '" .. deck .. "'")
+  end
 
   local ok, effects = pcall(Cards.parseEffects, row.effects)
   if not ok then fail(effects) end

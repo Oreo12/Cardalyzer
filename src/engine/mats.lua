@@ -75,6 +75,10 @@ function Mats.spots(rules, layout, colors)
     local spots = { m.deck, m.scrap }
     for _, s in ipairs(m.row) do spots[#spots + 1] = s end
     for _, s in pairs(m.fixed) do spots[#spots + 1] = s end
+    for _, extra in pairs(layout.markets or {}) do
+      spots[#spots + 1] = extra.deck
+      for _, s in ipairs(extra.row) do spots[#spots + 1] = s end
+    end
     local a, o, w, d = around(spots, { 0, 0 }, { 1, 0 }, { 0, 1 }, market.margin or 1)
     if a then
       out[#out + 1] = { key = "market", image = market.image, position = { a + (market.x or 0), y, o + (market.z or 0) },

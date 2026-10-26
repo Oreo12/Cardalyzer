@@ -32,6 +32,10 @@ local function farthestX(rules)
   for _, s in ipairs(layout.market.row) do reach(s) end
   reach(layout.market.deck)
   reach(layout.market.scrap)
+  for _, extra in pairs(layout.markets or {}) do
+    reach(extra.deck)
+    for _, s in ipairs(extra.row) do reach(s) end
+  end
   return most
 end
 
