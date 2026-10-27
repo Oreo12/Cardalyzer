@@ -37,6 +37,7 @@ function State.new(rules, count)
       areas = {},   -- set-aside areas (rules.areas): { [key] = { uids } }
       lasting = {}, -- cards with next_effects, kept in play until the owner's next turn
       nextJobs = {}, -- game:atNextTurn jobs, run at the start of the owner's next turn
+      exhausted = {}, -- { [uid] = true }: cards used this round (Use), shown turned sideways
     }
     for _, a in ipairs(rules.areas or {}) do player.areas[a.key] = {} end
     State.resetResources(player, rules)

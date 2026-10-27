@@ -203,6 +203,13 @@ function Board.piles(game)
       add(seat .. ".play", played, s.play, "row", true)
       add(seat .. ".bases", p.bases, s.bases, "row", true)
     end
+    -- cards used this round (a Use button) lie turned sideways, unless
+    -- rules.ui.turnUsedCards = false
+    if not (game.rules.ui and game.rules.ui.turnUsedCards == false) and p.exhausted and next(p.exhausted) then
+      for _, pile in ipairs(list) do
+        if pile.key == seat .. ".play" or pile.key == seat .. ".bases" then pile.turned = p.exhausted end
+      end
+    end
     add(seat .. ".hand", p.hand, s.hand, "hand", true, nil, s.deck.position)
   end
   -- The market's cards face the player whose turn it is, so they always read
@@ -335,8 +342,11 @@ function Board.clearPile(game, key)
 end
 
 -- A pile's signature: its uids in order. Unchanged signature = nothing to redraw.
-local function signature(uids)
-  return table.concat(uids, ",")
+local function signature(uids, turned)
+  if not turned or not next(turned) then return table.concat(uids, ",") end
+  local parts = {}
+  for i, uid in ipairs(uids) do parts[i] = turned[uid] and (uid .. "*") or uid end
+  return table.concat(parts, ",")
 end
 
 local function rowGap(pile)
@@ -411,7 +421,9 @@ local function draw(game, pile, uids)
   else
     local positions = Board.rowPositions(pile.spot, n, rowGap(pile), pile.style == "row" and pile.cardWidth or nil)
     for i, uid in ipairs(uids) do
-      guids[i] = spawn(game, data(Board.cardData(game, uid)), positions[i], rot, ready)
+      local r = rot
+      if pile.turned and pile.turned[uid] then r = { rot[1], (rot[2] + 90) % 360, rot[3] } end
+      guids[i] = spawn(game, data(Board.cardData(game, uid)), positions[i], r, ready)
     end
   end
 end
@@ -419,7 +431,7 @@ end
 function Board.renderPile(game, pile)
   game.state.view.at = game.state.view.at or {}
   draw(game, pile, pile.uids)
-  game.state.view.sig[pile.key] = signature(pile.uids)
+  game.state.view.sig[pile.key] = signature(pile.uids, pile.turned)
 end
 
 -- Animation timing in seconds. rules.animate = false turns animation off;
@@ -474,7 +486,7 @@ function Board.sync(game, opts)
   view.facing = view.facing or {}
   for _, pile in ipairs(Board.piles(game)) do
     local key = pile.key
-    local sig = signature(pile.uids)
+    local sig = signature(pile.uids, pile.turned)
     local old = view.sig[key]
     -- Same cards, but the pile itself moved (the market turning to face a new
     -- player): glide its objects to the new spot.

@@ -161,7 +161,7 @@ function Turn.setup(state, rules, cards, random, opening, sets, kits, supplyChoi
   state.turn.first = first -- a round ends when play comes back round to this seat
   for order = 1, count do
     local seat = (first + order - 2) % count + 1
-    Turn.draw(state, seat, Turn.openingHandSize(opening or rules.openingHand, order, count, rules.handSize))
+    Turn.draw(state, seat, Turn.openingHandSize(opening or rules.openingHand, order, count, rules.handSize), random, rules.reshuffle == false)
   end
 
   state.turn.active = first
@@ -212,14 +212,21 @@ end
 
 -- Draws n cards for a seat, reshuffling the discard pile into the deck when
 -- the deck runs out. Returns the uids drawn (fewer than n if both are empty).
-function Turn.draw(state, seat, n, random)
+-- With `noShuffle` (rules.reshuffle = false, as in Aeon's End) the discard
+-- pile is turned over instead: the first card discarded is drawn first.
+function Turn.draw(state, seat, n, random, noShuffle)
   local player = state.players[seat]
   local drawn = {}
   for _ = 1, n do
     if #player.deck == 0 then
       if #player.discard == 0 then break end
-      Util.moveAll(player.discard, player.deck)
-      Util.shuffle(player.deck, random)
+      if noShuffle then
+        for i = #player.discard, 1, -1 do player.deck[#player.deck + 1] = player.discard[i] end
+        player.discard = {}
+      else
+        Util.moveAll(player.discard, player.deck)
+        Util.shuffle(player.deck, random)
+      end
     end
     local uid = table.remove(player.deck)
     player.hand[#player.hand + 1] = uid
@@ -272,7 +279,7 @@ function Turn.endTurn(state, rules, random)
   if not t.keepHand then Util.moveAll(player.hand, player.discard) end
   State.resetResources(player, rules)
   local size = player.handSize or rules.handSize
-  Turn.draw(state, seat, t.drawUpTo and math.max(0, size - #player.hand) or size, random)
+  Turn.draw(state, seat, t.drawUpTo and math.max(0, size - #player.hand) or size, random, rules.reshuffle == false)
 
   state.turn.active = Turn.nextSeat(state, seat)
   state.turn.number = state.turn.number + 1

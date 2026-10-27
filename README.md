@@ -51,12 +51,13 @@ Cardalyzer is early. Here's where each milestone stands:
 | Milestone | State |
 | --- | --- |
 | 1. Table and zones: two seats, deck/hand/play/discard zones, market row | done |
-| 2. Core loop: starter decks, draw, End Turn cleanup and reshuffle | done; needs in-game testing |
-| 3. Market and buying | done; needs in-game testing |
-| 4. Effects: keyword effects, ally triggers, bases with defense, attacks | done; needs in-game testing |
-| 5. First real game fully playable | 2 to 4 players and reusing existing card art done; needs in-game testing. Next: porting a real game |
+| 2. Core loop: starter decks, draw, End Turn cleanup and reshuffle | done |
+| 3. Market and buying | done |
+| 4. Effects: keyword effects, ally triggers, bases with defense, attacks | done |
+| 5. First real game fully playable | done: 2 to 4 players, reusing existing card art, a full port played in TTS |
 | 6. Generalize and build a second tiny game | done: Lantern Fair, a supply game with phases, attacks and reactions; a porting guide and a blank template |
 | 7. Workshop template and release | |
+| 8. Co-operative games | planned: players win or lose together against an automated enemy with its own turns and deck (Aeon's End, Legendary), with a turn-order deck |
 
 So today you can play a full game for 2 to 4 players:
 
@@ -540,6 +541,7 @@ fine.
 | `opponents_damage:3` | Attack: each opponent loses 3 of the win stat (`rules.win.stat`) |
 | `prevent:3` | In `react_effects`: the attack does 3 less damage to you |
 | `block` | In `react_effects`: the attack doesn't affect you |
+| `look_top:3` | Look at the top 3 cards of your deck and put them back in any order (the first one picked goes on top) |
 | `set_aside:tavern` | Put this card into your `tavern` area (one of `rules.areas`) |
 | `set_aside_hand:later` | Put a card from your hand into your `later` area |
 | `gold:2; draw:1` | Both |
@@ -565,7 +567,7 @@ Some keywords are always available:
 
 - `draw`, `opponent_discard`, `scrap_hand`, `scrap_required`, `scrap_row`, `destroy_base`,
   `draw_discard` and `reminder`.
-- `gain`, `gain_card`, `defeat_free`, `opponents_gain`, `opponents_discard_to`, `opponents_damage`, `prevent`, `block`,
+- `look_top`, `gain`, `gain_card`, `defeat_free`, `opponents_gain`, `opponents_discard_to`, `opponents_damage`, `prevent`, `block`,
   `set_aside` and `set_aside_hand`. `gain` and `opponents_gain` take a card id
   instead of a number; `set_aside` and `set_aside_hand` take an area's key.
 - `custom:<name>`.
@@ -583,6 +585,7 @@ These are the fields in `games/<yours>/rules.lua`:
 | `resources` | `{ {key="gold", label="Gold", spend="buy"} }` | Per-turn pools, reset at end of turn to `start` (0 unless given). `spend = "buy"` pays for cards, `spend = "attack"` powers attacks. Optional `icon` (see `ui.iconBaseUrl`) |
 | `stats` | `{ {key="health", label="Health", start=40} }` | Values that persist between turns. Optional `icon` |
 | `handSize` | `5` | Cards drawn at the end of each turn |
+| `reshuffle` | `false` | Leave out to shuffle the discard pile into a new deck when the deck runs out. `false` turns the discard pile over instead, in order, so the first card discarded is drawn first (Aeon's End) |
 | `turn` | see below | How a turn runs: phases, costs for playing and buying, what's kept between turns, and hooks |
 | `openingHand` | `{3, 5}` or `5` | First hand per player in turn order (the last number repeats); one number means everyone draws that many. `{players = {[2] = {3, 5}}, otherwise = {3, 4, 5}}` depends on the number of players |
 | `openingHands` | `{ {label="Rulebook", hands={3, 5}}, {label="Everyone 5", hands=5} }` | Several opening-hand rules to choose from in the New Game menu (the first is the default; the choice is remembered). Each `hands` takes any `openingHand` form; an optional `about` explains the option in plain words (its tooltip, and the tutorial's setup page). `openingLabel` renames the row (default "Starting hands"). Overrides `openingHand` |
@@ -1060,7 +1063,9 @@ More hooks a custom effect can have:
   `game:atTurnEnd({ custom = "<name>", ... })` this turn.
 - `activate = function(game, seat, ctx)`: the card's owner gets a Use button
   while it's in play, usable once each turn ("once each turn, you may gain 2
-  Trade").
+  Trade"). A card used this way lies turned sideways until its owner's next
+  turn, so everyone can see it's spent (Hero Realms' expended champions);
+  `rules.ui.turnUsedCards = false` keeps it upright.
 - `whenYouGain = function(game, seat, ctx, gain)`: while in play, runs each
   time its owner gains a resource or stat on their turn. `gain` is
   `{ key, amount, first }`; `first` is true for the first gain of that key

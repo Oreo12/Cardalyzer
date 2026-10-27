@@ -141,6 +141,8 @@ Words.DEFAULT = {
   -- questions (prompts)
   chooseOne = "Choose one",
   chooseCard = "Choose a card",
+  arrangeTop = "Put these back on your deck: choose the top card",
+  arrangeNext = "Choose the next card down",
   reactTo = "{name} played {card}: {effects}. Reveal a reaction?",
   reactToAttack = "{name} attacks you: {effects}. Reveal a reaction?",
   reveal = "Reveal {card}",

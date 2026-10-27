@@ -252,6 +252,17 @@ function Effects.new(rules)
     end,
     text = function(amount) return "Prevent " .. amount .. " damage" end,
   })
+  self:register("look_top", {
+    apply = function(game, seat, amount)
+      local deck = game.state.players[seat].deck
+      local top = {}
+      for i = #deck, math.max(1, #deck - amount + 1), -1 do top[#top + 1] = deck[i] end
+      if #top > 0 then
+        game:prompt(seat, { kind = "arrange", count = #top, only = top, placed = {}, optional = false })
+      end
+    end,
+    text = function(amount) return "Look at the top " .. amount .. " cards of your deck and put them back in any order" end,
+  })
   self:register("block", {
     apply = function(_, _, _, ctx) if ctx.attack then ctx.attack.blocked = true end end,
     text = function() return "Block the attack" end,
