@@ -27,6 +27,14 @@ local function newObject(kind, extra)
   obj.getLock = function() return obj.locked == true end
   obj.setRotation = function(r) obj.rotation = r end
   obj.setScale = function(s) obj.scale = s end
+  obj.getScale = function()
+    local s = obj.scale or { 1, 1, 1 }
+    return { x = s[1], y = s[2], z = s[3] }
+  end
+  obj.getRotation = function()
+    local r = obj.rotation or { 0, 0, 0 }
+    return { x = r[1], y = r[2], z = r[3] }
+  end
   obj.setName = function(n) obj.name = n end
   obj.addTag = function(t) obj.tags[t] = true end
   obj.hasTag = function(t) return obj.tags[t] == true end

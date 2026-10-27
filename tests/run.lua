@@ -3106,5 +3106,27 @@ test("a click that removes a button with a tooltip redraws the UI to clear it", 
   eq(sets, 1, "cleared when its panel moved, not when it stayed put")
 end)
 
+test("the table's own seats (hand zones of other colours) are removed", function()
+  local game = boot()
+  local Zones = Cardalyzer.require("engine.zones")
+  local white = game.layout.seats[1].hand
+  -- a custom table's own zones: Brown just behind White's hand, Teal far away
+  tts.newObject("Hand", { value = "Brown", position = { white.position[1], 3.3, white.position[3] - 3.4 },
+    scale = { 15.3, 11.9, 6.4 }, rotation = { 0, 0, 0 } })
+  tts.newObject("Hand", { value = "Teal", position = { 0, 3.3, 80 }, scale = { 15.3, 11.9, 6.4 }, rotation = { 0, 180, 0 } })
+  Zones.build(game, game.layout)
+  local left = {}
+  for _, o in pairs(tts.objects) do if o.value and (o.type == "Hand" or o.type == "HandTrigger") then left[o.value] = true end end
+  assert(not left.Brown and not left.Teal, "the table's seats are gone")
+  assert(left.White and left.Red, "the players' own hands stay")
+  local said = false
+  for _, b in ipairs(tts.broadcasts) do if b:find("(Brown, Teal)", 1, true) then said = true end end
+  assert(said, "and the players are told")
+  -- nothing more to remove next time: no message
+  local before = #tts.broadcasts
+  Zones.build(game, game.layout)
+  eq(#tts.broadcasts, before, "said once")
+end)
+
 print(string.format("\n%d passed, %d failed", passed, failed))
 if failed > 0 then os.exit(1) end

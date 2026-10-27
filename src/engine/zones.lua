@@ -440,6 +440,23 @@ function Zones.build(game, layout)
     view.hands[color] = nil
   end
 
+  -- Every other hand zone (a table's own seats: TTS's custom table brings
+  -- eight) is removed. Cardalyzer seats its players itself, and a stray hand
+  -- zone overlapping a player's would take their cards and hide them.
+  -- (the rules' own seats not playing were removed just above)
+  local ours, removed = {}, {}
+  for _, def in ipairs(game.rules.seats) do ours[def.color] = true end
+  for _, obj in ipairs(getObjects()) do
+    if obj.type == "Hand" and not ours[obj.getValue()] then
+      removed[#removed + 1] = obj.getValue()
+      obj.destruct()
+    end
+  end
+  if #removed > 0 and game.notify then
+    table.sort(removed)
+    game:notify(require("engine.words").say(game.rules, "removedHands", { colors = table.concat(removed, ", ") }))
+  end
+
   local colors = {}
   for seat, p in ipairs(game.state.players) do colors[seat] = p.color end
   Global.setVectorLines(Zones.outlines(game.rules, layout, colors))

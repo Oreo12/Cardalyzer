@@ -132,6 +132,9 @@ play in deck-building board games.
   player left wins. Three- and four-player games pass the automated tests but
   haven't been played in TTS yet. Four seats need a table about 60 units wide;
   on a smaller one, lower `layout.seatSpread`.
+- **The table's own seats.** Cardalyzer removes every hand zone the table
+  came with and seats its players itself (see
+  [Customising the table](#customising-the-table)).
 - **Cards moved by hand.** Cardalyzer tracks the game in its script, not by
   where cards sit. It understands a few drags: a card from your hand onto your
   play area is played, and a market row card, or one you have in play, dropped
@@ -864,6 +867,14 @@ layout = {
 
 Each seat's areas, hand and outlines turn with it, and so do the market's
 cards on that seat's turn.
+
+**Cardalyzer replaces the table's own seats with its own.** Each playing
+seat gets a hand zone where the layout puts it, and every other hand zone
+on the table is removed (TTS's tables bring their own: the custom table has
+eight). This is on purpose: a table's hand zone sitting near a player's
+would take their cards and hide them from them. The message panel lists the
+colours removed. Seats of your rules that aren't playing in this game are
+removed too, and come back when the player count grows.
 With `market.turnsWithPlayer = true` the whole market turns to face whoever's
 turn it is: its row, piles and outlines, not just its cards.
 
