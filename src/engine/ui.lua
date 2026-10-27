@@ -20,7 +20,11 @@ local UI_ = {}
 -- The rules being drawn, so the small helpers below can read the theme.
 -- UI_.xml (and every panel builder called on its own) sets it first.
 local current = {}
-local function use(game) current = game.rules end
+local currentGame
+local function use(game)
+  current = game.rules
+  currentGame = game
+end
 local function accent() return Theme.of(current).accent end
 -- The game's word for `key` (engine/words.lua; rules.ui.words renames them).
 local function say(key, vars) return Words.say(current, key, vars) end
@@ -256,7 +260,18 @@ local TIPS = {
     return "Get a random premade " .. kitName() .. " (one nobody else picked) when the game starts."
   end,
   ["cz-kitmode-custom"] = function() return "Build your own from the parts of the premade " .. kitName() .. "s." end,
+  ["cz-hideui"] = function()
+    return "Hide Cardalyzer's panels, just for you, to get at TTS's own menus. Show Cardalyzer brings them back;"
+      .. " so does a key you can set in Options → Game Keys."
+  end,
+  ["cz-menuat-middle"] = function() return "Menus and choices in the middle of your screen." end,
+  ["cz-menuat-left"] = function() return "Menus and choices on the left of your screen, clear of TTS's own menus." end,
+  ["cz-menuat-right"] = function() return "Menus and choices on the right of your screen, clear of TTS's own menus." end,
+  ["cz-menuat-top"] = function() return "Menus and choices at the top of your screen." end,
 }
+for _, kind in ipairs({ "setup", "kit", "settings", "tutorial", "winner", "choice" }) do
+  TIPS["cz-tuck-" .. kind] = function() return "Tuck this away, just for you. A Show button by Tidy table brings it back." end
+end
 local function tipFor(id)
   local own = current.ui and current.ui.tooltips and current.ui.tooltips[id]
   if own ~= nil then return own or nil end
@@ -540,6 +555,36 @@ function UI_.titleBox(game)
   return '<Panel preferredHeight="' .. bh .. '" color="#00000000">' .. box .. '</Panel>', bh
 end
 
+-- Where a player's menus and choices go (Settings → Menus): the theme's
+-- `menus` position (middle), or the left, right or top of the screen, clear
+-- of TTS's own menus, which open in the middle.
+UI_.MENU_SPOTS = {
+  left = { anchor = "MiddleLeft", x = 80, y = 0 },
+  right = { anchor = "UpperRight", x = -20, y = -130 },
+  top = { anchor = "UpperCenter", x = 0, y = -80 },
+}
+function UI_.menuSpot(game, color)
+  local where = game.state.view.menuAt and game.state.view.menuAt[color]
+  return where and UI_.MENU_SPOTS[where] and where or "middle"
+end
+local function menuPlace(visibility)
+  local where = currentGame and not visibility:find("|", 1, true) and UI_.menuSpot(currentGame, visibility)
+  local at = where and UI_.MENU_SPOTS[where]
+  if not at then return place("menus") end
+  return ' rectAlignment="' .. at.anchor .. '" offsetXY="' .. at.x .. ' ' .. at.y .. '"'
+end
+
+-- Is a panel of this kind tucked away by this player (its Hide button)?
+function UI_.tucked(game, color, kind)
+  local t = game.state.view.tucked and game.state.view.tucked[color]
+  return t and t[kind] == true or false
+end
+-- Has this player hidden all of Cardalyzer's UI (Hide UI, or their hotkey)?
+function UI_.hidden(game, color)
+  return game.state.view.uiHidden and game.state.view.uiHidden[color] == true or false
+end
+local function hideButton(kind) return { id = "cz-tuck-" .. kind, label = say("hide") } end
+
 -- A centred panel in theme style `style` (default "menu"): a title,
 -- optional extra rows and rows of standalone buttons. The setup menu,
 -- settings, choices and game over use it. extra = { xml, height }.
@@ -556,7 +601,7 @@ local function centrePanel(id, visibility, title, titleColor, titleSize, extra, 
     row(bx, bh)
   end
   return sized((UI_.framed(id, style or "menu", table.concat(rows), width, height - 8,
-    ' visibility="' .. visibility .. '"' .. place("menus"), 8)), scale)
+    ' visibility="' .. visibility .. '"' .. menuPlace(visibility), 8)), scale)
 end
 UI_.centrePanel = centrePanel
 
@@ -673,6 +718,7 @@ function UI_.setupPanel(game, color)
   local buttons = { { id = "cz-new", label = say("playGame") } }
   if Tutorial.buttonShown(game, color) then buttons[#buttons + 1] = { id = "cz-tutorial", label = say("tutorial") } end
   buttons[#buttons + 1] = { id = "cz-setupclose", label = say("close") }
+  buttons[#buttons + 1] = hideButton("setup")
   local rows, height = {}, 0
   local function add(r)
     if not r then return end
@@ -794,7 +840,7 @@ function UI_.kitPanel(game, color)
     note("cz_kit_about", say("kitCustomNote"))
   end
   addRows({ UI_.optionRow("cz_kit_buttons_" .. color, "", {
-    { id = "cz-kitsave", label = say("saveAndBack") }, { id = "cz-kitcancel", label = say("cancel") } }) })
+    { id = "cz-kitsave", label = say("saveAndBack") }, { id = "cz-kitcancel", label = say("cancel") }, hideButton("kit") }) })
 
   local width = gridWidth + 20
   local inset = math.floor((width - gridWidth) / 2)
@@ -811,7 +857,7 @@ function UI_.settingsPanel(game, color)
   local moved = game.state.view.barOffset and game.state.view.barOffset[color] or 0
   local function settingRow(id, label, value, buttons)
     local xml = text(id, label, 15, 'preferredWidth="130" alignment="MiddleRight"' .. FX)
-    for _, b in ipairs(buttons) do xml = xml .. smallButton(b[1], b[2], 14) end
+    for _, b in ipairs(buttons) do xml = xml .. smallButton(b[1], b[2], 14, b[3]) end
     if value then xml = xml .. text(id .. "_value", value, 15, 'preferredWidth="70" alignment="MiddleLeft" fontStyle="Bold"' .. FX) end
     return '<HorizontalLayout spacing="6" preferredHeight="30" childForceExpandWidth="false" childAlignment="MiddleCenter">'
       .. xml .. '</HorizontalLayout>'
@@ -820,8 +866,14 @@ function UI_.settingsPanel(game, color)
       { { "cz-uismaller", "−" }, { "cz-uibigger", "+" } })
     .. settingRow("cz_set_bar_" .. color, say("actionBar"), (moved > 0 and "+" or "") .. moved,
       { { "cz-barup", say("up") }, { "cz-bardown", say("down") }, { "cz-barreset", say("reset") } })
-  return centrePanel("cz_settings_" .. color, color, say("settings"), accent(), 22, { rows, 76 },
-    { { id = "cz-settingsclose", label = say("close") } }, scale)
+  local at = UI_.menuSpot(game, color)
+  local spots = {}
+  for _, where in ipairs({ "middle", "left", "right", "top" }) do
+    spots[#spots + 1] = { "cz-menuat-" .. where, say(where), at == where and "selected" or "secondary" }
+  end
+  rows = rows .. settingRow("cz_set_menus_" .. color, say("menus"), nil, spots)
+  return centrePanel("cz_settings_" .. color, color, say("settings"), accent(), 22, { rows, 114 },
+    { { id = "cz-settingsclose", label = say("close") }, hideButton("settings") }, scale)
 end
 
 function UI_.xml(game)
@@ -831,7 +883,12 @@ function UI_.xml(game)
 
   -- The info panel and Tidy table (bottom right), once per UI size in use.
   -- Tidy table sits clear of TTS's own Notes button; the info panel above it.
-  local groups = UI_.scaleGroups(game)
+  local hiddenFor = {}
+  for _, color in ipairs(Tutorial.allColors) do
+    if UI_.hidden(game, color) then hiddenFor[color] = true end
+  end
+  local function shown(color) return not hiddenFor[color] end
+  local groups = UI_.scaleGroups(game, next(hiddenFor) and hiddenFor or nil)
   local infoTop = {}
   local positions = Theme.of(game.rules).positions
   local corner = positions.corner
@@ -850,7 +907,9 @@ function UI_.xml(game)
   -- A private message for one player, just above the info panel.
   local byColor = game.notices and game.notices.byColor or {}
   local colors = {}
-  for color in pairs(byColor) do colors[#colors + 1] = color end
+  for color in pairs(byColor) do
+    if shown(color) then colors[#colors + 1] = color end
+  end
   table.sort(colors)
   local info = positions.info
   for _, color in ipairs(colors) do
@@ -873,24 +932,27 @@ function UI_.xml(game)
   for color in pairs(game.setupOpen or {}) do
     if not kitOpen[color] then setupOpen[color] = true end
   end
-  for _, which in ipairs({ { setupOpen, UI_.setupPanel }, { kitOpen, UI_.kitPanel }, { game.settingsOpen, UI_.settingsPanel } }) do
+  for _, which in ipairs({ { setupOpen, UI_.setupPanel, "setup" }, { kitOpen, UI_.kitPanel, "kit" },
+    { game.settingsOpen, UI_.settingsPanel, "settings" } }) do
     local open = {}
-    for color in pairs(which[1] or {}) do open[#open + 1] = color end
+    for color in pairs(which[1] or {}) do
+      if shown(color) and not UI_.tucked(game, color, which[3]) then open[#open + 1] = color end
+    end
     table.sort(open)
     for _, color in ipairs(open) do parts[#parts + 1] = which[2](game, color) end
   end
 
   -- Game over: the winner, in the middle of the screen for everyone (except
   -- whoever has the setup menu open there), with Play Again? to set up the next.
+  -- One per player, so each can tuck it away or have it where they keep menus.
   if state.winner then
     local winner = state.players[state.winner]
-    local skip = {}
-    for color in pairs(game.setupOpen or {}) do skip[color] = true end
-    local wg = UI_.scaleGroups(game, skip)
-    for i, g in ipairs(wg) do
-      local _, suffix = groupAttrs(wg, i, "0.5 0.5")
-      parts[#parts + 1] = centrePanel("cz_winner" .. suffix, table.concat(g.colors, "|"), say("wins", { name = Actions.winnerNames(game) }),
-        UI_.seatColors[winner.color] or accent(), 34, nil, { { id = "cz-again", label = say("playAgain") } }, g.scale)
+    for _, color in ipairs(Tutorial.allColors) do
+      if not (game.setupOpen and game.setupOpen[color]) and shown(color) and not UI_.tucked(game, color, "winner") then
+        parts[#parts + 1] = centrePanel("cz_winner_" .. color, color, say("wins", { name = Actions.winnerNames(game) }),
+          UI_.seatColors[winner.color] or accent(), 34, nil, { { id = "cz-again", label = say("playAgain") }, hideButton("winner") },
+          UI_.scaleOf(game, color))
+      end
     end
   end
 
@@ -898,7 +960,9 @@ function UI_.xml(game)
   -- It keeps a dark backing: its pages are long reads.
   local open = game.tutorialOpen or {}
   local readers = {}
-  for color in pairs(open) do readers[#readers + 1] = color end
+  for color in pairs(open) do
+    if shown(color) and not UI_.tucked(game, color, "tutorial") then readers[#readers + 1] = color end
+  end
   table.sort(readers)
   if #readers > 0 then
     local pages = Tutorial.pages(game)
@@ -910,6 +974,7 @@ function UI_.xml(game)
       if n < #pages then nav[#nav + 1] = { id = "cz-tutnext", label = say("next") } end
       nav[#nav + 1] = { id = "cz-tutclose", label = say("close") }
       nav[#nav + 1] = { id = "cz-tuthide", label = say("hideButton") }
+      nav[#nav + 1] = hideButton("tutorial")
       local navXml = buttonRows(nav, 13, 640)
       -- in the theme's menu style: its pages are long reads, so never clear
       local inner = text("cz_tut_title_" .. color, page[1], 22, 'fontStyle="Bold" color="' .. accent() .. '" preferredHeight="34"')
@@ -917,7 +982,7 @@ function UI_.xml(game)
         .. text("cz_tut_page_" .. color, say("page", { n = n, total = #pages }), 12, 'alignment="MiddleRight" color="#9AA4AE" preferredHeight="16"')
         .. navXml
       parts[#parts + 1] = sized((UI_.framed("cz_tutorial_" .. color, "menu", inner, 650, 430,
-        ' visibility="' .. color .. '"' .. place("menus"), 8)), UI_.scaleOf(game, color))
+        ' visibility="' .. color .. '"' .. menuPlace(color), 8)), UI_.scaleOf(game, color))
     end
   end
 
@@ -930,16 +995,19 @@ function UI_.xml(game)
     local acts = UI_.actions(game)
     local color = state.players[state.turn.active].color
     local scale = UI_.scaleOf(game, color)
-    if acts.prompt then
-      parts[#parts + 1] = centrePanel("cz_choice", color, acts.prompt, accent(), 18, nil, acts.choices, scale, "choice")
+    local function choice(id, who, words, choices, k)
+      if not shown(who) or UI_.tucked(game, who, "choice") then return end
+      local list = {}
+      for _, c in ipairs(choices) do list[#list + 1] = c end
+      list[#list + 1] = hideButton("choice")
+      parts[#parts + 1] = centrePanel(id, who, words, accent(), 18, nil, list, k, "choice")
     end
+    if acts.prompt then choice("cz_choice", color, acts.prompt, acts.choices, scale) end
     -- Other players' waiting choices (from events), each on their own screen.
     for seat, p in ipairs(state.players) do
       if seat ~= state.turn.active then
         local text, choices = UI_.promptFor(game, seat)
-        if text then
-          parts[#parts + 1] = centrePanel("cz_choice_" .. p.color, p.color, text, accent(), 18, nil, choices, UI_.scaleOf(game, p.color), "choice")
-        end
+        if text then choice("cz_choice_" .. p.color, p.color, text, choices, UI_.scaleOf(game, p.color)) end
       end
     end
     local bar, barHeight = buttonRows(acts.buttons, 12, 1100, { ["cz-playall"] = 17, ["cz-end"] = 17 })
@@ -948,11 +1016,11 @@ function UI_.xml(game)
       barHeight = barHeight + 22
     end
     local barAt = positions.bar
-    parts[#parts + 1] = sized('<Panel id="cz_actions" visibility="' .. color .. '" width="1120" height="'
+    if shown(color) then parts[#parts + 1] = sized('<Panel id="cz_actions" visibility="' .. color .. '" width="1120" height="'
       .. barHeight .. '" rectAlignment="' .. barAt.anchor .. '" offsetXY="' .. (barAt.x or 0) .. ' ' .. UI_.barY(game, color) .. '"' .. PANEL
-      .. '><VerticalLayout spacing="4" childForceExpandHeight="false">' .. bar .. '</VerticalLayout></Panel>', scale)
+      .. '><VerticalLayout spacing="4" childForceExpandHeight="false">' .. bar .. '</VerticalLayout></Panel>', scale) end
     for _, p in ipairs(state.players) do
-      local counters = turnCounters(game, p.color)
+      local counters = shown(p.color) and turnCounters(game, p.color)
       if counters then
         local s = UI_.scaleOf(game, p.color)
         -- at their own place, or just above that player's action bar
@@ -968,7 +1036,71 @@ function UI_.xml(game)
       end
     end
   end
+  for _, color in ipairs(Tutorial.allColors) do
+    local tabs = UI_.tabsFor(game, color)
+    if #tabs > 0 then
+      local xml = ""
+      for _, t in ipairs(tabs) do xml = xml .. smallButton(t.id, t.label, 12, t.kind) end
+      local at = positions.corner
+      -- just past the corner buttons, toward the middle of the screen
+      local leftward = at.anchor:find("Left") and 1 or -1
+      parts[#parts + 1] = sized('<Panel id="cz_tabs_' .. color .. '" visibility="' .. color .. '" width="' .. UI_.INFO_WIDTH
+        .. '" height="30" rectAlignment="' .. at.anchor .. '" offsetXY="' .. ((at.x or 0) + leftward * (UI_.INFO_WIDTH + 12)) .. ' '
+        .. (at.y or 0) .. '"' .. PANEL .. '><HorizontalLayout spacing="6" childForceExpandWidth="false" childAlignment="'
+        .. (leftward == 1 and "MiddleLeft" or "MiddleRight") .. '">' .. xml .. '</HorizontalLayout></Panel>', UI_.scaleOf(game, color))
+    end
+  end
+  UI_.lastParts = parts
   return table.concat(parts)
+end
+
+-- The buttons each colour can see in these top-level panels, with the
+-- opening tag of the panel each sits in (its place and size):
+-- { [color] = { [id] = tag } }. A panel with no visibility is everyone's.
+function UI_.buttonsByColor(parts)
+  local out = {}
+  for _, color in ipairs(Tutorial.allColors) do out[color] = {} end
+  for _, part in ipairs(parts) do
+    local tag = part:match("^%s*<[^>]*>") or ""
+    local vis = tag:match('visibility="([^"]*)"')
+    local colors = {}
+    if vis and vis ~= "" then
+      for c in vis:gmatch("[^|]+") do colors[#colors + 1] = c end
+    else
+      colors = Tutorial.allColors
+    end
+    for id in part:gmatch('<Button id="([^"]+)"') do
+      for _, c in ipairs(colors) do if out[c] then out[c][id] = tag end end
+    end
+  end
+  return out
+end
+
+-- What a player has put away, as Show buttons beside the corner buttons:
+-- everything, if they hid the UI (Show Cardalyzer); else each panel they
+-- tucked away that is still open.
+function UI_.tabsFor(game, color)
+  use(game)
+  if UI_.hidden(game, color) then return { { id = "cz-showui", label = say("showUI"), kind = "primary" } } end
+  local state, out = game.state, {}
+  local seat = game:seatOfColor(color)
+  local open = {
+    setup = game.setupOpen and game.setupOpen[color] and not (game.kitMenuOpen and game.kitMenuOpen[color]),
+    kit = game.kitMenuOpen and game.kitMenuOpen[color],
+    settings = game.settingsOpen and game.settingsOpen[color],
+    tutorial = game.tutorialOpen and game.tutorialOpen[color],
+    winner = state.winner ~= nil,
+    choice = state.started and not state.winner and seat ~= nil and state.players[seat].prompts[1] ~= nil,
+  }
+  local names = { setup = say("newGame"), kit = game.rules.kitName or "Kit", settings = say("settings"),
+    tutorial = say("tutorial"), winner = say("result"), choice = say("yourChoice") }
+  for _, kind in ipairs({ "choice", "winner", "setup", "kit", "settings", "tutorial" }) do
+    if open[kind] and UI_.tucked(game, color, kind) then
+      out[#out + 1] = { id = "cz-untuck-" .. kind, label = say("showPanel", { name = names[kind] }),
+        kind = kind == "choice" and "primary" or nil }
+    end
+  end
+  return out
 end
 
 -- The buttons in the bottom-right corner: Rulebooks (when the rules list
@@ -980,7 +1112,7 @@ function UI_.cornerButtons(game)
   for i, b in ipairs(game.rules.ui and game.rules.ui.buttons or {}) do
     xml = xml .. smallButton("cz-button-" .. i, b.label, 12)
   end
-  return xml .. smallButton("cz-tidy", say("tidy"), 12)
+  return xml .. smallButton("cz-hideui", say("hideUI"), 12) .. smallButton("cz-tidy", say("tidy"), 12)
 end
 
 -- Where a colour's action bar sits: the default, moved in their Settings.
@@ -1000,7 +1132,9 @@ function UI_.refresh(game)
     UI.setCustomAssets(UI_.assets(game.rules))
     game.assetsSet = true
   end
-  UI.setXml(UI_.xml(game))
+  game.lastXml = UI_.xml(game)
+  game.buttonsShown = UI_.buttonsByColor(UI_.lastParts)
+  UI.setXml(game.lastXml)
 end
 
 return UI_

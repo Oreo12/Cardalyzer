@@ -277,9 +277,26 @@ To play:
    **Settings**, next to New Game, is each player's own: **UI size** makes
    all of Cardalyzer's UI smaller or bigger (70% to 155%) for you alone, and
    **Action bar** moves your bar up or down to clear your on-screen hand
-   (TTS doesn't tell scripts how big that is), or resets it. Settings are
-   kept with the save. There's no resolution setting: TTS already scales
-   custom UI to each player's screen.
+   (TTS doesn't tell scripts how big that is), or resets it. **Menus**
+   puts your menus and choices in the middle of the screen, or on the left,
+   right or top, clear of TTS's own menus. Settings are kept with the save.
+   There's no resolution setting: TTS already scales custom UI to each
+   player's screen.
+
+   **Getting at TTS's own menus.** TTS always draws a mod's panels on top of
+   its own menus (Games, Options, the Escape menu), and mods can't change
+   that. So nothing of Cardalyzer's can trap you:
+   - every panel in the middle of the screen (New Game, Settings, a choice,
+     the winner, the tutorial) has a **Hide** button, which tucks it into a
+     **Show** button beside Tidy table. A choice you tuck away still waits
+     for your answer;
+   - **Hide UI**, beside Tidy table, hides all of Cardalyzer's panels for you
+     alone, leaving only **Show Cardalyzer**. You can also set a key for it
+     in TTS's **Options → Game Keys** ("Cardalyzer: hide or show the UI");
+   - **Menus** in Settings moves your menus away from the middle.
+
+   Panels can't be dragged: TTS puts a dragged panel back each time the UI is
+   redrawn, which happens after every move.
    The market turns to face whoever's turn it is, so its cards always read
    the right way up.
    - **Play a card** by dragging it from your hand into your play area (the
@@ -735,7 +752,7 @@ and `x`, `y` offsets in pixels from it.
 theme = {
   positions = {
     info = { anchor = "LowerRight", x = -12 },               -- no y: just above the corner buttons
-    corner = { anchor = "LowerRight", x = -12, y = 70 },     -- Rulebooks, your buttons, Tidy table
+    corner = { anchor = "LowerRight", x = -12, y = 70 },     -- Rulebooks, your buttons, Hide UI, Tidy table
     bar = { anchor = "LowerCenter", x = 0, y = 210 },        -- the action bar
     counters = nil,                                          -- nil: just above the action bar
     menus = { anchor = "MiddleCenter", x = 0, y = 0 },       -- New Game, Settings, the tutorial, choices, game over

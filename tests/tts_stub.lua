@@ -47,6 +47,7 @@ function tts.reset()
   tts.objects, tts.order, tts.broadcasts, tts.ui = {}, {}, {}, { values = {} }
   tts.flights, tts.timers, tts.deferTimers, tts.lines = {}, {}, false, nil
   tts.empty = {}
+  tts.hotkeys = {}
 end
 
 -- Wait.time runs at once unless tts.deferTimers is set; then callbacks wait
@@ -108,6 +109,10 @@ UI = {
   setValue = function(id, v) tts.ui.values[id] = v end,
   setCustomAssets = function(list) tts.ui.assets = list end,
 }
+-- Hotkeys a script adds (players bind them in Options → Game Keys): tts.hotkeys.
+function addHotkey(label, fn)
+  tts.hotkeys[#tts.hotkeys + 1] = { label = label, fn = fn }
+end
 Wait = {
   frames = function(fn) fn() end,
   time = function(fn, delay)

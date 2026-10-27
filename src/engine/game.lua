@@ -249,6 +249,7 @@ end
 function Game:kitMenu(color, open)
   if open then
     if not self.rules.kits or #self.rules.kits == 0 then return false, "These rules have no kits." end
+    self:untuck(color, "kit")
     Kits.open(self, color)
   else
     Kits.close(self, color)
@@ -376,6 +377,7 @@ end
 -- "tutnext", "tutback", "tutclose" and "tuthide" (closes it and hides the button).
 function Game:tutorial(color, action)
   if action == "tutorial" then
+    self:untuck(color, "tutorial")
     Tutorial.setHidden(self, color, false)
     Tutorial.open(self, color, 1)
   elseif action == "tutnext" then
@@ -420,8 +422,48 @@ function Game:setUiScale(color, dir)
   return true
 end
 
+-- Panels a player put away (state.view.tucked[color][kind], saved): their
+-- Hide button tucks one into a Show button beside the corner buttons.
+-- Kinds: setup, kit, settings, tutorial, winner, choice.
+function Game:tuck(color, kind, on)
+  local view = self.state.view
+  view.tucked = view.tucked or {}
+  view.tucked[color] = view.tucked[color] or {}
+  view.tucked[color][kind] = on or nil
+  self:refreshUI()
+  return true
+end
+
+-- Hides all of Cardalyzer's UI for one player (Hide UI, or their hotkey),
+-- or shows it again; nil toggles. Saved.
+function Game:setUiHidden(color, hidden)
+  local view = self.state.view
+  view.uiHidden = view.uiHidden or {}
+  if hidden == nil then hidden = not view.uiHidden[color] end
+  view.uiHidden[color] = hidden or nil
+  self:refreshUI()
+  return true
+end
+
+-- Where one player's menus and choices go: "middle", "left", "right" or "top". Saved.
+function Game:setMenuAt(color, where)
+  if where ~= "middle" and not UI_.MENU_SPOTS[where] then return false, "Menus go in the middle, left, right or top." end
+  local view = self.state.view
+  view.menuAt = view.menuAt or {}
+  view.menuAt[color] = where ~= "middle" and where or nil
+  self:refreshUI()
+  return true
+end
+
+-- A panel opened again shows again, even if it was tucked away.
+function Game:untuck(color, kind)
+  local t = self.state.view.tucked and self.state.view.tucked[color]
+  if t then t[kind] = nil end
+end
+
 -- Opens or closes the settings menu for one player. Not saved.
 function Game:settings(color, open)
+  if open then self:untuck(color, "settings") end
   self.settingsOpen = self.settingsOpen or {}
   self.settingsOpen[color] = open or nil
   self:refreshUI()
@@ -447,6 +489,7 @@ end
 
 -- Opens or closes the setup menu (New Game) for one player. Not saved.
 function Game:setup(color, open)
+  if open then self:untuck(color, "setup") end
   self.setupOpen = self.setupOpen or {}
   self.setupOpen[color] = open or nil
   self:refreshUI()
@@ -463,6 +506,7 @@ end
 
 -- Deals a new game; hands and the market row are dealt out from their decks.
 function Game:newGame()
+  for color in pairs(self.state.view.tucked or {}) do self:untuck(color, "winner") end
   Board.sweep(self)
   Board.forgetPlaces(self)
   self:setupState()
@@ -511,6 +555,10 @@ function Game:act(action, ...)
   local ok, why = action(self, ...)
   if ok then
     Actions.settle(self, self.state.turn.active)
+    -- a choice tucked away and since answered: the next one shows again
+    for _, p in ipairs(self.state.players) do
+      if not p.prompts[1] then self:untuck(p.color, "choice") end
+    end
     -- a new turn: the market turns to face its player (the cards glide over
     -- in Board.sync; zones and outlines move here)
     if self.rules.market.turnsWithPlayer and self.state.turn.active ~= wasActive then

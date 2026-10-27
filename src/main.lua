@@ -43,6 +43,12 @@ function onLoad(saved)
   Cardalyzer = { game = game, require = require }
   local booted, err = pcall(game.boot, game, saved)
   if not booted then report(err) end
+  -- A key each player can set in Options → Game Keys to hide or show the UI.
+  if addHotkey then
+    addHotkey("Cardalyzer: hide or show the UI", function(color)
+      if game then run(color, game.setUiHidden, color) end
+    end)
+  end
 end
 
 function onSave()
@@ -68,9 +74,37 @@ function Cardalyzer_onEndTurn(player)
   run(player.color, game.endTurn, seat)
 end
 
+-- TTS leaves a button's tooltip stuck on screen when a click removes that
+-- button (Close, Play Game, End Turn) or moves it (its panel moves or
+-- changes size). Drawing the UI afresh a moment later clears it, so that's
+-- done after such a click on a button with a tooltip.
+local function hadTooltip(xml, id)
+  local tag = xml and xml:match('<Button id="' .. id:gsub("%p", "%%%0") .. '"[^>]*>')
+  return tag ~= nil and tag:find('tooltip="', 1, true) ~= nil
+end
+local function clearStuckTooltip(color, before, wasAt, id)
+  if not hadTooltip(before, id) then return end
+  Wait.time(function()
+    local shown = game and game.buttonsShown and game.buttonsShown[color]
+    if not game or (shown and shown[id] and shown[id] == wasAt) then return end
+    UI.setXml("")
+    Wait.frames(function() game:refreshUI() end, 2)
+  end, 0.5)
+end
+
+local handleUI
+
 -- Every XML button; the action is in the button id (see engine/ui.lua).
-function Cardalyzer_onUI(player, _, id)
+function Cardalyzer_onUI(player, value, id)
   if not game then return end
+  local before = game.lastXml
+  local wasAt = game.buttonsShown and game.buttonsShown[player.color] and game.buttonsShown[player.color][id]
+  local ok, err = pcall(handleUI, player, value, id)
+  clearStuckTooltip(player.color, before, wasAt, id)
+  if not ok then report(err) end
+end
+
+function handleUI(player, _, id)
   local action, arg = id:match("^cz%-(%a+)%-?(.*)$")
   if action == "new" then return Cardalyzer_onStartGame(player) end
   if action == "setup" or action == "again" then -- New Game, or Play Again? after a win
@@ -80,6 +114,12 @@ function Cardalyzer_onUI(player, _, id)
     return game:setup(player.color, true)
   end
   if action == "setupclose" then return game:setup(player.color, false) end
+  -- Anyone can put panels away, hide the UI or choose where their menus go.
+  if action == "tuck" then return game:tuck(player.color, arg, true) end
+  if action == "untuck" then return game:tuck(player.color, arg, false) end
+  if action == "hideui" then return game:setUiHidden(player.color, true) end
+  if action == "showui" then return game:setUiHidden(player.color, false) end
+  if action == "menuat" then return run(player.color, game.setMenuAt, player.color, arg) end
   -- Settings: anyone can change their own UI size and action bar height.
   if action == "settings" then return game:settings(player.color, true) end
   if action == "settingsclose" then return game:settings(player.color, false) end
