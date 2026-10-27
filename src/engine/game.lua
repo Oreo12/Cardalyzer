@@ -328,6 +328,25 @@ function Game:save()
   return JSON.encode(self.state)
 end
 
+-- Removes the objects a saved view spawned: cards, zones, mats and
+-- rulebooks. Hand zones stay; Zones.build reuses or removes them.
+function Game.clearView(view)
+  if type(view) ~= "table" then return end
+  local guids = {}
+  for _, list in pairs(type(view.piles) == "table" and view.piles or {}) do
+    for _, guid in ipairs(type(list) == "table" and list or {}) do guids[#guids + 1] = guid end
+  end
+  for _, guid in pairs(type(view.zones) == "table" and view.zones or {}) do guids[#guids + 1] = guid end
+  for _, mat in pairs(type(view.mats) == "table" and view.mats or {}) do
+    guids[#guids + 1] = type(mat) == "table" and mat.guid or nil
+  end
+  for _, guid in ipairs(type(view.rulebooks) == "table" and view.rulebooks or {}) do guids[#guids + 1] = guid end
+  for _, guid in ipairs(guids) do
+    local obj = type(guid) == "string" and getObjectFromGUID(guid)
+    if obj then obj.destruct() end
+  end
+end
+
 -- Restores a saved state. Returns false when there is nothing usable to load.
 function Game:loadState(saved)
   if saved == nil or saved == "" then return false end
@@ -335,9 +354,13 @@ function Game:loadState(saved)
   if not ok or type(data) ~= "table" or data.version ~= State.VERSION then return false end
   local players = type(data.players) == "table" and #data.players or 0
   if players < 1 or players > #self.rules.seats then return false end
-  -- a save from another game (its cards aren't in this one) starts fresh
+  -- a save from another game (its cards aren't in this one) starts fresh,
+  -- after clearing away what that game left on the table
   for _, id in pairs(type(data.cards) == "table" and data.cards or {}) do
-    if not self.cards.byId[id] then return false end
+    if not self.cards.byId[id] then
+      Game.clearView(data.view)
+      return false
+    end
   end
   -- Fields added since older saves were made.
   for _, p in ipairs(data.players) do
