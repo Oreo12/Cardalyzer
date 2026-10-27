@@ -92,7 +92,7 @@ function Game:relayout()
 end
 
 function Game:draw(seat, n)
-  return Turn.draw(self.state, seat, n, self.random)
+  return Turn.draw(self.state, seat, n, self.random, self.rules.reshuffle == false)
 end
 
 -- The card a uid acts as right now: its own card, or, while it copies
@@ -343,6 +343,7 @@ function Game:loadState(saved)
   for _, p in ipairs(data.players) do
     p.objectives, p.completed = p.objectives or {}, p.completed or {}
     p.areas, p.lasting, p.nextJobs = p.areas or {}, p.lasting or {}, p.nextJobs or {}
+    p.exhausted = p.exhausted or {}
     for _, a in ipairs(self.rules.areas or {}) do p.areas[a.key] = p.areas[a.key] or {} end
   end
   data.markets = data.markets or {}

@@ -1060,6 +1060,9 @@ function Actions.promptText(game, prompt)
     })
   end
   if kind == "pick" then return say(game, "chooseCard") end
+  if kind == "arrange" then
+    return say(game, #prompt.placed == 0 and "arrangeTop" or "arrangeNext")
+  end
   if kind == "set_aside" then
     local def = Actions.areaDef(game, prompt.area)
     return say(game, "setAsideFrom", { area = def and def.label or prompt.area })
@@ -1184,6 +1187,10 @@ function Actions.targets(game, seat, prompt)
     end
   elseif kind == "set_aside" then
     for _, uid in ipairs(player.hand) do addIf(uid) end
+  elseif kind == "arrange" then
+    for _, uid in ipairs(prompt.only or {}) do
+      if not Util.indexOf(prompt.placed, uid) and Util.indexOf(player.deck, uid) then add(uid) end
+    end
   elseif kind == "react" then
     for _, uid in ipairs(reactions(game, seat, prompt)) do
       out[#out + 1] = { value = uid, label = say(game, "reveal", { card = card(game, uid).name }) }
@@ -1296,6 +1303,13 @@ function Actions.pick(game, seat, value)
     reveal(game, seat, value, prompt)
   elseif kind == "set_aside" then
     Actions.setAside(game, seat, value, prompt.area)
+  elseif kind == "arrange" then
+    -- the first card picked goes back on top, the next under it, and so on
+    prompt.placed[#prompt.placed + 1] = value
+    if #prompt.placed >= #prompt.only then
+      for _, uid in ipairs(prompt.placed) do Util.removeValue(player.deck, uid) end
+      for i = #prompt.placed, 1, -1 do player.deck[#player.deck + 1] = prompt.placed[i] end
+    end
   elseif kind == "place_bought" and value == "top" then
     Util.removeValue(player.discard, prompt.uid)
     player.deck[#player.deck + 1] = prompt.uid
@@ -1350,6 +1364,10 @@ function Actions.activate(game, seat, uid)
       local turn = game.state.turn
       turn.activated = turn.activated or {}
       turn.activated[uid] = true
+      -- used: turned sideways in play until the owner's next turn
+      local p = game.state.players[seat]
+      p.exhausted = p.exhausted or {}
+      p.exhausted[uid] = true
       a.def.activate(game, seat, { uid = uid, card = card(game, uid) })
       return true
     end
@@ -1416,6 +1434,7 @@ function Actions.startTurn(game, seat)
   turn.granted, turn.gained, turn.allyFactions, turn.completed = {}, {}, {}, 0
   turn.activated, turn.defeated = {}, 0
   turn.phase = 1
+  player.exhausted = {}
   local hooks = game.rules.turn
   if hooks and hooks.onStart then hooks.onStart(game, seat) end
   if (player.owed.discard or 0) > 0 then

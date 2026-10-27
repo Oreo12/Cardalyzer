@@ -3460,5 +3460,69 @@ test("a game's own resource or stat isn't replaced by a built-in keyword of the 
   table.remove(game.rules.resources)
 end)
 
+test("no reshuffle: the discard pile is turned over in order", function()
+  local game = boot()
+  game.rules.reshuffle = false
+  Cardalyzer_onStartGame(HOST)
+  local p = game.state.players[1]
+  local order = {}
+  for _, uid in ipairs(p.deck) do order[#order + 1] = uid end
+  for _, uid in ipairs(p.hand) do order[#order + 1] = uid end
+  p.discard, p.deck, p.hand = order, {}, {}
+  game:draw(1, 3)
+  eq(p.hand[1], order[1], "the first card discarded comes first")
+  eq(p.hand[2], order[2])
+  eq(p.hand[3], order[3])
+  eq(#p.discard, 0, "the whole pile turned over")
+  game.rules.reshuffle = nil
+end)
+
+test("look_top: look at the top cards and put them back in any order", function()
+  local game = boot()
+  local Cards = Cardalyzer.require("engine.cards")
+  local Actions = Cardalyzer.require("engine.actions")
+  Cardalyzer_onStartGame(HOST)
+  local p = game.state.players[1]
+  local n = #p.deck
+  local top = { p.deck[n], p.deck[n - 1], p.deck[n - 2] }
+  game.effects:apply(game, 1, Cards.parseEffects("look_top:3"), {})
+  eq(p.prompts[1].kind, "arrange", "asks")
+  eq(Actions.promptText(game, p.prompts[1]), "Put these back on your deck: choose the top card", "the question")
+  eq(#Actions.targets(game, 1, p.prompts[1]), 3, "the top three")
+  -- put the third card on top, then the first, then the second
+  assert(game:pick(1, top[3]))
+  eq(Actions.promptText(game, p.prompts[1]), "Choose the next card down", "then the next")
+  assert(game:pick(1, top[1]))
+  assert(game:pick(1, top[2]))
+  eq(#p.prompts, 0, "done")
+  eq(#p.deck, n, "nothing lost")
+  eq(p.deck[n], top[3], "the first picked is on top")
+  eq(p.deck[n - 1], top[1])
+  eq(p.deck[n - 2], top[2])
+end)
+
+test("a card used with its Use button lies turned sideways until its owner's next turn", function()
+  local game = boot()
+  game.effects:registerCustom("tap", { activate = function(g, seat) g.state.players[seat].resources.gold = 9 end })
+  game.cards:get("war_anvil").effects = { { key = "custom", fn = "tap" } }
+  Cardalyzer_onStartGame(HOST)
+  local s, p = game.state, game.state.players[1]
+  local anvil = Cardalyzer.require("engine.state").newCard(s, "war_anvil")
+  p.bases[#p.bases + 1] = anvil
+  Cardalyzer.require("engine.board").sync(game)
+  local function yaw()
+    local obj = getObjectFromGUID(s.view.piles["1.bases"][1])
+    return obj.rotation[2]
+  end
+  local flat = yaw()
+  click(HOST, "cz-use-" .. anvil)
+  eq(p.resources.gold, 9, "used")
+  eq((yaw() - flat) % 360, 90, "turned sideways")
+  Cardalyzer_onEndTurn(HOST)
+  eq((yaw() - flat) % 360, 90, "still sideways on the next player's turn")
+  Cardalyzer_onEndTurn({ color = "Red" })
+  eq(yaw(), flat, "upright again on its owner's turn")
+end)
+
 print(string.format("\n%d passed, %d failed", passed, failed))
 if failed > 0 then os.exit(1) end
