@@ -918,12 +918,10 @@ function Actions.attack(game, seat, target, baseUid)
   if #guards > 0 then return fail(say(game, "guardsFirst")) end
   local stat = game.rules.win and game.rules.win.stat
   if not stat then return fail("These rules have no stat to attack (rules.win.stat).") end
-  -- The defender's cards in play can change the damage (whenAttacked).
-  local hit = { damage = pool, attacker = seat }
-  Actions.trigger(game, target, "whenAttacked", hit)
-  victim.stats[stat] = (victim.stats[stat] or 0) - math.max(0, hit.damage)
+  -- The whole pool is spent. The defender may first reveal reactions from
+  -- their hand (block, prevent:N); then the damage lands (opponents_damage).
   player.resources[key] = 0
-  Actions.checkWin(game)
+  Actions.hitOne(game, seat, target, { key = "opponents_damage", amount = pool })
   return true
 end
 
@@ -958,14 +956,17 @@ local function reactions(game, seat, hit)
 end
 
 function Actions.hitOpponents(game, seat, effect, ctx)
-  for _, other in ipairs(opponentsInOrder(game, seat)) do
-    -- plain data, so a waiting reaction survives onSave
-    local hit = { kind = "react", attacker = seat, effect = effect, source = ctx.uid, revealed = {}, optional = true, count = 99 }
-    if #reactions(game, other, hit) > 0 then
-      Actions.prompt(game, other, hit)
-    else
-      Actions.resolveHit(game, other, hit)
-    end
+  for _, other in ipairs(opponentsInOrder(game, seat)) do Actions.hitOne(game, seat, other, effect, ctx.uid) end
+end
+
+-- One attack on one opponent: they're asked to react first if they can.
+function Actions.hitOne(game, seat, other, effect, source)
+  -- plain data, so a waiting reaction survives onSave
+  local hit = { kind = "react", attacker = seat, effect = effect, source = source, revealed = {}, optional = true, count = 99 }
+  if #reactions(game, other, hit) > 0 then
+    Actions.prompt(game, other, hit)
+  else
+    Actions.resolveHit(game, other, hit)
   end
 end
 
@@ -981,7 +982,7 @@ function Actions.resolveHit(game, victim, hit)
   if effect.key == "custom" then
     game.effects.custom[effect.fn].eachOpponent(game, hit.attacker, victim, ctx)
   else
-    game.effects.handlers[effect.key].toOpponent(game, hit.attacker, victim, effect.amount, ctx, effect)
+    game.effects.handlers[effect.key].toOpponent(game, hit.attacker, victim, effect.amount, ctx, effect, hit)
   end
   Actions.settle(game, victim)
 end
@@ -1066,9 +1067,15 @@ function Actions.promptText(game, prompt)
   if kind == "defeat" then return say(game, "defeatUpTo", { n = prompt.maxCost or "any" }) end
   if kind == "react" then
     local source = prompt.source and card(game, prompt.source)
+    if not source then
+      return say(game, "reactToAttack", {
+        name = game.state.players[prompt.attacker].name,
+        effects = game.effects:describe({ prompt.effect }),
+      })
+    end
     return say(game, "reactTo", {
       name = game.state.players[prompt.attacker].name,
-      card = source and source.name or "",
+      card = source.name,
       effects = game.effects:describe({ prompt.effect }),
     })
   end

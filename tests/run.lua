@@ -3406,5 +3406,59 @@ test("hiring a market card for one turn: Hire button, effects now, back under th
   assert(not ok, "not a card to hire")
 end)
 
+test("attacking a player: reactions from hand prevent or block the damage", function()
+  local game = boot()
+  local Cards = Cardalyzer.require("engine.cards")
+  local State = Cardalyzer.require("engine.state")
+  game.cards:get("tide_runner").reactEffects = Cards.parseEffects("prevent:3")
+  game.cards:get("shade_scout").reactEffects = Cards.parseEffects("block")
+  Cardalyzer_onStartGame(HOST)
+  local s = game.state
+  local white, red = s.players[1], s.players[2]
+  -- no reaction in hand: the damage lands at once
+  white.resources.might = 4
+  click(HOST, "cz-attack-2")
+  eq(red.stats.health, 36, "4 damage")
+  eq(white.resources.might, 0, "the pool is spent")
+  -- a shield: prevent 3
+  local shield = State.newCard(s, "tide_runner")
+  red.hand[#red.hand + 1] = shield
+  white.resources.might = 5
+  click(HOST, "cz-attack-2")
+  eq(red.prompts[1].kind, "react", "Red is asked")
+  game:refreshUI()
+  assert(tts.ui.xml:find("White attacks you: 5 damage to Health. Reveal a reaction?", 1, true), "the question")
+  eq(red.stats.health, 36, "nothing yet")
+  eq(white.resources.might, 0, "spent at once")
+  assert(game:pick(2, shield), "Red reveals the shield")
+  eq(red.stats.health, 34, "5 - 3 = 2 damage")
+  -- block: none
+  local wall = State.newCard(s, "shade_scout")
+  red.hand[#red.hand + 1] = wall
+  white.resources.might = 6
+  click(HOST, "cz-attack-2")
+  local before = red.stats.health
+  assert(game:pick(2, wall), "Red reveals the block")
+  game:done(2)
+  eq(red.stats.health, before, "blocked")
+  -- not revealed: all of it, and a knock-out still ends the game
+  red.stats.health = 4
+  white.resources.might = 4
+  click(HOST, "cz-attack-2")
+  assert(game:done(2), "Red doesn't reveal")
+  assert(red.out, "Red is out")
+  eq(s.winner, 1, "White wins")
+  -- as a card's effect
+  eq(game.effects:describe(Cards.parseEffects("opponents_damage:2")), "2 damage to Health", "described")
+end)
+
+test("a game's own resource or stat isn't replaced by a built-in keyword of the same name", function()
+  local game = boot()
+  game.rules.resources[#game.rules.resources + 1] = { key = "prevent", label = "Prevent" }
+  local fx = Cardalyzer.require("engine.effects").new(game.rules)
+  eq(fx:describe({ { key = "prevent", amount = 2 } }), "+2 Prevent", "the game's own keyword")
+  table.remove(game.rules.resources)
+end)
+
 print(string.format("\n%d passed, %d failed", passed, failed))
 if failed > 0 then os.exit(1) end

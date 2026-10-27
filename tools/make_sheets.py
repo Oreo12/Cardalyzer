@@ -85,6 +85,8 @@ WORDS = {
     "gain_card": "Gain a card costing up to {n}",
     "opponents_gain": "Each opponent gains a {card}",
     "opponents_discard_to": "Each opponent discards down to {n}",
+    "opponents_damage": "{n} damage to each opponent",
+    "prevent": "Prevent {n} damage",
     "set_aside": "Put this in your {area}",
     "set_aside_hand": "Put a card from hand in your {area}",
 }

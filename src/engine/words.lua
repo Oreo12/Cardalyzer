@@ -142,6 +142,7 @@ Words.DEFAULT = {
   chooseOne = "Choose one",
   chooseCard = "Choose a card",
   reactTo = "{name} played {card}: {effects}. Reveal a reaction?",
+  reactToAttack = "{name} attacks you: {effects}. Reveal a reaction?",
   reveal = "Reveal {card}",
   noReveal = "Don't reveal",
   scrapFrom = "Scrap {n} {cards} from {where}",

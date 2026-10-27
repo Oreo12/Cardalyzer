@@ -123,8 +123,9 @@ play in deck-building board games.
   anything still unanswered when their turn ends counts as not revealed.
 - **Triggered or always-on abilities** beyond ally bonuses and bases, such as
   "whenever an opponent draws" or "your other cards cost 1 less".
-- **Combat between cards.** Attacks go at a player or at their bases. There's
-  no blocking and no damage to individual creatures.
+- **Combat between cards.** Attacks go at a player or at their bases. Players
+  can block or reduce damage with reactions from their hand, but there are no
+  blocking creatures and no damage to individual creatures.
 - **Coloured or typed costs.** A card costs one number of one buy resource.
 - **Targeting** beyond the built-in choices (a card to scrap or discard, a
   base to destroy).
@@ -536,6 +537,8 @@ fine.
 | `defeat_free:4` | Defeat a card costing 4 or less (a type with `defeat = true`) for free, and get its reward |
 | `opponents_gain:gossip` | Attack: each opponent gains the top card of the `gossip` pile |
 | `opponents_discard_to:3` | Attack: each opponent discards down to 3 cards in hand, straight away |
+| `opponents_damage:3` | Attack: each opponent loses 3 of the win stat (`rules.win.stat`) |
+| `prevent:3` | In `react_effects`: the attack does 3 less damage to you |
 | `block` | In `react_effects`: the attack doesn't affect you |
 | `set_aside:tavern` | Put this card into your `tavern` area (one of `rules.areas`) |
 | `set_aside_hand:later` | Put a card from your hand into your `later` area |
@@ -562,7 +565,7 @@ Some keywords are always available:
 
 - `draw`, `opponent_discard`, `scrap_hand`, `scrap_required`, `scrap_row`, `destroy_base`,
   `draw_discard` and `reminder`.
-- `gain`, `gain_card`, `defeat_free`, `opponents_gain`, `opponents_discard_to`, `block`,
+- `gain`, `gain_card`, `defeat_free`, `opponents_gain`, `opponents_discard_to`, `opponents_damage`, `prevent`, `block`,
   `set_aside` and `set_aside_hand`. `gain` and `opponents_gain` take a card id
   instead of a number; `set_aside` and `set_aside_hand` take an area's key.
 - `custom:<name>`.
@@ -675,9 +678,12 @@ turn = {
 ### Attacks and reactions
 
 An attack is an effect that hits each opponent: `opponents_gain:gossip`,
-`opponents_discard_to:3`, or a custom effect with `eachOpponent` (see
-[Custom effects](#custom-effects)). It goes to the other players one at a
-time, starting on the attacker's left.
+`opponents_discard_to:3`, `opponents_damage:3`, or a custom effect with
+`eachOpponent` (see [Custom effects](#custom-effects)). It goes to the other
+players one at a time, starting on the attacker's left. Attacking a player
+with the Attack button is one too: their reactions can `block` the damage or
+`prevent:N` some of it (Shards of Infinity's shields). The attacker's points
+are spent either way.
 
 A card with `react_effects` is a reaction. When an attack reaches a player
 holding one, the attack waits and that player is asked, on their own screen,
