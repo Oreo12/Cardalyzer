@@ -58,6 +58,7 @@ Cardalyzer is early. Here's where each milestone stands:
 | 6. Generalize and build a second tiny game | done: Lantern Fair, a supply game with phases, attacks and reactions; a porting guide and a blank template |
 | 7. Workshop template and release | |
 | 8. Co-operative games | planned: players win or lose together against an automated enemy with its own turns and deck (Aeon's End, Legendary), with a turn-order deck |
+| 9. Several games in one save | planned: bundle more than one game into a save and switch between them from a menu, each game keeping its own saved progress (the table is cleared and laid out again on a switch) |
 
 So today you can play a full game for 2 to 4 players:
 
@@ -244,7 +245,8 @@ To play:
    with no background: each player's name in their seat colour, their Health
    as a heart with the number on it (and, once they have buildings in play, a
    shield in front of it for each one, showing its defense), and their deck
-   and discard counts. Under it are **Settings** and **New Game**, then
+   and discard counts. Its buttons sit two to a row, all one width (New Game
+   a little taller): **Settings** and **New Game**, then
    **Rulebooks** (when the game has some) and **Tidy table**, then **Change
    mat** (when the game has mats to choose from) and **Hide UI**, all clear of
    TTS's own Notes button in the corner:
@@ -935,7 +937,9 @@ layout = {
   pile, plus `margin` (1) all round. It turns with the seat, so its picture
   reads upright for that player. `image` is one picture for everyone, or one
   per seat colour with a `default` for the rest. `width`, `depth`, `along`
-  and `out` change its size and place.
+  and `out` change its size and place. `label = true` (or `{ size = 60,
+  color = "#FFFFFF" }`) writes each player's name on the table between their
+  deck and discard pile, reading the right way up for them.
 - **Mats players choose:** give `seat` a list of `sets` instead of an
   `image`, and each player picks their own with **Change mat** (under the
   info panel). A set can come in several `styles`, one picture each:

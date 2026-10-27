@@ -80,6 +80,24 @@ function Mats.pickOf(rules, color, seatIndex, picks)
   return { set = set, style = style }
 end
 
+-- Each seat's name written on the table between its deck and discard pile
+-- (rules.layout.mats.seat.label = true, or { size = 60, color = "#FFFFFF" }):
+-- { key, text, position, yaw, size, color }. `names` lists the seats' names.
+function Mats.labels(rules, layout, names)
+  local seat = rules.layout and rules.layout.mats and rules.layout.mats.seat
+  local label = seat and seat.label
+  if not label then return {} end
+  label = type(label) == "table" and label or {}
+  local y = ((rules.layout and rules.layout.surfaceY) or 1.1) + (rules.layout.mats.thickness or 0.1) + 0.05
+  local out = {}
+  for i, s in ipairs(layout.seats) do
+    local d, c = s.deck.position, s.discard.position
+    out[#out + 1] = { key = "label." .. i, text = names[i] or "", position = { (d[1] + c[1]) / 2, y, (d[3] + c[3]) / 2 },
+      yaw = (s.play.rotation[2] + 180) % 360, size = label.size or 60, color = label.color or "#FFFFFF" }
+  end
+  return out
+end
+
 -- Every mat to lay: { key, image, position, yaw, width, depth }.
 -- `colors` lists the seat colours in seat order; `picks` is state.view.matPick.
 function Mats.spots(rules, layout, colors, picks)
@@ -183,6 +201,33 @@ function Mats.build(game)
         rotation = { 0, m.yaw, 0 },
       })
       view.mats[m.key] = { guid = obj.getGUID(), sig = sig }
+    end
+  end
+  local names = {}
+  for i, p in ipairs(game.state.players) do names[i] = p.name end
+  for _, l in ipairs(Mats.labels(game.rules, game.layout, names)) do
+    wanted[l.key] = true
+    local sig = string.format("%s|%.2f|%.2f|%.2f|%.1f|%d|%s", l.text, l.position[1], l.position[2], l.position[3], l.yaw,
+      l.size, l.color)
+    local have = view.mats[l.key]
+    local obj = have and getObjectFromGUID(have.guid)
+    if not (obj and have.sig == sig) then
+      if obj then obj.destruct() end
+      local r, g, b = tonumber(l.color:sub(2, 3), 16) or 255, tonumber(l.color:sub(4, 5), 16) or 255, tonumber(l.color:sub(6, 7), 16) or 255
+      -- lying flat, reading upright for the seat's player
+      obj = spawnObjectData({
+        data = {
+          Name = "3DText",
+          Locked = true,
+          Tags = { "cz_mat" },
+          Transform = { posX = l.position[1], posY = l.position[2], posZ = l.position[3],
+            rotX = 90, rotY = l.yaw, rotZ = 0, scaleX = 1, scaleY = 1, scaleZ = 1 },
+          Text = { Text = l.text, colorstate = { r = r / 255, g = g / 255, b = b / 255 }, fontSize = l.size },
+        },
+        position = l.position,
+        rotation = { 90, l.yaw, 0 },
+      })
+      view.mats[l.key] = { guid = obj.getGUID(), sig = sig }
     end
   end
   for key, have in pairs(view.mats) do
