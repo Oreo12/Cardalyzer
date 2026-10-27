@@ -203,11 +203,23 @@ function Board.piles(game)
       add(seat .. ".play", played, s.play, "row", true)
       add(seat .. ".bases", p.bases, s.bases, "row", true)
     end
-    -- cards used this round (a Use button) lie turned sideways, unless
-    -- rules.ui.turnUsedCards = false
-    if not (game.rules.ui and game.rules.ui.turnUsedCards == false) and p.exhausted and next(p.exhausted) then
-      for _, pile in ipairs(list) do
-        if pile.key == seat .. ".play" or pile.key == seat .. ".bases" then pile.turned = p.exhausted end
+    -- How far each card in play is turned: its type's playYaw (cards printed
+    -- sideways, such as bases, read the right way up in play but not in the
+    -- market), plus a quarter turn when used this round (a Use button),
+    -- unless rules.ui.turnUsedCards = false.
+    local turnUsed = not (game.rules.ui and game.rules.ui.turnUsedCards == false)
+    for _, pile in ipairs(list) do
+      if pile.key == seat .. ".play" or pile.key == seat .. ".bases" then
+        local turned = nil
+        for _, uid in ipairs(pile.uids) do
+          local def = require("engine.cards").typeDef(game.rules, game.cards:get(State.cardId(state, uid)))
+          local deg = (def.playYaw or 0) + (turnUsed and p.exhausted and p.exhausted[uid] and 90 or 0)
+          if deg % 360 ~= 0 then
+            turned = turned or {}
+            turned[uid] = deg % 360
+          end
+        end
+        pile.turned = turned
       end
     end
     add(seat .. ".hand", p.hand, s.hand, "hand", true, nil, s.deck.position)
@@ -258,7 +270,7 @@ end
 -- With `cardWidth`, a row that would run past its spot's width closes up to
 -- fit: the cards overlap, each a little higher than the last so they rest on
 -- one another instead of colliding.
-function Board.rowPositions(spot, n, gap, cardWidth)
+function Board.rowPositions(spot, n, gap, cardWidth, sideways)
   local rx, rz = spot.right[1], spot.right[2]
   local length = spot.size and spot.size[1]
   if spot.column then
@@ -266,8 +278,9 @@ function Board.rowPositions(spot, n, gap, cardWidth)
     -- the table centre toward the player, a card's depth apart
     rx, rz = -spot.forward[1], -spot.forward[2]
     length = spot.size and spot.size[3]
-    cardWidth = cardWidth and cardWidth * 3.4 / 2.4
-    gap = (cardWidth or 3.4) + 0.4
+    -- (cards all lying sideways take up only their width)
+    if not sideways then cardWidth = cardWidth and cardWidth * 3.4 / 2.4 end
+    gap = (cardWidth or (sideways and 2.4 or 3.4)) + 0.4
   end
   if cardWidth and length and n > 1 then
     local fit = (length - cardWidth) / (n - 1)
@@ -354,8 +367,17 @@ end
 local function signature(uids, turned)
   if not turned or not next(turned) then return table.concat(uids, ",") end
   local parts = {}
-  for i, uid in ipairs(uids) do parts[i] = turned[uid] and (uid .. "*") or uid end
+  for i, uid in ipairs(uids) do parts[i] = turned[uid] and (uid .. "*" .. turned[uid]) or uid end
   return table.concat(parts, ",")
+end
+
+-- Whether every card of a pile lies sideways (a quarter turn either way).
+local function sideways(pile, uids)
+  if not pile.turned or #uids == 0 then return false end
+  for _, uid in ipairs(uids) do
+    if (pile.turned[uid] or 0) % 180 ~= 90 then return false end
+  end
+  return true
 end
 
 local function rowGap(pile)
@@ -372,7 +394,7 @@ local function places(pile, uids)
   elseif pile.style == "hand" then
     for i = 1, #uids do out[i] = pile.spot.landing or pile.spot.position end
   else
-    out = Board.rowPositions(pile.spot, #uids, rowGap(pile), pile.cardWidth)
+    out = Board.rowPositions(pile.spot, #uids, rowGap(pile), pile.cardWidth, sideways(pile, uids))
   end
   return out
 end
@@ -428,10 +450,11 @@ local function draw(game, pile, uids)
   if pile.style == "stack" then
     guids[1] = spawn(game, data(Board.stackData(game, uids)), pile.spot.position, rot, ready)
   else
-    local positions = Board.rowPositions(pile.spot, n, rowGap(pile), pile.style == "row" and pile.cardWidth or nil)
+    local positions = Board.rowPositions(pile.spot, n, rowGap(pile), pile.style == "row" and pile.cardWidth or nil,
+      sideways(pile, uids))
     for i, uid in ipairs(uids) do
       local r = rot
-      if pile.turned and pile.turned[uid] then r = { rot[1], (rot[2] + 90) % 360, rot[3] } end
+      if pile.turned and pile.turned[uid] then r = { rot[1], (rot[2] + pile.turned[uid]) % 360, rot[3] } end
       guids[i] = spawn(game, data(Board.cardData(game, uid)), positions[i], r, ready)
     end
   end
