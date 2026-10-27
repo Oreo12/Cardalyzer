@@ -92,6 +92,7 @@ Words.DEFAULT = {
   page = "Page {n} of {total}",
   -- messages
   isOut = "{name} is out.",
+  removedHands = "Removed the table's own seats ({colors}): Cardalyzer seats its players itself.",
   scrappedFromRow = "{name} scrapped {card} from the market row.",
   completed = "{name} completed {card}.",
   event = "Event: {card}. {effects}",
