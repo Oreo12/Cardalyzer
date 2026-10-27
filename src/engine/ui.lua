@@ -901,25 +901,38 @@ end
 -- style. Only players at the table have a mat.
 function UI_.matPanel(game, color)
   use(game)
-  local seat, seatIndex = Mats.sets(game.rules), game:seatOfColor(color)
-  if not (seat and seatIndex) then return "" end
-  local pick = Mats.pickOf(game.rules, color, seatIndex, game.state.view.matPick)
+  local seatIndex = game:seatOfColor(color)
+  if not seatIndex then return "" end
   local function choiceRow(id, label, buttons)
-    local xml = text(id, label, 15, 'preferredWidth="100" alignment="MiddleRight"' .. FX)
+    local xml = text(id, label, 15, 'preferredWidth="110" alignment="MiddleRight"' .. FX)
     for _, b in ipairs(buttons) do xml = xml .. smallButton(b[1], b[2], 14, b[3]) end
     return '<HorizontalLayout spacing="6" preferredHeight="30" childForceExpandWidth="false" childAlignment="MiddleCenter">'
       .. xml .. '</HorizontalLayout>'
   end
-  local sets, styles = {}, {}
-  for i, s in ipairs(seat.sets) do
-    sets[i] = { "cz-matset-" .. i, s.name or tostring(i), pick.set == i and "selected" or "secondary" }
+  local rows, height = "", 0
+  -- a row of sets and a row of their styles: prefix "mat" (your own) or "mkt" (the market's)
+  local function section(def, pick, prefix, setWord, styleWord)
+    local sets, styles = {}, {}
+    for i, s in ipairs(def.sets) do
+      sets[i] = { "cz-" .. prefix .. "set-" .. i, s.name or tostring(i), pick.set == i and "selected" or "secondary" }
+    end
+    for i = 1, #(def.sets[pick.set].images or {}) do
+      styles[i] = { "cz-" .. prefix .. "style-" .. i, def.styles and def.styles[i] or tostring(i), pick.style == i and "selected" or "secondary" }
+    end
+    if #sets > 1 then
+      rows = rows .. choiceRow("cz_" .. prefix .. "_set_" .. color, say(setWord), sets)
+      height = height + 38
+    end
+    if #styles > 1 then
+      rows = rows .. choiceRow("cz_" .. prefix .. "_style_" .. color, say(styleWord), styles)
+      height = height + 38
+    end
   end
-  for i = 1, #(seat.sets[pick.set].images or {}) do
-    styles[i] = { "cz-matstyle-" .. i, seat.styles and seat.styles[i] or tostring(i), pick.style == i and "selected" or "secondary" }
-  end
-  local rows = choiceRow("cz_mat_set_" .. color, say("mat"), sets)
-  if #styles > 1 then rows = rows .. choiceRow("cz_mat_style_" .. color, say("matStyle"), styles) end
-  return centrePanel("cz_matmenu_" .. color, color, say("changeMat"), accent(), 22, { rows, #styles > 1 and 76 or 38 },
+  local seat, market = Mats.sets(game.rules), Mats.sets(game.rules, "market")
+  local picks = game.state.view.matPick
+  if seat then section(seat, Mats.pickOf(game.rules, color, seatIndex, picks), "mat", "mat", "matStyle") end
+  if market then section(market, Mats.marketPick(game.rules, picks), "mkt", "marketMat", "marketStyle") end
+  return centrePanel("cz_matmenu_" .. color, color, say("changeMat"), accent(), 22, { rows, math.max(30, height - 8) },
     { { id = "cz-matclose", label = say("close") }, hideButton("mat") }, UI_.scaleOf(game, color))
 end
 
@@ -1160,7 +1173,9 @@ function UI_.panelButtons(game)
     list[#list + 1] = { id = "cz-button-" .. i, label = b.label }
   end
   list[#list + 1] = { id = "cz-tidy", label = say("tidy") }
-  if Mats.sets(game.rules) then list[#list + 1] = { id = "cz-matmenu", label = say("changeMat") } end
+  if Mats.sets(game.rules) or Mats.sets(game.rules, "market") then
+    list[#list + 1] = { id = "cz-matmenu", label = say("changeMat") }
+  end
   list[#list + 1] = { id = "cz-hideui", label = say("hideUI") }
   return list
 end

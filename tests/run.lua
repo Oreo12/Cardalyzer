@@ -2448,6 +2448,34 @@ test("a type's playYaw turns its cards in play, not in the market", function()
   game.rules.cardTypes.building.playYaw = nil
 end)
 
+test("the market's mat can be switched too, by any player at the table", function()
+  local game = boot()
+  local function url(set, style) return "https://example.com/m-" .. set .. "-" .. style .. ".png" end
+  game.rules.layout = { mats = { market = {
+    styles = { "Plain", "Fancy" },
+    sets = {
+      { name = "Day", images = { url("day", 1), url("day", 2) } },
+      { name = "Night", default = true, images = { url("night", 1), url("night", 2) } },
+    },
+  } } }
+  Cardalyzer_onStartGame(HOST)
+  local function mat()
+    local have = game.state.view.mats.market
+    return have and getObjectFromGUID(have.guid).data.CustomImage.ImageURL
+  end
+  eq(mat(), url("night", 1), "starts on the default set")
+  assert(tts.ui.xml:find('id="cz-matmenu"', 1, true), "Change mat, though the seats have no sets")
+  click(GUEST, "cz-matmenu")
+  assert(tts.ui.xml:find('id="cz-mktset-1"', 1, true), "the market's sets")
+  assert(not tts.ui.xml:find('id="cz-matset-1"', 1, true), "and no seat rows")
+  click(GUEST, "cz-mktstyle-2")
+  eq(mat(), url("night", 2), "Red changed its style")
+  click(HOST, "cz-mktset-1")
+  eq(mat(), url("day", 2), "White its set, keeping the style")
+  eq(game:setMat("Purple", "marketset", 2), false, "spectators can't")
+  game.rules.layout = nil
+end)
+
 test("each seat's name lies between its deck and discard pile", function()
   local game = boot()
   game.rules.layout = { mats = { seat = { image = "https://example.com/mat.png", label = true } } }

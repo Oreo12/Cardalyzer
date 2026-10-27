@@ -133,6 +133,9 @@ function handleUI(player, _, id)
   if action == "matclose" then return game:matMenu(player.color, false) end
   if action == "matset" then return run(player.color, game.setMat, player.color, "set", arg) end
   if action == "matstyle" then return run(player.color, game.setMat, player.color, "style", arg) end
+  -- the market's mat, shared: cz-mktset-<n> and cz-mktstyle-<n>
+  if action == "mktset" then return run(player.color, game.setMat, player.color, "marketset", arg) end
+  if action == "mktstyle" then return run(player.color, game.setMat, player.color, "marketstyle", arg) end
   if action == "tidy" then return run(player.color, game.tidy) end
   if action == "rulebooks" then return run(player.color, game.toggleRulebooks) end
   if action == "button" then return run(player.color, game.pressButton, tonumber(arg), player.color) end
