@@ -400,6 +400,12 @@ end)
 test("a corrupt save starts fresh instead of crashing", function()
   local game = boot("{not json")
   eq(game.state.started, false, "fresh state")
+  -- a save from another Cardalyzer game: its cards aren't in this one
+  game = boot()
+  Cardalyzer_onStartGame(HOST)
+  local saved = game:save():gsub('"apprentice"', '"ribbon"')
+  game = boot(saved)
+  eq(game.state.started, false, "another game's save starts fresh")
 end)
 
 ---------------------------------------------------------------------------
@@ -3126,6 +3132,71 @@ test("the table's own seats (hand zones of other colours) are removed", function
   local before = #tts.broadcasts
   Zones.build(game, game.layout)
   eq(#tts.broadcasts, before, "said once")
+end)
+
+test("cards to defeat in the market: Defeat button, paid with the attack resource, reward, scrap pile", function()
+  local game = boot()
+  local Cards = Cardalyzer.require("engine.cards")
+  game.rules.cardTypes.monster = { defeat = true }
+  local ogre = game.cards:get("flame_captain") -- becomes a monster: defeat it for 6 Might
+  ogre.type = "monster"
+  ogre.effects = Cards.parseEffects("health:3; gold:1")
+  Cardalyzer_onStartGame(HOST)
+  local s, p = game.state, game.state.players[1]
+  -- put the monster in the first slot
+  local uid
+  for u, id in pairs(s.cards) do if id == "flame_captain" then uid = u end end
+  for i, u in ipairs(s.market.deck) do if u == uid then table.remove(s.market.deck, i) end end
+  local old = s.market.row[1]
+  s.market.deck[#s.market.deck + 1] = old
+  s.market.row[1] = uid
+  Cardalyzer.require("engine.board").sync(game)
+  -- its button says Defeat
+  local key = "market.row.1"
+  local obj = getObjectFromGUID(s.view.piles[key][1])
+  assert(obj.buttons[1].label:find("Defeat · 6", 1, true), "a Defeat button: " .. tostring(obj.buttons[1].label))
+  assert(game.cards:get("flame_captain").type == "monster")
+  -- can't be bought
+  p.resources.gold = 99
+  local ok, why = game:buy(1, uid)
+  assert(not ok and why:find("defeat it with Might", 1, true), "not for sale: " .. tostring(why))
+  -- not enough Might
+  p.resources.might = 5
+  ok, why = game:defeat(1, uid)
+  assert(not ok and why:find("needs 6 Might", 1, true), "needs 6: " .. tostring(why))
+  -- defeated through its button
+  p.resources.might = 7
+  local health = p.stats.health
+  local hooked = 0
+  game.effects:registerCustom("trophy", { whenYouDefeat = function() hooked = hooked + 1 end })
+  local holder = Cardalyzer.require("engine.state").newCard(s, "war_anvil")
+  game.cards:get("war_anvil").effects = { { key = "custom", fn = "trophy" } }
+  p.bases[#p.bases + 1] = holder
+  assert(Cardalyzer_onBuy(obj, "White") == nil)
+  eq(p.resources.might, 1, "paid 6 Might")
+  eq(p.stats.health, health + 3, "the reward")
+  eq(s.market.scrap[#s.market.scrap], uid, "into the scrap pile")
+  assert(s.market.row[1] ~= uid and s.market.row[1] ~= "", "the slot refilled")
+  eq(s.turn.defeated, 1, "counted")
+  eq(hooked, 1, "whenYouDefeat on a card in play")
+  assert(tts.ui.xml:find("White defeated Flame Captain", 1, true), "announced")
+  -- defeat_free: a prompt offers only cards to defeat
+  local second = Cardalyzer.require("engine.state").newCard(s, "flame_captain")
+  s.market.row[2] = second
+  game.effects:apply(game, 1, Cards.parseEffects("defeat_free:6"), {})
+  local targets = Cardalyzer.require("engine.actions").targets(game, 1, p.prompts[1])
+  eq(#targets, 1, "only the monster")
+  assert(game:pick(1, second), "defeated for free")
+  eq(p.resources.might, 1, "no Might spent")
+  -- free buys skip monsters
+  local third = Cardalyzer.require("engine.state").newCard(s, "flame_captain")
+  s.market.row[3] = third
+  game.effects:apply(game, 1, Cards.parseEffects("free_buy:9"), {})
+  for _, t in ipairs(Cardalyzer.require("engine.actions").targets(game, 1, p.prompts[1])) do
+    assert(t.value ~= third, "free buys can't take a monster")
+  end
+  -- the tooltip says Defeat
+  assert(Cardalyzer.require("engine.board").describe(game, ogre):find("^Defeat 6"), "tooltip")
 end)
 
 print(string.format("\n%d passed, %d failed", passed, failed))

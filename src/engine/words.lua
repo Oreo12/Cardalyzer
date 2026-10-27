@@ -47,6 +47,10 @@ Words.DEFAULT = {
   done = "Done",
   more = " (+{n} more)",
   buy = "Buy · {n}",
+  defeat = "Defeat · {n}",
+  defeated = "{name} defeated {card}: {effects}",
+  mustDefeat = "{card} can't be bought: defeat it with {resource}.",
+  defeatUpTo = "Defeat a card costing {n} or less for free",
   -- the New Game menu
   setupTitle = "New Game",
   players = "Players",
