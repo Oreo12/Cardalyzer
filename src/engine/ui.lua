@@ -113,6 +113,9 @@ function UI_.actions(game)
     end
   end
 
+  for _, c in ipairs(Actions.callable(game, seat)) do
+    add(out.buttons, "cz-call-" .. c.uid, say("call", { card = game:cardOf(c.uid).name }))
+  end
   for _, a in ipairs(Actions.activatable(game, seat)) do
     local name = game:cardOf(a.uid).name
     add(out.buttons, "cz-use-" .. a.uid, a.def.text and say("useWith", { card = name, text = a.def.text }) or say("use", { card = name }))

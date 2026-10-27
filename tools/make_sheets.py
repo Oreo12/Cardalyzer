@@ -85,6 +85,8 @@ WORDS = {
     "gain_card": "Gain a card costing up to {n}",
     "opponents_gain": "Each opponent gains a {card}",
     "opponents_discard_to": "Each opponent discards down to {n}",
+    "set_aside": "Put this in your {area}",
+    "set_aside_hand": "Put a card from hand in your {area}",
 }
 NAMES = {}  # card id -> name, for keywords that name a card (gain:silk)
 
@@ -99,7 +101,7 @@ def one_effect(part):
     if key == "custom":
         return "Special"
     if key in WORDS:
-        return WORDS[key].format(n=value, card=NAMES.get(value, value))
+        return WORDS[key].format(n=value, card=NAMES.get(value, value), area=value.replace("_", " "))
     sign = "" if value.startswith("-") else "+"
     return f"{sign}{value} {key.replace('_', ' ').title()}"
 
@@ -148,6 +150,8 @@ def draw_card(card):
         lines.append("Scrap: " + effect_text(card["scrap_effects"]))
     if card.get("react_effects"):
         lines.append("Reaction: " + effect_text(card["react_effects"]))
+    if card.get("next_effects"):
+        lines.append("Next turn: " + effect_text(card["next_effects"]))
     if card.get("text"):
         lines.append(card["text"])
     y = 320

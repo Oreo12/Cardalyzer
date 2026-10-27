@@ -112,6 +112,9 @@ function Zones.seatAreas(rules)
   end
   -- the hand and the deck and discard pile can't be turned off
   areas.hand.hidden, areas.deck.hidden, areas.discard.hidden = nil, nil, nil
+  -- the rules' set-aside areas, by key, as given (Zones.layout places them)
+  areas.extra = {}
+  for _, a in ipairs(rules.areas or {}) do areas.extra[a.key] = over[a.key] end
   return areas
 end
 
@@ -179,7 +182,18 @@ function Zones.layout(rules, fixedIds, count, facing, breaks)
   end
   for seat = 1, count do
     local f = seatFrame(seat, count, distance, spread, rules, grow)
+    -- set-aside areas (rules.areas): beside the discard pile, one after
+    -- another; rules.layout.areas[key] = { along, out } moves one, false hides it
+    local setAside = {}
+    for i, a in ipairs(rules.areas or {}) do
+      local o = areas.extra[a.key]
+      local spotOf = spot(f, y, type(o) == "table" and o.along or gap * (2 + 1.1 * i), type(o) == "table" and o.out or -3, yaw,
+        { 2.6, 3, 3.6 })
+      spotOf.hidden = o == false or a.shown == false or nil
+      setAside[a.key] = spotOf
+    end
     result.seats[seat] = {
+      areas = setAside,
       play = area(f, "play", 3),
       bases = area(f, "bases", 3),
       deck = area(f, "deck", 3),
@@ -336,6 +350,7 @@ function Zones.outlines(rules, layout, colors)
     box("bases", s.bases, rgb, 0.1, 0)
     box("deck", s.deck, rgb, 0.08, 0)
     box("discard", s.discard, rgb, 0.08, 0)
+    for _, a in pairs(s.areas or {}) do box("areas", a, rgb, 0.08, 0) end
   end
   local m = layout.market
   if #m.row > 0 then box("row", m.area, marketRgb, 0.12, 0) end

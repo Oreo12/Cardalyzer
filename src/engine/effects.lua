@@ -201,6 +201,25 @@ function Effects.new(rules)
     end,
     text = function(amount) return "Each opponent discards down to " .. amount .. " cards" end,
   })
+  -- Set-aside areas (rules.areas): this card, or a card from the hand.
+  local function areaLabel(key)
+    for _, a in ipairs(rules.areas or {}) do if a.key == key then return a.label or key end end
+    return key
+  end
+  self:register("set_aside", {
+    arg = "area",
+    apply = function(game, seat, _, ctx, effect)
+      if ctx.uid then require("engine.actions").setAside(game, seat, ctx.uid, effect.id) end
+    end,
+    text = function(_, effect) return "Put this in your " .. areaLabel(effect.id) end,
+  })
+  self:register("set_aside_hand", {
+    arg = "area",
+    apply = function(game, seat, _, _, effect)
+      game:prompt(seat, { kind = "set_aside", area = effect.id, count = 1, optional = false })
+    end,
+    text = function(_, effect) return "Put a card from your hand in your " .. areaLabel(effect.id) end,
+  })
   self:register("block", {
     apply = function(_, _, _, ctx) if ctx.attack then ctx.attack.blocked = true end end,
     text = function() return "Block the attack" end,
@@ -307,7 +326,8 @@ end
 function Effects:validate(cards)
   local problems = {}
   for _, card in ipairs(cards.list) do
-    for _, list in ipairs({ card.effects, card.allyEffects, card.scrapEffects, card.doubleAllyEffects or {}, card.reactEffects or {} }) do
+    for _, list in ipairs({ card.effects, card.allyEffects, card.scrapEffects, card.doubleAllyEffects or {}, card.reactEffects or {},
+      card.nextEffects or {} }) do
       local flat = {}
       for _, effect in ipairs(list) do
         if effect.key == "choice" then
@@ -323,6 +343,12 @@ function Effects:validate(cards)
           end
         elseif not self.handlers[effect.key] then
           problems[#problems + 1] = "card '" .. card.id .. "' uses unknown keyword '" .. effect.key .. "'"
+        elseif effect.id and self.handlers[effect.key].arg == "area" then
+          local found = false
+          for _, a in ipairs(self.rules.areas or {}) do if a.key == effect.id then found = true end end
+          if not found then
+            problems[#problems + 1] = "card '" .. card.id .. "' uses " .. effect.key .. ":" .. effect.id .. " but rules.areas has no '" .. effect.id .. "'"
+          end
         elseif effect.id and not cards.byId[effect.id] then
           problems[#problems + 1] = "card '" .. card.id .. "' uses " .. effect.key .. ":" .. effect.id .. " but there's no card '" .. effect.id .. "'"
         end

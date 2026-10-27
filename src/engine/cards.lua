@@ -16,8 +16,9 @@ Cards.DECKS = { starter = true, market = true, fixed = true, dealt = true, objec
 -- block: in react_effects, the attack doesn't affect the player who revealed it.
 Cards.BARE = { reminder = true, block = true }
 
--- Keywords that name a card instead of an amount: gain:silk, opponents_gain:gossip.
-Cards.CARD_ARG = { gain = true, opponents_gain = true }
+-- Keywords that name something instead of an amount: a card (gain:silk,
+-- opponents_gain:gossip) or a set-aside area from rules.areas (set_aside:tavern).
+Cards.ARG = { gain = "card", opponents_gain = "card", set_aside = "area", set_aside_hand = "area" }
 
 local function parseOne(part)
   local key, value = part:match("^([%w_]+)%s*:%s*([%w_%-]+)$")
@@ -26,7 +27,7 @@ local function parseOne(part)
     error("bad effect '" .. part .. "' (expected keyword:amount)", 0)
   end
   if key == "custom" then return { key = "custom", fn = value } end
-  if Cards.CARD_ARG[key] then return { key = key, id = value, amount = 1 } end
+  if Cards.ARG[key] then return { key = key, id = value, amount = 1 } end
   local amount = tonumber(value)
   if not amount then error("effect '" .. part .. "' needs a number after ':'", 0) end
   return { key = key, amount = amount }
@@ -101,6 +102,8 @@ local function parseRow(row, index)
   if not okDouble then fail(double) end
   local okReact, react = pcall(Cards.parseEffects, row.react_effects)
   if not okReact then fail(react) end
+  local okNext, nextFx = pcall(Cards.parseEffects, row.next_effects)
+  if not okNext then fail(nextFx) end
 
   local factions = {}
   for _, f in ipairs(Util.split(blank(row.faction) and "none" or row.faction, "/")) do
@@ -132,6 +135,7 @@ local function parseRow(row, index)
     allyEffects = ally,
     scrapEffects = scrap,
     reactEffects = react, -- revealed from the hand when an opponent's attack hits this player
+    nextEffects = nextFx, -- at the start of the owner's next turn; the card stays in play until then
     defense = tonumber(row.defense),
     points = tonumber(row.points) or 0, -- victory points, for rules.win.type = "points"
     starting = tonumber(row.starting) or 0, -- copies in each player's starting deck, whatever its deck
