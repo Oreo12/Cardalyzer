@@ -2421,6 +2421,27 @@ test("players choose their own mat and its style in Settings", function()
   game.rules.layout = nil
 end)
 
+test("a type's playYaw turns its cards in play, not in the market", function()
+  local game = boot()
+  game.rules.cardTypes.building = game.rules.cardTypes.building or {}
+  game.rules.cardTypes.building.playYaw = 90
+  Cardalyzer_onStartGame(HOST)
+  local s, p = game.state, game.state.players[1]
+  local State = Cardalyzer.require("engine.state")
+  local anvil = State.newCard(s, "war_anvil")
+  p.bases[#p.bases + 1] = anvil
+  local Board = Cardalyzer.require("engine.board")
+  Board.sync(game)
+  local function yawIn(key, i) return getObjectFromGUID(s.view.piles[key][i or 1]).rotation[2] end
+  local flat = yawIn("1.deck") -- upright, as the seat reads
+  eq((yawIn("1.bases") - flat) % 360, 90, "turned a quarter in play")
+  -- used: a further quarter
+  p.exhausted[anvil] = true
+  Board.sync(game)
+  eq((yawIn("1.bases") - flat) % 360, 180, "and a quarter more when used")
+  game.rules.cardTypes.building.playYaw = nil
+end)
+
 test("an area can lay its cards in a column down it", function()
   local Board = Cardalyzer.require("engine.board")
   local spot = { position = { 0, 1, 0 }, right = { 1, 0 }, forward = { 0, 1 }, size = { 3, 3, 20 }, column = true }
