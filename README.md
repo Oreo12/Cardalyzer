@@ -961,6 +961,11 @@ layout = {
   exactly that size, so other proportions stretch the picture.
 - **`market`:** one mat under the market row, market deck, fixed piles and
   scrap pile. `x`, `z`, `width`, `depth` and `yaw` change it.
+  It takes `sets` and `styles` too, in place of `image`: one mat shared by
+  the table, which any player can change from **Change mat** (under
+  *Market mat*). It starts on the first set, or the one with
+  `default = true`. Rename the menu's rows with `ui.words.marketMat` and
+  `ui.words.marketStyle` (for example "Trade row").
 - **`extra`:** any number of other mats anywhere on the table.
 - **`tableImage`:** the table's own picture. It only applies when the save
   uses TTS's custom table.

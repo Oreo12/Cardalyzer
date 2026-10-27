@@ -29,6 +29,10 @@
 -- Each player picks a set and a style for their own mat (saved with the
 -- game). A set's `color` makes it that seat colour's mat to start with;
 -- otherwise seats start on the sets in order.
+--
+-- The market mat takes `sets` and `styles` the same way (market = { styles,
+-- sets }), shared by the table: any player can change it in the same menu.
+-- It starts on the first set, or the one marked `default = true`.
 local Mats = {}
 
 local function webUrl(url)
@@ -56,10 +60,21 @@ local function around(spots, origin, right, forward, margin)
   return (lo_a + hi_a) / 2, (lo_o + hi_o) / 2, hi_a - lo_a + 2 * margin, hi_o - lo_o + 2 * margin
 end
 
--- The seat mat sets players choose between, or nil.
-function Mats.sets(rules)
-  local seat = rules.layout and rules.layout.mats and rules.layout.mats.seat
-  return seat and type(seat.sets) == "table" and #seat.sets > 0 and seat or nil
+-- The mat sets to choose between for the seats ("seat", the default) or the
+-- market ("market"), or nil.
+function Mats.sets(rules, which)
+  local def = rules.layout and rules.layout.mats and rules.layout.mats[which or "seat"]
+  return def and type(def.sets) == "table" and #def.sets > 0 and def or nil
+end
+
+-- A choice { set = i, style = j } among `def.sets`: picks[key] (from
+-- state.view.matPick), else set `start`, with its first style.
+local function choice(def, key, start, picks)
+  local pick = picks and picks[key] or {}
+  local set = def.sets[pick.set or 0] and pick.set or start
+  local count = #(def.sets[set].images or {})
+  local style = pick.style and pick.style >= 1 and pick.style <= count and pick.style or 1
+  return { set = set, style = style }
 end
 
 -- A seat's mat choice: { set = i, style = j }, from `picks` (state.view.matPick)
@@ -67,17 +82,22 @@ end
 function Mats.pickOf(rules, color, seatIndex, picks)
   local seat = Mats.sets(rules)
   if not seat then return nil end
-  local pick = picks and picks[color] or {}
-  local set = pick.set
-  if not set then
-    for i, s in ipairs(seat.sets) do
-      if s.color == color then set = i end
-    end
+  local start = (seatIndex - 1) % #seat.sets + 1
+  for i, s in ipairs(seat.sets) do
+    if s.color == color then start = i end
   end
-  set = seat.sets[set or 0] and set or ((seatIndex - 1) % #seat.sets + 1)
-  local count = #(seat.sets[set].images or {})
-  local style = pick.style and pick.style >= 1 and pick.style <= count and pick.style or 1
-  return { set = set, style = style }
+  return choice(seat, color, start, picks)
+end
+
+-- The market mat's choice (picks.market), or nil when it has no sets.
+function Mats.marketPick(rules, picks)
+  local market = Mats.sets(rules, "market")
+  if not market then return nil end
+  local start = 1
+  for i, s in ipairs(market.sets) do
+    if s.default then start = i end
+  end
+  return choice(market, "market", start, picks)
 end
 
 -- Each seat's name written on the table between its deck and discard pile
@@ -128,7 +148,10 @@ function Mats.spots(rules, layout, colors, picks)
     end
   end
   local market = mats.market
-  if market and webUrl(market.image) then
+  local marketImage = market and market.image
+  local mpick = Mats.marketPick(rules, picks)
+  if mpick then marketImage = (market.sets[mpick.set].images or {})[mpick.style] end
+  if market and webUrl(marketImage) then
     local m = layout.market
     local spots = { m.deck, m.scrap }
     for _, s in ipairs(m.row) do spots[#spots + 1] = s end
@@ -139,7 +162,7 @@ function Mats.spots(rules, layout, colors, picks)
     end
     local a, o, w, d = around(spots, { 0, 0 }, { 1, 0 }, { 0, 1 }, market.margin or 1)
     if a then
-      out[#out + 1] = { key = "market", image = market.image, position = { a + (market.x or 0), y, o + (market.z or 0) },
+      out[#out + 1] = { key = "market", image = marketImage, position = { a + (market.x or 0), y, o + (market.z or 0) },
         yaw = market.yaw or 0, width = market.width or w, depth = market.depth or d }
     end
   end

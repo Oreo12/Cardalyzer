@@ -499,19 +499,20 @@ function Game:setMenuAt(color, where)
   return true
 end
 
--- Changes one player's own play mat (rules.layout.mats.seat.sets):
--- which = "set" or "style", n its number. Saved; re-lays just the mats.
+-- Changes one player's own play mat (rules.layout.mats.seat.sets), or the
+-- market's (mats.market.sets, shared): which = "set" or "style" for their
+-- own, "marketset" or "marketstyle" for the market's; n its number. Only
+-- players at the table can. Saved; re-lays just the mats.
 function Game:setMat(color, which, n)
-  local seat = Mats.sets(self.rules)
-  if not seat then return false, "This game has no mats to choose from." end
-  local seatIndex = nil
-  for i, p in ipairs(self.state.players) do
-    if p.color == color then seatIndex = i end
-  end
+  local seatIndex = self:seatOfColor(color)
   if not seatIndex then return false, "Only players at the table have a mat." end
+  local market = which == "marketset" or which == "marketstyle"
+  local seat = Mats.sets(self.rules, market and "market" or "seat")
+  if not seat then return false, "This game has no mats to choose from." end
   local view = self.state.view
   view.matPick = view.matPick or {}
-  local pick = Mats.pickOf(self.rules, color, seatIndex, view.matPick)
+  local pick = market and Mats.marketPick(self.rules, view.matPick) or Mats.pickOf(self.rules, color, seatIndex, view.matPick)
+  if market then which = which == "marketset" and "set" or "style" end
   n = tonumber(n)
   if which == "set" and n and seat.sets[n] then
     pick.set = n
@@ -521,7 +522,7 @@ function Game:setMat(color, which, n)
   else
     return false, "There's no such mat."
   end
-  view.matPick[color] = pick
+  view.matPick[market and "market" or color] = pick
   Mats.build(self)
   self:refreshUI()
   return true
