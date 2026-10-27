@@ -322,6 +322,10 @@ function Game:loadState(saved)
   if not ok or type(data) ~= "table" or data.version ~= State.VERSION then return false end
   local players = type(data.players) == "table" and #data.players or 0
   if players < 1 or players > #self.rules.seats then return false end
+  -- a save from another game (its cards aren't in this one) starts fresh
+  for _, id in pairs(type(data.cards) == "table" and data.cards or {}) do
+    if not self.cards.byId[id] then return false end
+  end
   -- Fields added since older saves were made.
   for _, p in ipairs(data.players) do
     p.objectives, p.completed = p.objectives or {}, p.completed or {}
@@ -582,6 +586,7 @@ end
 function Game:play(seat, uid) return self:act(Actions.play, seat, uid) end
 function Game:playAll(seat) return self:act(Actions.playAll, seat) end
 function Game:buy(seat, uid) return self:act(Actions.buy, seat, uid) end
+function Game:defeat(seat, uid) return self:act(Actions.defeat, seat, uid) end
 function Game:scrapFromPlay(seat, uid) return self:act(Actions.scrapFromPlay, seat, uid) end
 function Game:attack(seat, target, baseUid) return self:act(Actions.attack, seat, target, baseUid) end
 function Game:pick(seat, value) return self:act(Actions.pick, seat, value) end
@@ -600,6 +605,7 @@ function Game:buyObject(seat, guid, uid)
     uid = pile and pile[#pile]
   end
   if not uid then return false, "That card can't be bought." end
+  if Actions.defeatable(self, uid) then return self:defeat(seat, uid) end
   return self:buy(seat, uid)
 end
 

@@ -105,6 +105,8 @@ play in deck-building board games.
   rounds, or when a shared pool is used up.
 - Attacks that hit every other player, and reactions they reveal from their
   hand to block an attack or soften it.
+- Monsters and villains in the market that players defeat with their attack
+  resource for a reward, instead of buying them.
 - Turning whole mechanics on or off (allies, bases, scrapping).
 - Lua for the occasional card that does something no keyword covers.
 
@@ -526,6 +528,7 @@ fine.
 | `reminder` | Show the card's `text` to the player until they click Done (for rules not automated yet) |
 | `gain:silk` | Gain the top card of the `silk` pile (a `fixed` or `supply` pile) into your discard pile |
 | `gain_card:4` | Gain a card costing 4 or less from the piles or any market row |
+| `defeat_free:4` | Defeat a card costing 4 or less (a type with `defeat = true`) for free, and get its reward |
 | `opponents_gain:gossip` | Attack: each opponent gains the top card of the `gossip` pile |
 | `opponents_discard_to:3` | Attack: each opponent discards down to 3 cards in hand, straight away |
 | `block` | In `react_effects`: the attack doesn't affect you |
@@ -544,7 +547,7 @@ Some keywords are always available:
 
 - `draw`, `opponent_discard`, `scrap_hand`, `scrap_required`, `scrap_row`, `destroy_base`,
   `draw_discard` and `reminder`.
-- `gain`, `gain_card`, `opponents_gain`, `opponents_discard_to` and `block`.
+- `gain`, `gain_card`, `defeat_free`, `opponents_gain`, `opponents_discard_to` and `block`.
   `gain` and `opponents_gain` take a card id instead of a number.
 - `custom:<name>`.
 - One keyword per resource and stat in your rules, using its `key`.
@@ -581,7 +584,7 @@ These are the fields in `games/<yours>/rules.lua`:
 | `market.turnsWithPlayer` | `true` | The whole market (row, piles, outlines) turns to face the player whose turn it is, with its cards gliding to their new places. Best with `layout.seating = "around"` |
 | `markets` | `{ {key="heroes", label="Heroes", rowSize=3} }` | Extra markets, each with its own deck and row of cards for sale. A card joins one with `deck = market:heroes` in the spreadsheet. The rows stack beside the main one, and the seats move back to make room; `layout.areas.heroes = {along, out}` places one. They share the main market's scrap pile; fixed piles stay with the main market |
 | `factions` | `forge = {label="Forge", color="#C8502D"}` | Faction labels and frame colours |
-| `cardTypes` | `wall = {persistent=true, guard=true}` | Types. Persistent ones stay in play and apply their effects again each turn; guard ones must be destroyed before their owner or other buildings can be attacked. `replay = false`: a persistent card doesn't apply its effects again each turn. `target = false`: it can't be attacked or destroyed (a hero that stays until you scrap it). `event = true`: revealed into the market row, it resolves at once for the player whose turn it is, then goes to the scrap pile and the slot refills |
+| `cardTypes` | `wall = {persistent=true, guard=true}` | Types. Persistent ones stay in play and apply their effects again each turn; guard ones must be destroyed before their owner or other buildings can be attacked. `replay = false`: a persistent card doesn't apply its effects again each turn. `target = false`: it can't be attacked or destroyed (a hero that stays until you scrap it). `event = true`: revealed into the market row, it resolves at once for the player whose turn it is, then goes to the scrap pile and the slot refills. `defeat = true`: a monster or villain. In the market it has a Defeat button instead of Buy: defeating it costs its `cost` in the attack resource, gives its `effects` as the reward, and sends it to the scrap pile. It can't be bought or taken for free |
 | `mechanics` | `{allies=true, persistent=true, scrap=true}` | Turn whole mechanics on or off |
 | `win` | `{type="stat_depleted", stat="health", atOrBelow=0}` | How the game is won. `stat_depleted`: attacks lower this stat; a player who drops to it is out (no more turns, can't be attacked); the last player left wins. `points`: the highest score wins when the game ends (see below). Either kind can add `check = function(game)` returning the winning seat, a list of seats (a shared win), or nil to play on |
 | `win` (points) | `{type="points", stat="honor", endWhen={pool={key="honor", amount=60}, marketEmpty=true}, finishRound=true}` | A score is the `points` on every card a player owns plus their `stat`, if given. The game ends when any `endWhen` is met: `marketEmpty` (row and deck run out), `fixedEmpty = n` (n fixed piles empty), `pool = {key, amount}` (a shared pool of that stat, taken from as players gain it, runs out; shown on the right), `rounds = n`, `pileEmpty = "id"` (that pile, or any pile in a list, runs out), or `custom = function(game)`. With `finishRound`, the round is played out so everyone has the same number of turns. Equal top scores share the win. Scores show on the right |
@@ -1044,6 +1047,10 @@ More hooks a custom effect can have:
 - `whenYouUseAlly = function(game, seat, ctx, used)`: while in play, runs
   after one of its owner's ally abilities fires. `used` is
   `{ uid, card, faction }` (the ally's prefix, if it has one).
+- `whenYouDefeat = function(game, seat, ctx, defeated)`: while in play, runs
+  each time its owner defeats a card in the market. `defeated` is
+  `{ uid, card }`; `game.state.turn.defeated` counts them this turn. The
+  defeated card's own effects see `ctx.defeated = true`.
 - `eachOpponent = function(game, seat, victim, ctx)`: makes the effect an
   attack. It runs once for each opponent it reaches (`victim`), after they've
   had the chance to react; a blocked opponent is skipped. `apply`, if the

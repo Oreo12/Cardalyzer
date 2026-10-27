@@ -172,6 +172,12 @@ function Effects.new(rules)
     end,
     text = function(_, effect) return "Gain a " .. cardName(self, effect.id) end,
   })
+  self:register("defeat_free", {
+    apply = function(game, seat, amount)
+      game:prompt(seat, { kind = "defeat", maxCost = amount, optional = true })
+    end,
+    text = function(amount) return "Defeat a card costing " .. amount .. " or less for free" end,
+  })
   self:register("gain_card", {
     apply = function(game, seat, amount)
       game:prompt(seat, { kind = "free_buy", maxCost = amount, optional = true, includeFixed = true })

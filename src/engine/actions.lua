@@ -461,6 +461,11 @@ end
 --   flags.mayBuyToTop  asks: top of the deck or the discard pile (place_bought prompt)
 -- Afterwards a custom effect's onAcquire(game, seat, ctx) runs for the card.
 local function buyNow(game, seat, uid, free, toTop, toHand)
+  local target = locate(game.state, uid) and card(game, uid)
+  if target and Actions.typeDef(game, target).defeat then
+    local _, label = Actions.resourceFor(game.rules, "attack")
+    return fail(say(game, "mustDefeat", { card = target.name, resource = label or "attack" }))
+  end
   local ok, why = isActive(game, seat)
   if not ok then return fail(why) end
   local buyCost = not free and game.rules.turn and game.rules.turn.buyCost
@@ -536,6 +541,49 @@ function Actions.gainFromPile(game, seat, id)
 end
 
 Actions.buy = keepPhaseIfRefused(buyNow)
+
+-- Defeats a card in a market row or on top of a fixed pile whose type has
+-- defeat = true (a monster, a villain): pays its cost from the attack
+-- resource (`free` skips that), sends it to the scrap pile (a fixed pile
+-- with market.returnScrapped keeps it: a monster that never runs out), and
+-- gives its effects to the player as the reward. Cards in play with a
+-- whenYouDefeat(game, seat, ctx, defeated) hook react; turn.defeated counts.
+local function defeatNow(game, seat, uid, free)
+  local ok, why = isActive(game, seat)
+  if not ok then return fail(why) end
+  if not free and not Actions.phaseAllows(game, "attack") and not skipAheadFor(game, "attack") then return notThisPhase(game) end
+  local state = game.state
+  local where, slot, rowMarket = locate(state, uid)
+  if not where then return fail(say(game, "cantBuy")) end
+  if where == "fixed" then uid = state.market.fixed[slot][#state.market.fixed[slot]] end
+  local c = card(game, uid)
+  if not Actions.typeDef(game, c).defeat then return fail(say(game, "cantUse")) end
+  local player = state.players[seat]
+  if not free then
+    local key, label = Actions.resourceFor(game.rules, "attack")
+    if not key then return fail("These rules have no resource with spend = \"attack\".") end
+    if (player.resources[key] or 0) < c.cost then
+      return fail(say(game, "needs", { card = c.name, n = c.cost, resource = label }))
+    end
+    player.resources[key] = player.resources[key] - c.cost
+  end
+  if where == "row" then rowMarket.row[slot] = State.EMPTY else table.remove(state.market.fixed[slot]) end
+  Actions.toScrap(game, uid)
+  Actions.fillMarket(game)
+  state.turn.defeated = (state.turn.defeated or 0) + 1
+  if game.notify then
+    game:notify(say(game, "defeated", { name = player.name, card = c.name, effects = game.effects:describe(c.effects, c.text) }))
+  end
+  game.effects:apply(game, seat, c.effects, { uid = uid, card = c, defeated = true })
+  Actions.trigger(game, seat, "whenYouDefeat", { uid = uid, card = c })
+  return true
+end
+Actions.defeat = keepPhaseIfRefused(defeatNow)
+
+-- Is this market card (or pile top) one to defeat rather than buy?
+function Actions.defeatable(game, uid)
+  return Actions.typeDef(game, card(game, uid)).defeat == true
+end
 
 function Actions.scrapFromPlay(game, seat, uid)
   local ok, why = isActive(game, seat)
@@ -897,6 +945,7 @@ function Actions.promptText(game, prompt)
     })
   end
   if kind == "pick" then return say(game, "chooseCard") end
+  if kind == "defeat" then return say(game, "defeatUpTo", { n = prompt.maxCost or "any" }) end
   if kind == "react" then
     local source = prompt.source and card(game, prompt.source)
     return say(game, "reactTo", {
@@ -965,15 +1014,20 @@ function Actions.targets(game, seat, prompt)
     for _, m in ipairs(State.rows(state)) do
       for _, uid in ipairs(m.row) do addIf(uid) end
     end
-  elseif kind == "free_buy" then
-    for _, m in ipairs(State.rows(state)) do
-      for _, uid in ipairs(m.row) do addIf(uid) end
+  elseif kind == "free_buy" or kind == "defeat" then
+    -- free_buy: cards to buy; defeat: cards to defeat (types with defeat = true)
+    local function fits(uid, where)
+      if uid == State.EMPTY then return end
+      if (Actions.typeDef(game, card(game, uid)).defeat == true) == (kind == "defeat") then addIf(uid, where) end
     end
-    if prompt.includeFixed then
+    for _, m in ipairs(State.rows(state)) do
+      for _, uid in ipairs(m.row) do fits(uid) end
+    end
+    if prompt.includeFixed or kind == "defeat" then
       for _, id in ipairs(game.fixedIds) do
         local pile = state.market.fixed[id]
         local top = pile and pile[#pile]
-        if top then addIf(top, "pile") end
+        if top then fits(top, "pile") end
       end
     end
   elseif kind == "pick" then
@@ -1097,6 +1151,8 @@ function Actions.pick(game, seat, value)
     Actions.fillMarket(game)
   elseif kind == "free_buy" then
     Actions.buy(game, seat, value, true, prompt.toTop, prompt.toHand)
+  elseif kind == "defeat" then
+    Actions.defeat(game, seat, value, true)
   elseif kind == "destroy_base" then
     for _, other in ipairs(game:opponentsOf(seat)) do
       if prompt.bounce then
@@ -1229,7 +1285,7 @@ function Actions.startTurn(game, seat)
   turn.allyFired, turn.played, turn.copies = {}, {}, {}
   turn.factions, turn.atEnd, turn.scrapped = {}, {}, { total = 0, handOrDiscard = 0 }
   turn.granted, turn.gained, turn.allyFactions, turn.completed = {}, {}, {}, 0
-  turn.activated = {}
+  turn.activated, turn.defeated = {}, 0
   turn.phase = 1
   local hooks = game.rules.turn
   if hooks and hooks.onStart then hooks.onStart(game, seat) end
