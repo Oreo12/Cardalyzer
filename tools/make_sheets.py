@@ -81,18 +81,25 @@ WORDS = {
     "scrap_row": "Scrap {n} from the market row",
     "destroy_base": "Destroy {n} base",
     "draw_discard": "Draw {n}, then discard {n}",
+    "gain": "Gain a {card}",
+    "gain_card": "Gain a card costing up to {n}",
+    "opponents_gain": "Each opponent gains a {card}",
+    "opponents_discard_to": "Each opponent discards down to {n}",
 }
+NAMES = {}  # card id -> name, for keywords that name a card (gain:silk)
 
 
 def one_effect(part):
     if part == "reminder":
         return "See text"
+    if part == "block":
+        return "Block the attack"
     key, _, value = part.partition(":")
     key, value = key.strip(), value.strip()
     if key == "custom":
         return "Special"
     if key in WORDS:
-        return WORDS[key].format(n=value)
+        return WORDS[key].format(n=value, card=NAMES.get(value, value))
     sign = "" if value.startswith("-") else "+"
     return f"{sign}{value} {key.replace('_', ' ').title()}"
 
@@ -124,7 +131,7 @@ def draw_card(card):
 
     names = " / ".join(f.replace("_", " ").title() for f in factions)
     subtitle = f"{names} · {card.get('type', 'unit').title()}"
-    if card.get("faction") in (None, "", "none"):
+    if card.get("faction") in (None, "", "none") or names == card.get("type", "unit").title():
         subtitle = card.get("type", "unit").title()
     d.text((CARD_W / 2, 122), subtitle, font=font(20), fill=(80, 80, 80), anchor="mm")
 
@@ -139,6 +146,8 @@ def draw_card(card):
         lines.append("Ally: " + effect_text(card["ally_effects"]))
     if card.get("scrap_effects"):
         lines.append("Scrap: " + effect_text(card["scrap_effects"]))
+    if card.get("react_effects"):
+        lines.append("Reaction: " + effect_text(card["react_effects"]))
     if card.get("text"):
         lines.append(card["text"])
     y = 320
@@ -152,6 +161,9 @@ def draw_card(card):
     if card.get("defense") is not None:
         d.rectangle([CARD_W - 104, CARD_H - 92, CARD_W - 28, CARD_H - 28], fill=(60, 60, 70))
         d.text((CARD_W - 66, CARD_H - 60), str(card["defense"]), font=font(32), fill="white", anchor="mm")
+    if card.get("points"):
+        d.ellipse([CARD_W - 104, CARD_H - 104, CARD_W - 28, CARD_H - 28], fill=(62, 142, 90), outline=(20, 60, 30), width=3)
+        d.text((CARD_W - 66, CARD_H - 66), str(card["points"]), font=font(32), fill="white", anchor="mm")
     d.text((34, CARD_H - 40), "placeholder", font=font(14), fill=(160, 160, 160), anchor="lm")
     return img
 
@@ -173,6 +185,7 @@ def main():
 
     COLORS.update(rules_colors(args.game))
     cards = json.loads((args.game / "cards.json").read_text(encoding="utf-8"))
+    NAMES.update({card["id"]: card["name"] for card in cards})
     art_dir = args.game / "art"
     art_dir.mkdir(exist_ok=True)
     for old in art_dir.glob("sheet_*.jpg"):

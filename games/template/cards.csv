@@ -1,0 +1,10 @@
+id,name,deck,faction,type,cost,copies,starting,effects,ally_effects,scrap_effects,react_effects,points,defense,text
+coin,Coin,starter,none,unit,0,7,,money:1,,,,,,
+strike,Strike,starter,none,unit,0,3,,power:1,,,,,,
+helper,Helper,fixed,none,unit,2,10,,money:2,,,,,,
+scout,Scout,market,red,unit,1,3,,money:1; draw:1,power:2,,,,,
+brute,Brute,market,red,unit,3,3,,power:4,draw:1,,,,,
+banker,Banker,market,blue,unit,3,3,,money:3,money:1,,,,,
+sage,Sage,market,blue,unit,4,2,,draw:2,,money:2,,,,
+tower,Tower,market,red/blue,base,5,2,,power:2 | money:2,,,,,5,
+champion,Champion,market,red,unit,6,1,,power:6; custom:example,,,,,,Shows how a custom effect works.

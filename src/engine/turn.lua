@@ -37,7 +37,8 @@ end
 -- the kit's set supplies that player's starter cards (instead of the usual
 -- ones) and its dealt cards go into their play area; its market cards join
 -- the market deck. kit.stats and kit.handSize override the player's.
-function Turn.setup(state, rules, cards, random, opening, sets, kits)
+-- `supplyChoice` picks the supply piles (see Turn.chooseSupply).
+function Turn.setup(state, rules, cards, random, opening, sets, kits, supplyChoice)
   kits = kits or {}
   local pool = rules.win and rules.win.endWhen and rules.win.endWhen.pool
   if pool then state.pool = pool.amount end
@@ -96,6 +97,14 @@ function Turn.setup(state, rules, cards, random, opening, sets, kits)
         player.deck[#player.deck + 1] = State.newCard(state, card.id)
       end
     end
+    -- the `starting` column: copies of a pile's card in every starting deck
+    if not kit then
+      for _, card in ipairs(cards.list) do
+        if card.starting > 0 and not (card.set and kitSets[card.set]) and (not sets or not card.set or sets[card.set]) then
+          for _ = 1, card.starting do player.deck[#player.deck + 1] = State.newCard(state, card.id) end
+        end
+      end
+    end
     Util.shuffle(player.deck, random)
   end
 
@@ -136,15 +145,18 @@ function Turn.setup(state, rules, cards, random, opening, sets, kits)
     Util.shuffle(m.deck, random)
   end
 
-  for _, card in ipairs(inDeck("fixed")) do
+  local count = #state.players
+  local function makePile(card)
     local pile = {}
-    for _ = 1, card.copies do pile[#pile + 1] = State.newCard(state, card.id) end
+    for _ = 1, Turn.pileSize(rules, card, count) do pile[#pile + 1] = State.newCard(state, card.id) end
     state.market.fixed[card.id] = pile
   end
+  for _, card in ipairs(inDeck("fixed")) do makePile(card) end
+  state.market.supply = Turn.chooseSupply(rules, inDeck("supply"), random, supplyChoice)
+  for _, id in ipairs(state.market.supply) do makePile(cards:get(id)) end
 
   Turn.fillMarket(state)
 
-  local count = #state.players
   local first = math.min(rules.firstSeat or 1, count)
   state.turn.first = first -- a round ends when play comes back round to this seat
   for order = 1, count do
@@ -155,6 +167,47 @@ function Turn.setup(state, rules, cards, random, opening, sets, kits)
   state.turn.active = first
   state.turn.number = 1
   state.started = true
+end
+
+-- How many cards a fixed or supply pile starts with: rules.pileSizes[id]
+-- (a number, { [players] = n, otherwise = n }, or function(players)), else
+-- the card's copies.
+function Turn.pileSize(rules, card, players)
+  local size = rules.pileSizes and rules.pileSizes[card.id]
+  if type(size) == "function" then size = size(players) end
+  if type(size) == "table" then size = size[players] or size.otherwise end
+  return size or card.copies
+end
+
+-- The supply piles for a game (rules.supply), as card ids sorted by cost
+-- then name. `choice` 0 or nil picks rules.supply.count (default 10) of the
+-- `supply` cards at random; choice i uses rules.supply.presets[i].cards
+-- (rules.supply.default names the preset used when the host hasn't chosen).
+-- A preset's card that isn't in the game (its set is off) is left out.
+function Turn.chooseSupply(rules, pool, random, choice)
+  local opts = rules.supply or {}
+  if choice == nil then choice = opts.default or 0 end
+  local picked = {}
+  local preset = choice > 0 and opts.presets and opts.presets[choice]
+  local byId = {}
+  for _, card in ipairs(pool) do byId[card.id] = card end
+  if preset then
+    for _, id in ipairs(preset.cards or {}) do
+      if byId[id] then picked[#picked + 1] = byId[id] end
+    end
+  else
+    local list = {}
+    for _, card in ipairs(pool) do list[#list + 1] = card end
+    Util.shuffle(list, random)
+    for i = 1, math.min(opts.count or 10, #list) do picked[i] = list[i] end
+  end
+  table.sort(picked, function(a, b)
+    if a.cost ~= b.cost then return a.cost < b.cost end
+    return a.name < b.name
+  end)
+  local ids = {}
+  for i, card in ipairs(picked) do ids[i] = card.id end
+  return ids
 end
 
 -- Draws n cards for a seat, reshuffling the discard pile into the deck when

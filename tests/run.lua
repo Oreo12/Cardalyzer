@@ -2781,5 +2781,209 @@ test("turn structure: phases, play and buy costs, starting pools, keeping the ha
   game.rules.turn = nil
 end)
 
+test("supply piles: picked at random or from a preset, pile sizes, rows on the table, a pile running out", function()
+  local game = boot()
+  for _, id in ipairs({ "tide_runner", "grove_tender", "ember_smith", "oracle" }) do game.cards:get(id).deck = "supply" end
+  game.rules.supply = { count = 2, presets = { { label = "Pair", cards = { "oracle", "tide_runner" }, about = "A pair." } } }
+  game.rules.pileSizes = { hireling = { [2] = 4, otherwise = 6 }, oracle = function(n) return n + 1 end }
+  Cardalyzer_onStartGame(HOST)
+  local s = game.state
+  eq(#s.market.supply, 2, "two supply piles")
+  local a, b = game.cards:get(s.market.supply[1]), game.cards:get(s.market.supply[2])
+  assert(a.cost <= b.cost, "sorted by cost")
+  eq(#game.fixedIds, 3, "the fixed pile, then the supply")
+  eq(game.fixedIds[2], a.id, "supply after the fixed piles")
+  assert(game.layout.market.fixed[b.id], "a place on the table")
+  eq(#s.market.fixed.hireling, 4, "pile size for 2 players")
+  for _, uid in ipairs(s.market.deck) do assert(game.cards:get(s.cards[uid]).deck == "market", "supply cards aren't in the market deck") end
+  -- the menu: Random and the preset; host only
+  click(HOST, "cz-setup")
+  assert(tts.ui.xml:find('id="cz-supply-1"', 1, true) and tts.ui.xml:find(">Pair<", 1, true), "the preset in the menu")
+  click(GUEST, "cz-supply-1")
+  eq(game:setupChoice("supply"), nil, "guests can't choose")
+  click(HOST, "cz-supply-1")
+  eq(game:setupChoice("supply"), 1, "the host picked the preset")
+  Cardalyzer_onStartGame(HOST)
+  s = game.state
+  eq(table.concat(s.market.supply, ","), "tide_runner,oracle", "the preset's piles, by cost")
+  eq(#s.market.fixed.oracle, 3, "a pile size from a function of the player count")
+  -- rows on the table: the supply starts its own row
+  game.rules.layout.areas = { fixed = { columns = 4 } }
+  game:relayout()
+  local F = game.layout.market.fixed
+  assert(math.abs(F.tide_runner.position[3] - F.hireling.position[3]) > 3, "supply on a new row")
+  eq(F.oracle.position[3], F.tide_runner.position[3], "the supply's piles share a row")
+  game.rules.layout.areas = nil
+  -- kept through a save
+  local restored = boot(game:save())
+  eq(table.concat(restored.fixedIds, ","), "hireling,tide_runner,oracle", "piles after a reload")
+  -- a named pile running out ends a points game
+  game = restored
+  game.rules.win = { type = "points", endWhen = { pileEmpty = "oracle" } }
+  game.state.market.fixed.oracle = {}
+  Cardalyzer_onEndTurn(HOST)
+  assert(game.state.winner, "the game ended")
+end)
+
+test("keywords that name a card: gain a pile's card, gain a card up to a cost, checked at load", function()
+  local game = boot()
+  local Cards = Cardalyzer.require("engine.cards")
+  Cardalyzer_onStartGame(HOST)
+  local s, p = game.state, game.state.players[1]
+  local pile = #s.market.fixed.hireling
+  local list = Cards.parseEffects("gain:hireling; gold:1")
+  eq(list[1].id, "hireling", "the card named")
+  eq(game.effects:describe(list), "Gain a Hireling, +1 Gold", "described by name")
+  local discard = #p.discard
+  game.effects:apply(game, 1, list, {})
+  eq(#s.market.fixed.hireling, pile - 1, "taken from its pile")
+  eq(#p.discard, discard + 1, "into the discard pile")
+  s.market.fixed.hireling = {}
+  game.effects:apply(game, 1, list, {})
+  eq(#p.discard, discard + 1, "nothing left to gain")
+  s.market.fixed.hireling = { Cardalyzer.require("engine.state").newCard(s, "hireling") }
+  game.effects:apply(game, 1, Cards.parseEffects("gain_card:2"), {})
+  local found = false
+  for _, t in ipairs(Cardalyzer.require("engine.actions").targets(game, 1, p.prompts[1])) do
+    if t.value == s.market.fixed.hireling[1] then found = true end
+  end
+  assert(found, "fixed piles are offered")
+  local bad = Cards.new({ { id = "a", name = "A", cost = 1, copies = 1, effects = "gain:nope" } })
+  local problems = game.effects:validate(bad)
+  assert(problems[1] and problems[1]:find("no card 'nope'", 1, true), "an unknown card is reported: " .. tostring(problems[1]))
+end)
+
+test("attacks hit each opponent; reactions block or help; unanswered ones pass when the turn ends", function()
+  local game = boot()
+  local Cards = Cardalyzer.require("engine.cards")
+  local State = Cardalyzer.require("engine.state")
+  local Util = Cardalyzer.require("engine.util")
+  game.cards:get("tide_runner").reactEffects = Cards.parseEffects("block")
+  Cardalyzer_onStartGame(HOST)
+  local s = game.state
+  local red = s.players[2]
+  local charm = State.newCard(s, "tide_runner")
+  red.hand[#red.hand + 1] = charm
+  local attacker = s.players[1].hand[1]
+  local gainHire = Cards.parseEffects("opponents_gain:hireling")
+  eq(game.effects:isAttack(gainHire[1]), true, "an attack")
+  local pile = #s.market.fixed.hireling
+  game.effects:apply(game, 1, gainHire, { uid = attacker, card = game:cardOf(attacker) })
+  game:refreshUI()
+  eq(red.prompts[1] and red.prompts[1].kind, "react", "Red is asked")
+  eq(#s.market.fixed.hireling, pile, "nothing happens until Red answers")
+  assert(tts.ui.xml:find("Reveal Tide Runner", 1, true), "the reveal button on Red's screen")
+  assert(tts.ui.xml:find("Don't reveal", 1, true), "and the button not to")
+  -- revealing a block
+  assert(game:pick(2, charm), "Red reveals")
+  eq(#red.prompts, 0, "no reactions left: done")
+  eq(#s.market.fixed.hireling, pile, "blocked")
+  assert(Util.indexOf(red.hand, charm), "the reaction stays in the hand")
+  -- not revealing
+  game.effects:apply(game, 1, gainHire, { uid = attacker })
+  assert(game:done(2), "Red doesn't reveal")
+  eq(#s.market.fixed.hireling, pile - 1, "the attack lands")
+  eq(s.cards[red.discard[#red.discard]], "hireling", "Red gained it")
+  -- a reaction that helps: draw first, then the attack lands
+  game.cards:get("tide_runner").reactEffects = Cards.parseEffects("draw:1")
+  local hand = #red.hand
+  game.effects:apply(game, 1, Cards.parseEffects("opponents_discard_to:3"), { uid = attacker })
+  assert(game:pick(2, charm), "Red reveals to draw")
+  eq(red.prompts[1].kind, "discard", "then discards")
+  eq(red.prompts[1].count, hand + 1 - 3, "down to 3 after drawing")
+  while red.prompts[1] do assert(game:pick(2, red.hand[1]), "Red discards on White's turn") end
+  eq(#red.hand, 3, "down to 3")
+  -- no reaction in hand: straight away
+  Util.removeValue(red.hand, charm)
+  red.discard[#red.discard + 1] = charm
+  game.effects:apply(game, 1, gainHire, { uid = attacker })
+  eq(#red.prompts, 0, "nothing to ask")
+  eq(#s.market.fixed.hireling, pile - 2, "landed at once")
+  -- unanswered when White's turn ends: taken as not revealed
+  Util.removeValue(red.discard, charm)
+  red.hand[#red.hand + 1] = charm
+  game.effects:apply(game, 1, gainHire, { uid = attacker })
+  -- saved while waiting
+  game = boot(game:save())
+  game.cards:get("tide_runner").reactEffects = Cards.parseEffects("block")
+  s, red = game.state, game.state.players[2]
+  eq(red.prompts[1].kind, "react", "still waiting after a reload")
+  Cardalyzer_onEndTurn(HOST)
+  eq(#red.prompts, 0, "passed at the end of White's turn")
+  eq(#s.market.fixed.hireling, pile - 3, "and it landed")
+  -- three players: the attack goes round from the attacker's left; custom attacks too
+  game = boot()
+  click(HOST, "cz-players-3")
+  Cardalyzer_onStartGame(HOST)
+  local order = {}
+  game.effects:registerCustom("hex", { eachOpponent = function(_, from, victim) order[#order + 1] = from .. ">" .. victim end })
+  game.effects:apply(game, 2, { { key = "custom", fn = "hex" } }, {})
+  eq(table.concat(order, ","), "2>3,2>1", "from the attacker's left")
+end)
+
+test("skipAhead: a play or buy for a later phase moves the turn on; a refused one doesn't", function()
+  local game = boot()
+  local rules = game.rules
+  rules.resources[#rules.resources + 1] = { key = "actions", label = "Actions", start = 1 }
+  rules.turn = {
+    phases = {
+      { key = "action", label = "Action", play = "unit", buy = false },
+      { key = "buy", label = "Buy", play = "building" },
+    },
+    skipAhead = true,
+  }
+  Cardalyzer_onStartGame(HOST)
+  local s, p = game.state, game.state.players[1]
+  local row
+  for _, uid in ipairs(s.market.row) do if uid ~= "" then row = uid end end
+  p.resources.gold = 0
+  local ok = game:buy(1, row)
+  assert(not ok, "can't afford it")
+  eq(s.turn.phase, 1, "still the Action phase")
+  local vault = Cardalyzer.require("engine.state").newCard(s, "seed_vault")
+  p.hand[#p.hand + 1] = vault
+  assert(game:play(1, vault), "a building in the Action phase")
+  eq(s.turn.phase, 2, "moved on to the Buy phase")
+  local unit
+  for _, uid in ipairs(p.hand) do if game:cardOf(uid).type == "unit" then unit = uid end end
+  ok = game:play(1, unit)
+  assert(not ok, "no going back to the Action phase")
+  game.rules.turn = nil
+end)
+
+test("skipAhead: Play all with nothing to play in this phase plays the next phase's cards", function()
+  local game = boot()
+  game.rules.turn = {
+    phases = {
+      { key = "action", label = "Action", play = "unit", buy = false },
+      { key = "buy", label = "Buy", play = "building" },
+    },
+    skipAhead = true,
+  }
+  Cardalyzer_onStartGame(HOST)
+  local s, p = game.state, game.state.players[1]
+  for _, uid in ipairs(p.hand) do p.deck[#p.deck + 1] = uid end
+  p.hand = {}
+  local State = Cardalyzer.require("engine.state")
+  p.hand[1] = State.newCard(s, "seed_vault")
+  p.hand[2] = State.newCard(s, "seed_vault")
+  game:refreshUI()
+  assert(tts.ui.xml:find("Play all (2)", 1, true), "Play all offers the Buy phase's cards")
+  eq(s.turn.phase, 1, "drawing the UI doesn't move the turn on")
+  assert(game:playAll(1), "Play all")
+  eq(s.turn.phase, 2, "moved on to the Buy phase")
+  eq(#p.hand, 0, "played both")
+  -- with an action to play, Play all stays in the Action phase
+  game = boot()
+  game.rules.turn = { phases = { { key = "action", play = "unit" }, { key = "buy", play = "building" } }, skipAhead = true }
+  Cardalyzer_onStartGame(HOST)
+  local pl = game.state.players[1]
+  pl.hand[#pl.hand + 1] = State.newCard(game.state, "seed_vault")
+  assert(game:playAll(1), "Play all")
+  eq(game.state.turn.phase, 1, "still the Action phase")
+  eq(#pl.hand, 1, "the building waits")
+  game.rules.turn = nil
+end)
+
 print(string.format("\n%d passed, %d failed", passed, failed))
 if failed > 0 then os.exit(1) end

@@ -135,7 +135,11 @@ end
 -- many seats are playing (default Zones.defaultCount).
 -- `facing` is the seat the market faces (rules.market.turnsWithPlayer: the
 -- player whose turn it is); default seat 1.
-function Zones.layout(rules, fixedIds, count, facing)
+-- The fixed piles sit in one line to the right of the row, or, with
+-- rules.layout.areas.fixed = { columns = n }, in rows of up to n piles
+-- (centred, when there's no market row); `breaks` ({ [i] = true }) starts a
+-- new row at pile i (the supply after the fixed piles).
+function Zones.layout(rules, fixedIds, count, facing, breaks)
   local y = layoutValue(rules, "surfaceY") + 0.4
   local gap = layoutValue(rules, "cardSpacing")
   local yaw = layoutValue(rules, "cardYaw")
@@ -147,9 +151,23 @@ function Zones.layout(rules, fixedIds, count, facing)
   -- `pitch` apart, and the seats move back to make room.
   local extras = rules.markets or {}
   local pitch = 3.4 * layoutValue(rules, "cardScale") + 1.2
-  local grow = #extras * pitch / 2
+  local over = rules.layout and rules.layout.areas or {}
+  local columns = type(over.fixed) == "table" and over.fixed.columns
+  local pileRows, line = {}, {}
+  for i, id in ipairs(fixedIds or {}) do
+    if columns and #line > 0 and (#line >= columns or (breaks and breaks[i])) then
+      pileRows[#pileRows + 1] = line
+      line = {}
+    end
+    line[#line + 1] = id
+  end
+  pileRows[#pileRows + 1] = line
+  -- lanes: the market row (with the first row of piles), further rows of
+  -- piles, then the extra markets, `pitch` apart and centred
+  local lanes = #pileRows + #extras
+  local grow = (lanes - 1) * pitch / 2
   distance = distance + grow
-  local mainOut = -#extras * pitch / 2
+  local mainOut = -(lanes - 1) * pitch / 2
 
   local result = { seats = {}, market = { row = {}, fixed = {} }, markets = {} }
   local areas = Zones.seatAreas(rules)
@@ -182,7 +200,6 @@ function Zones.layout(rules, fixedIds, count, facing)
   -- seat 1. rules.layout.areas.market = { x, z } moves all of it;
   -- marketDeck and scrap take { along, out } from that centre, or false to
   -- leave them off the table. A market with rowSize 0 has no row and no deck.
-  local over = rules.layout and rules.layout.areas or {}
   local mo = type(over.market) == "table" and over.market or {}
   -- built in the facing seat's frame, so the whole market (row, piles and
   -- outlines) reads for that player
@@ -202,20 +219,23 @@ function Zones.layout(rules, fixedIds, count, facing)
   end
   result.market.deck = piece("marketDeck", first - gap * 1.5)
   if n == 0 then result.market.deck.hidden = true end
-  local x = first + (n - 1) * gap + gap * 1.5
-  if n == 0 then x = 0 end
-  for _, id in ipairs(fixedIds or {}) do
-    result.market.fixed[id] = spot(centre, y, x, mainOut, yaw)
-    x = x + gap
+  local widest = 0
+  for _, r in ipairs(pileRows) do widest = math.max(widest, #r) end
+  local x0 = first + (n - 1) * gap + gap * 1.5
+  if n == 0 then x0 = columns and -(widest - 1) / 2 * gap or 0 end
+  for r, ids in ipairs(pileRows) do
+    for j, id in ipairs(ids) do
+      result.market.fixed[id] = spot(centre, y, x0 + (j - 1) * gap, mainOut + (r - 1) * pitch, yaw)
+    end
   end
-  result.market.scrap = piece("scrap", x + gap * 0.5)
+  result.market.scrap = piece("scrap", x0 + widest * gap + gap * 0.5)
   result.market.area = spot(centre, y, 0, mainOut, yaw, { n * gap + 1, 3, 4.5 })
   -- Each extra market: its row, with its deck to the left, the next row out.
   -- rules.layout.areas[key] = { along, out } moves one.
   for k, m in ipairs(extras) do
     local o = type(over[m.key]) == "table" and over[m.key] or {}
     local size = m.rowSize or 0
-    local out = (o.out or (mainOut + k * pitch))
+    local out = (o.out or (mainOut + (#pileRows - 1 + k) * pitch))
     local start = (o.along or 0) - (size - 1) / 2 * gap
     local row = {}
     for i = 1, size do row[i] = spot(centre, y, start + (i - 1) * gap, out, yaw) end

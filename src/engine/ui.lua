@@ -60,7 +60,11 @@ function UI_.promptFor(game, seat)
   for _, t in ipairs(Actions.targets(game, seat, prompt)) do
     choices[#choices + 1] = { id = "cz-pick-" .. t.value, label = t.label }
   end
-  if prompt.optional then choices[#choices + 1] = { id = "cz-done", label = say(prompt.kind == "reminder" and "done" or "skip") } end
+  if prompt.optional then
+    local word = prompt.kind == "reminder" and "done" or "skip"
+    if prompt.kind == "react" then word = prompt.picked and "done" or "noReveal" end
+    choices[#choices + 1] = { id = "cz-done", label = say(word) }
+  end
   return Actions.promptText(game, prompt) .. more, choices
 end
 
@@ -75,8 +79,7 @@ function UI_.actions(game)
 
   out.prompt, out.choices = UI_.promptFor(game, seat)
 
-  local canPlay = 0
-  for _, uid in ipairs(p.hand) do if Actions.playable(game, seat, uid) then canPlay = canPlay + 1 end end
+  local canPlay = Actions.playAllCount(game, seat)
   if canPlay > 0 and not Actions.handBlocked(game, seat) then add(out.buttons, "cz-playall", say("playAll", { n = canPlay })) end
 
   local key, label = Actions.resourceFor(game.rules, "attack")
@@ -378,7 +381,7 @@ local function seatRow(game, seat)
   -- only in a game that dealt objectives (their set may be switched off)
   local goals = rules.objectives and #p.completed + #p.objectives > 0 and say("goalsCount", { label = rules.objectives.label or "Goals",
     done = #p.completed, total = rules.objectives.toWin or #p.completed + #p.objectives }) or ""
-  local score = rules.win and rules.win.type == "points" and say("score", { n = Actions.score(game, seat) }) or ""
+  local score = rules.win and rules.win.type == "points" and say(Actions.score(game, seat) == 1 and "scoreOne" or "score", { n = Actions.score(game, seat) }) or ""
   local piles = text("cz_seat_" .. seat .. "_piles", say("piles", { deck = #p.deck, discard = #p.discard }) .. goals .. score, 11,
     'color="#C8CED6" alignment="MiddleRight" preferredHeight="14"' .. FX)
   local h = math.max(symbolSize("seat"), symbolSize("base"), 20)
@@ -652,6 +655,19 @@ function UI_.setRows(game)
   return UI_.optionRows("cz_sets", say("sets"), list)
 end
 
+-- The supply choice (cz-supply-<i>; 0 is random), when rules.supply lists presets.
+function UI_.supplyRows(game)
+  local supply = game.rules.supply
+  if not supply or not supply.presets or #supply.presets == 0 then return {} end
+  local chosen = game:setupChoice("supply") or supply.default or 0
+  local list = { { id = "cz-supply-0", label = say("random"), on = chosen == 0,
+    tooltip = "Lay out " .. (supply.count or 10) .. " piles picked at random." } }
+  for i, preset in ipairs(supply.presets) do
+    list[#list + 1] = { id = "cz-supply-" .. i, label = preset.label, on = chosen == i, tooltip = preset.about }
+  end
+  return UI_.optionRows("cz_supply", supply.label or say("supply"), list)
+end
+
 function UI_.setupPanel(game, color)
   use(game)
   local buttons = { { id = "cz-new", label = say("playGame") } }
@@ -674,6 +690,7 @@ function UI_.setupPanel(game, color)
     if on then add(UI_.kitSummaryRow(game)) end
   end
   for _, r in ipairs(UI_.setRows(game)) do add(r) end
+  for _, r in ipairs(UI_.supplyRows(game)) do add(r) end
   -- rules.ui.setupMenu(game, color, menu, UI) may change the menu (its
   -- title, its rows of XML, each rowHeight tall, and its buttons) or return
   -- XML of its own to draw instead. See README, "Customising the UI".

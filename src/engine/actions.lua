@@ -295,6 +295,22 @@ function Actions.playable(game, seat, uid)
   return Actions.phaseAllows(game, "play", c) and canPay(game, game.state.players[seat], playCost(game, c))
 end
 
+-- rules.turn.skipAhead: playing a card or buying that only a later phase
+-- allows moves the turn on to that phase first (playing a treasure in the
+-- Action phase starts the Buy phase). Returns true if it moved on.
+local function skipAheadFor(game, what, c)
+  local t = game.rules.turn
+  if not (t and t.skipAhead and t.phases) then return false end
+  local turn = game.state.turn
+  for i = (turn.phase or 1) + 1, #t.phases do
+    local saved = turn.phase
+    turn.phase = i
+    if Actions.phaseAllows(game, what, c) then return true end
+    turn.phase = saved
+  end
+  return false
+end
+
 -- Moves the turn on to its next phase.
 function Actions.nextPhase(game, seat)
   local ok, why = isActive(game, seat)
@@ -306,7 +322,7 @@ function Actions.nextPhase(game, seat)
   return true
 end
 
-function Actions.play(game, seat, uid)
+local function playNow(game, seat, uid)
   local ok, why = isActive(game, seat)
   if not ok then return fail(why) end
   local waiting = Actions.handBlocked(game, seat)
@@ -314,7 +330,7 @@ function Actions.play(game, seat, uid)
   local player = game.state.players[seat]
   if not Util.indexOf(player.hand, uid) then return fail(say(game, "notInHand")) end
   local c = card(game, uid)
-  if not Actions.phaseAllows(game, "play", c) then return notThisPhase(game) end
+  if not Actions.phaseAllows(game, "play", c) and not skipAheadFor(game, "play", c) then return notThisPhase(game) end
   local cost = playCost(game, c)
   if not canPay(game, player, cost) then
     return fail(say(game, "notEnough", { resource = resourceLabel(game, cost.key), card = c.name, n = cost.amount or 1 }))
@@ -324,6 +340,17 @@ function Actions.play(game, seat, uid)
   Actions.enterPlay(game, seat, uid)
   return true
 end
+
+-- A refused play or buy leaves the turn in the phase it was in (see skipAheadFor).
+local function keepPhaseIfRefused(fn)
+  return function(game, ...)
+    local saved = game.state.turn.phase
+    local ok, why = fn(game, ...)
+    if not ok then game.state.turn.phase = saved end
+    return ok, why
+  end
+end
+Actions.play = keepPhaseIfRefused(playNow)
 
 -- Puts a card into play (from hand, or straight from the market): onto the
 -- bases row if persistent, else the play row; records it in turn.played,
@@ -357,6 +384,34 @@ function Actions.typeMatches(filter, c)
   return false
 end
 
+-- What Play all would play: the number of cards playable in this phase, or,
+-- with rules.turn.skipAhead and nothing playable now, in the first later
+-- phase that has some (and that phase). The turn is left in its phase.
+function Actions.playAllCount(game, seat)
+  local turn = game.state.turn
+  local function count()
+    local n = 0
+    for _, uid in ipairs(game.state.players[seat].hand) do
+      if Actions.playable(game, seat, uid) then n = n + 1 end
+    end
+    return n
+  end
+  local n = count()
+  local t = game.rules.turn
+  if n > 0 or not (t and t.skipAhead and t.phases) then return n, nil end
+  local saved = turn.phase
+  for i = (saved or 1) + 1, #t.phases do
+    turn.phase = i
+    n = count()
+    if n > 0 then
+      turn.phase = saved
+      return n, i
+    end
+  end
+  turn.phase = saved
+  return 0, nil
+end
+
 function Actions.playAll(game, seat)
   local ok, why = isActive(game, seat)
   if not ok then return fail(why) end
@@ -364,6 +419,8 @@ function Actions.playAll(game, seat)
   if waiting then return fail(say(game, "firstDo", { what = Actions.promptText(game, waiting) })) end
   local hand = game.state.players[seat].hand
   if #hand == 0 then return fail(say(game, "handEmpty")) end
+  local _, later = Actions.playAllCount(game, seat)
+  if later then game.state.turn.phase = later end
   -- Plays every card it can, in hand order, again and again (a card played
   -- may draw more or pay for the next); stops early if a card played asks
   -- for a card from the hand first.
@@ -403,11 +460,11 @@ end
 --   flags.buyToTop     on top of the deck
 --   flags.mayBuyToTop  asks: top of the deck or the discard pile (place_bought prompt)
 -- Afterwards a custom effect's onAcquire(game, seat, ctx) runs for the card.
-function Actions.buy(game, seat, uid, free, toTop, toHand)
+local function buyNow(game, seat, uid, free, toTop, toHand)
   local ok, why = isActive(game, seat)
   if not ok then return fail(why) end
   local buyCost = not free and game.rules.turn and game.rules.turn.buyCost
-  if not free and not Actions.phaseAllows(game, "buy") then return notThisPhase(game) end
+  if not free and not Actions.phaseAllows(game, "buy") and not skipAheadFor(game, "buy") then return notThisPhase(game) end
   if not canPay(game, game.state.players[seat], buyCost) then
     return fail(say(game, "notEnough", { resource = resourceLabel(game, buyCost.key), card = card(game, uid).name, n = buyCost.amount or 1 }))
   end
@@ -465,6 +522,20 @@ function Actions.buy(game, seat, uid, free, toTop, toHand)
   end
   return true
 end
+
+-- Gains the top card of pile `id` (a fixed or supply pile) into the seat's
+-- discard pile, if the pile has any left ("gain a Silk", "each opponent gains
+-- a Gossip"). Returns the uid gained.
+function Actions.gainFromPile(game, seat, id)
+  local pile = game.state.market.fixed[id]
+  if not pile or #pile == 0 then return nil end
+  local uid = table.remove(pile)
+  local player = game.state.players[seat]
+  player.discard[#player.discard + 1] = uid
+  return uid
+end
+
+Actions.buy = keepPhaseIfRefused(buyNow)
 
 function Actions.scrapFromPlay(game, seat, uid)
   local ok, why = isActive(game, seat)
@@ -589,9 +660,15 @@ end
 --   pool = { key, amount }  a shared pool of a stat (`amount` to start), taken
 --                        from as players gain that stat, has run out
 --   rounds = n           n full rounds have been played
+--   pileEmpty = "id" or { "id", ... }  one of these fixed or supply piles is empty
 --   custom = function(game) return true end
 local function endTriggered(game)
   local s, e = game.state, game.rules.win.endWhen or {}
+  if e.pileEmpty then
+    for _, id in ipairs(type(e.pileEmpty) == "table" and e.pileEmpty or { e.pileEmpty }) do
+      if s.market.fixed[id] and #s.market.fixed[id] == 0 then return true end
+    end
+  end
   if e.marketEmpty and #s.market.deck == 0 then
     local empty = true
     for _, uid in ipairs(s.market.row) do if uid ~= State.EMPTY then empty = false end end
@@ -689,11 +766,94 @@ function Actions.attack(game, seat, target, baseUid)
 end
 
 ---------------------------------------------------------------------------
+-- Attacks and reactions: an effect that hits each opponent ("each opponent
+-- gains a Gossip") goes to them one at a time, starting on the attacker's
+-- left. An opponent holding a card with react_effects is asked first, on
+-- their own screen, whether to reveal it: its react effects apply to them
+-- (`block` makes the attack miss them), and they may reveal another. The
+-- attack then hits them unless it was blocked. The attacker plays on
+-- meanwhile; anything still unanswered when their turn ends is taken as
+-- "don't reveal".
+---------------------------------------------------------------------------
+
+-- The other seats still in the game, in turn order from seat's left.
+local function opponentsInOrder(game, seat)
+  local out, count = {}, #game.state.players
+  for step = 1, count - 1 do
+    local other = (seat + step - 1) % count + 1
+    if not game.state.players[other].out then out[#out + 1] = other end
+  end
+  return out
+end
+
+-- Reaction cards in the seat's hand not yet revealed to this attack.
+local function reactions(game, seat, hit)
+  local out = {}
+  for _, uid in ipairs(game.state.players[seat].hand) do
+    if #card(game, uid).reactEffects > 0 and not (hit and hit.revealed[uid]) then out[#out + 1] = uid end
+  end
+  return out
+end
+
+function Actions.hitOpponents(game, seat, effect, ctx)
+  for _, other in ipairs(opponentsInOrder(game, seat)) do
+    -- plain data, so a waiting reaction survives onSave
+    local hit = { kind = "react", attacker = seat, effect = effect, source = ctx.uid, revealed = {}, optional = true, count = 99 }
+    if #reactions(game, other, hit) > 0 then
+      Actions.prompt(game, other, hit)
+    else
+      Actions.resolveHit(game, other, hit)
+    end
+  end
+end
+
+-- The attack in `hit` lands on `victim`, unless a reaction blocked it.
+function Actions.resolveHit(game, victim, hit)
+  local name = game.state.players[victim].name
+  if hit.blocked then
+    if game.notify then game:notify(say(game, "unaffected", { name = name })) end
+    return
+  end
+  local effect = hit.effect
+  local ctx = { uid = hit.source, card = hit.source and card(game, hit.source) or nil }
+  if effect.key == "custom" then
+    game.effects.custom[effect.fn].eachOpponent(game, hit.attacker, victim, ctx)
+  else
+    game.effects.handlers[effect.key].toOpponent(game, hit.attacker, victim, effect.amount, ctx, effect)
+  end
+  Actions.settle(game, victim)
+end
+
+-- Reveals a reaction card against the attack in `hit` (the victim's prompt).
+local function reveal(game, seat, uid, hit)
+  hit.revealed[uid] = true
+  local c = card(game, uid)
+  if game.notify then
+    game:notify(say(game, "reveals", { name = game.state.players[seat].name, card = c.name, effects = game.effects:describe(c.reactEffects, c.text) }))
+  end
+  game.effects:apply(game, seat, c.reactEffects, { uid = uid, card = c, attack = hit })
+end
+
+-- At the end of the attacker's turn, reactions nobody answered are passed on.
+local function closeReactions(game, attacker)
+  for seat, p in ipairs(game.state.players) do
+    local waiting = {}
+    for i = #p.prompts, 1, -1 do
+      if p.prompts[i].kind == "react" and p.prompts[i].attacker == attacker then
+        table.insert(waiting, 1, table.remove(p.prompts, i))
+      end
+    end
+    for _, hit in ipairs(waiting) do Actions.resolveHit(game, seat, hit) end
+  end
+end
+
+---------------------------------------------------------------------------
 -- Prompts: choices a player answers from the action panel, first in first out.
 -- A prompt is plain data so it survives onSave:
 --   { kind, count, optional, text?, from?, options?, maxCost?, uid?, owe?,
 --     cardType?, includeFixed?, toTop?, drawPerPick?, custom?, exclude? }
 -- kinds: choice, scrap, discard, scrap_row, destroy_base, free_buy, reminder,
+-- react (reveal a reaction to an attack; see Actions.hitOpponents),
 -- opponent (pick an opponent; `owe` such as { discard = 1 } is added to theirs),
 -- place_bought (put the bought card `uid` on top of the deck or leave it in the discard pile),
 -- pick (pick a card you have in play; rules.customEffects[custom].onPick runs)
@@ -737,6 +897,14 @@ function Actions.promptText(game, prompt)
     })
   end
   if kind == "pick" then return say(game, "chooseCard") end
+  if kind == "react" then
+    local source = prompt.source and card(game, prompt.source)
+    return say(game, "reactTo", {
+      name = game.state.players[prompt.attacker].name,
+      card = source and source.name or "",
+      effects = game.effects:describe({ prompt.effect }),
+    })
+  end
   if kind == "place_bought" then return say(game, "whereGoes", { card = card(game, prompt.uid).name }) end
   if kind == "opponent" then
     local owed = prompt.owe and prompt.owe.discard
@@ -835,6 +1003,10 @@ function Actions.targets(game, seat, prompt)
     for _, other in ipairs(game:opponentsOf(seat)) do
       out[#out + 1] = { value = tostring(other), label = state.players[other].name }
     end
+  elseif kind == "react" then
+    for _, uid in ipairs(reactions(game, seat, prompt)) do
+      out[#out + 1] = { value = uid, label = say(game, "reveal", { card = card(game, uid).name }) }
+    end
   elseif kind == "place_bought" then
     if Util.indexOf(player.discard, prompt.uid) then
       out[1] = { value = "top", label = say(game, "topOfDeck") }
@@ -857,6 +1029,7 @@ end
 local function finish(game, seat)
   local prompt = table.remove(game.state.players[seat].prompts, 1)
   if not prompt then return end
+  if prompt.kind == "react" then return Actions.resolveHit(game, seat, prompt) end
   if prompt.drawPerPick and (prompt.picked or 0) > 0 then
     game:draw(seat, prompt.drawPerPick * prompt.picked)
   end
@@ -936,6 +1109,8 @@ function Actions.pick(game, seat, value)
   elseif kind == "opponent" then
     local owed = state.players[tonumber(value)].owed
     for key, n in pairs(prompt.owe or {}) do owed[key] = (owed[key] or 0) + n end
+  elseif kind == "react" then
+    reveal(game, seat, value, prompt)
   elseif kind == "place_bought" and value == "top" then
     Util.removeValue(player.discard, prompt.uid)
     player.deck[#player.deck + 1] = prompt.uid
@@ -1082,6 +1257,7 @@ function Actions.endTurn(game, seat)
     end
   end
   while player.prompts[1] do finish(game, seat) end
+  closeReactions(game, seat)
   player.flags = {}
   local hooks = game.rules.turn
   if hooks and hooks.onEnd then hooks.onEnd(game, seat) end

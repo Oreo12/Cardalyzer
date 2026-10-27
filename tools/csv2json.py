@@ -19,12 +19,15 @@ COLUMNS = ["id", "name", "deck", "faction", "type", "cost", "copies",
            "effects", "ally_effects", "scrap_effects", "defense", "text"]
 # Optional columns: double_ally_effects (need two other cards of the faction)
 # and set (which expansion a card is from, toggled in the New Game menu).
-OPTIONAL = ["double_ally_effects", "set", "condition", "points"]
+# react_effects: revealed from the hand when an opponent attacks.
+# starting: copies in each player's starting deck, for a card that is also in a pile.
+OPTIONAL = ["double_ally_effects", "set", "condition", "points", "react_effects", "starting"]
 REQUIRED = ["id", "name", "cost", "copies", "effects"]
-DECKS = {"starter", "market", "fixed", "dealt", "objective"}
-# One effect: keyword:amount, custom:name or a bare keyword like reminder,
-# optionally prefixed by a faction (blob=combat:2, ally effects only).
-SINGLE = re.compile(r"^(?:[\w]+\s*:\s*-?\d+|custom\s*:\s*[\w-]+|reminder)$")
+DECKS = {"starter", "market", "fixed", "dealt", "objective", "supply"}
+# One effect: keyword:amount, custom:name, a keyword that names a card
+# (gain:silk) or a bare keyword like reminder, optionally prefixed by a
+# faction (blob=combat:2, ally effects only).
+SINGLE = re.compile(r"^(?:[\w]+\s*:\s*-?\d+|custom\s*:\s*[\w-]+|(?:gain|opponents_gain)\s*:\s*[a-z0-9_]+|reminder|block)$")
 FACTION_PREFIX = re.compile(r"^[\w]+\s*=\s*")
 ID = re.compile(r"^[a-z0-9_]+$")
 
@@ -83,10 +86,12 @@ def convert(rows):
             "ally_effects": check_effects(row.get("ally_effects"), "ally_effects", card_id, errors),
             "scrap_effects": check_effects(row.get("scrap_effects"), "scrap_effects", card_id, errors),
             "double_ally_effects": check_effects(row.get("double_ally_effects"), "double_ally_effects", card_id, errors) or None,
+            "react_effects": check_effects(row.get("react_effects"), "react_effects", card_id, errors) or None,
             "set": row.get("set") or None,
             "condition": row.get("condition") or None,
             "defense": parse_int(row.get("defense"), "defense", card_id, errors, allow_blank=True),
             "points": parse_int(row.get("points"), "points", card_id, errors, allow_blank=True),
+            "starting": parse_int(row.get("starting"), "starting", card_id, errors, allow_blank=True),
             "text": row.get("text", ""),
         }
         cards.append({k: v for k, v in card.items() if v is not None})
