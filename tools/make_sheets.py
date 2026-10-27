@@ -93,7 +93,7 @@ def one_effect(part):
     if part == "reminder":
         return "See text"
     if part == "block":
-        return "Unaffected by the attack"
+        return "Block the attack"
     key, _, value = part.partition(":")
     key, value = key.strip(), value.strip()
     if key == "custom":

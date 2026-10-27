@@ -197,7 +197,7 @@ function Effects.new(rules)
   })
   self:register("block", {
     apply = function(_, _, _, ctx) if ctx.attack then ctx.attack.blocked = true end end,
-    text = function() return "You are unaffected by the attack" end,
+    text = function() return "Block the attack" end,
   })
 
   for name, def in pairs(rules.customEffects or {}) do

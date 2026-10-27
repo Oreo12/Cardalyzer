@@ -381,7 +381,7 @@ local function seatRow(game, seat)
   -- only in a game that dealt objectives (their set may be switched off)
   local goals = rules.objectives and #p.completed + #p.objectives > 0 and say("goalsCount", { label = rules.objectives.label or "Goals",
     done = #p.completed, total = rules.objectives.toWin or #p.completed + #p.objectives }) or ""
-  local score = rules.win and rules.win.type == "points" and say("score", { n = Actions.score(game, seat) }) or ""
+  local score = rules.win and rules.win.type == "points" and say(Actions.score(game, seat) == 1 and "scoreOne" or "score", { n = Actions.score(game, seat) }) or ""
   local piles = text("cz_seat_" .. seat .. "_piles", say("piles", { deck = #p.deck, discard = #p.discard }) .. goals .. score, 11,
     'color="#C8CED6" alignment="MiddleRight" preferredHeight="14"' .. FX)
   local h = math.max(symbolSize("seat"), symbolSize("base"), 20)

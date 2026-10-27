@@ -95,7 +95,7 @@ local rules = {
     surfaceY = 1.1,
     cardSpacing = 2.8,
     seating = "around",
-    seatDistance = 18,
+    seatRadius = { x = 32, z = 22 }, -- an oval that fits a large (custom) table
     areas = { fixed = { columns = 8 }, bases = false },
   },
 

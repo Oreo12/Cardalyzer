@@ -22,6 +22,7 @@ Words.DEFAULT = {
   wins = "{name} wins!",
   ["and"] = " and ",
   score = " · {n} points",
+  scoreOne = " · {n} point",
   pool = "{n} {label} left",
   piles = "Deck {deck} · Discard {discard}",
   goalsCount = " · {label} {done}/{total}",
