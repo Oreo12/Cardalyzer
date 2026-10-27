@@ -587,6 +587,40 @@ local function defeatNow(game, seat, uid, free)
 end
 Actions.defeat = keepPhaseIfRefused(defeatNow)
 
+-- Hires a card from a market row for this turn (a type with hire = true,
+-- Shards of Infinity's Mercenaries): pays its cost like a buy, puts it
+-- straight into play (its effects apply), and at the end of the turn it goes
+-- to the bottom of its market's deck instead of the discard pile.
+local function hireNow(game, seat, uid)
+  local ok, why = isActive(game, seat)
+  if not ok then return fail(why) end
+  if not Actions.phaseAllows(game, "buy") and not skipAheadFor(game, "buy") then return notThisPhase(game) end
+  local state = game.state
+  local m, slot = State.rowOf(state, uid)
+  if not m then return fail(say(game, "notInRow")) end
+  local c = card(game, uid)
+  if not Actions.typeDef(game, c).hire then return fail(say(game, "cantUse")) end
+  local player = state.players[seat]
+  local buyCost = game.rules.turn and game.rules.turn.buyCost
+  if not canPay(game, player, buyCost) then
+    return fail(say(game, "notEnough", { resource = resourceLabel(game, buyCost.key), card = c.name, n = buyCost.amount or 1 }))
+  end
+  local key, label = Actions.resourceFor(game.rules, "buy")
+  if not key then return fail("These rules have no resource with spend = \"buy\".") end
+  if (player.resources[key] or 0) < c.cost then
+    return fail(say(game, "notEnough", { resource = label, card = c.name, n = c.cost }))
+  end
+  player.resources[key] = player.resources[key] - c.cost
+  pay(player, buyCost)
+  m.row[slot] = State.EMPTY
+  state.turn.hired = state.turn.hired or {}
+  state.turn.hired[uid] = m.key or "main"
+  Actions.fillMarket(game)
+  Actions.enterPlay(game, seat, uid)
+  return true
+end
+Actions.hire = keepPhaseIfRefused(hireNow)
+
 -- Is this market card (or pile top) one to defeat rather than buy?
 function Actions.defeatable(game, uid)
   return Actions.typeDef(game, card(game, uid)).defeat == true
@@ -1463,6 +1497,17 @@ function Actions.endTurn(game, seat)
     Util.removeValue(player.play, uid)
     player.lasting[#player.lasting + 1] = uid
   end
+  -- Cards hired this turn go to the bottom of their market's deck.
+  for uid, key in pairs(turn.hired or {}) do
+    if Util.removeValue(player.play, uid) or Util.removeValue(player.bases, uid) then
+      local market = game.state.market
+      for _, m in ipairs(State.rows(game.state)) do
+        if (m.key or "main") == key then market = m end
+      end
+      table.insert(market.deck, 1, uid)
+    end
+  end
+  turn.hired = {}
 
   Turn.endTurn(game.state, game.rules, game.random)
   for _, uid in ipairs(keep) do player.hand[#player.hand + 1] = uid end

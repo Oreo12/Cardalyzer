@@ -282,13 +282,27 @@ end
 -- { color, textColor ("#RRGGBB" or {r, g, b, a}), fontSize, width, height,
 --   position = {x, y, z} on the card }. Its label is the "buy" word, or the
 -- "defeat" word for a card to defeat (a type with defeat = true).
-local function addBuyButton(game, obj, cost, word)
+-- A card to hire (a type with hire = true) also gets a Hire button at the
+-- other end of the card (click: Cardalyzer_onHire).
+local function addBuyButton(game, obj, cost, word, hire)
   local look = game.rules.ui and game.rules.ui.buyButton or {}
+  local position = look.position or { 0, 0.6, 1.7 }
+  if hire then
+    obj.createButton({
+      click_function = "Cardalyzer_onHire",
+      function_owner = Global,
+      label = require("engine.words").say(game.rules, "hire", { n = cost }),
+      position = { position[1], position[2], -position[3] },
+      width = look.width or 900, height = look.height or 260, font_size = look.fontSize or 150,
+      color = Util.color(look.color) or { 0.1, 0.1, 0.1, 0.9 },
+      font_color = Util.color(look.textColor) or { 1, 0.85, 0.35 },
+    })
+  end
   obj.createButton({
     click_function = "Cardalyzer_onBuy",
     function_owner = Global,
     label = require("engine.words").say(game.rules, word or "buy", { n = cost }),
-    position = look.position or { 0, 0.6, 1.7 },
+    position = position,
     width = look.width or 900, height = look.height or 260, font_size = look.fontSize or 150,
     color = Util.color(look.color) or { 0.1, 0.1, 0.1, 0.9 },
     font_color = Util.color(look.textColor) or { 1, 0.85, 0.35 },
@@ -368,15 +382,17 @@ local function draw(game, pile, uids)
   if n == 0 then return removeOld() end
 
   local lock = pile.style ~= "hand"
-  local cost, word = nil, nil
+  local cost, word, hire = nil, nil, nil
   if pile.buyable and pile.style == "stack" then
     local top = game.cards:get(State.cardId(game.state, uids[n]))
+    local def = require("engine.cards").typeDef(game.rules, top)
     cost = top.cost
-    word = require("engine.cards").typeDef(game.rules, top).defeat and "defeat" or "buy"
+    word = def.defeat and "defeat" or "buy"
+    hire = def.hire and pile.key:find("^market%.row") ~= nil
   end
   local waiting, readied = (pile.style == "stack") and 1 or n, {}
   local function ready(obj)
-    if cost then addBuyButton(game, obj, cost, word) end
+    if cost then addBuyButton(game, obj, cost, word, hire) end
     readied[#readied + 1] = obj
     if #readied == waiting then
       removeOld()
