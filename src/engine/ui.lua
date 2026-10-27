@@ -285,7 +285,7 @@ end
 -- A standalone button, as wide as its label needs. Its look comes from the
 -- theme: primary for the main actions (the theme's primary ids), `kind` if
 -- given ("selected" for a chosen option), else secondary. Returns XML and width.
-local function smallButton(id, label, size, kind, width, tooltip)
+local function smallButton(id, label, size, kind, width, tooltip, height)
   size = size or 12
   kind = kind or (Theme.isPrimary(current, id) and "primary" or "secondary")
   local colors, textColor = Theme.button(current, kind)
@@ -294,7 +294,7 @@ local function smallButton(id, label, size, kind, width, tooltip)
   local tip = tooltip and (' tooltip="' .. escape(tooltip) .. '" tooltipPosition="Above" tooltipWidth="320"') or ""
   return string.format('<Button id="%s" onClick="Cardalyzer_onUI" preferredHeight="%d" preferredWidth="%d" fontSize="%d"'
     .. ' fontStyle="Bold" colors="%s" textColor="%s"%s>%s</Button>',
-    id, size + 14, width, size, colors, textColor, tip, escape(label)), width
+    id, height or size + 14, width, size, colors, textColor, tip, escape(label)), width
 end
 UI_.button = smallButton
 
@@ -349,7 +349,7 @@ end
 -- bottom, and a private message for one player just above the info panel.
 UI_.INFO_WIDTH = 300
 -- Both sit clear of TTS's own Notes button in the bottom right corner.
-local INFO_BOTTOM = 148 -- the info panel's bottom edge
+local INFO_BOTTOM = 70 -- the info panel's bottom edge
 UI_.ACTION_BAR_Y = 210 -- the action bar's bottom edge by default: just above the on-screen hand
 UI_.BAR_STEP = 30 -- how far one press of Up / Down in Settings moves a player's bar
 
@@ -527,8 +527,24 @@ function UI_.infoPanel(game, suffix, attrs, bottom)
     row('<HorizontalLayout preferredHeight="28" childForceExpandWidth="false" childAlignment="MiddleRight">'
       .. smallButton("cz-kitmenu", say("yourKit", { kit = game.rules.kitName or "kit" }), 14) .. '</HorizontalLayout>', 28)
   end
-  row('<HorizontalLayout spacing="6" preferredHeight="28" childForceExpandWidth="false" childAlignment="MiddleRight">'
-    .. smallButton("cz-settings", say("settings"), 14) .. smallButton("cz-setup", say("newGame"), 14) .. '</HorizontalLayout>', 28)
+  -- the buttons, two to a row, all one width: Settings and New Game, then
+  -- Rulebooks, the rules' own buttons and Tidy table, then Change mat and
+  -- Hide UI. New Game stands a little taller than the rest.
+  local buttons = UI_.panelButtons(game)
+  local width = 0
+  for _, b in ipairs(buttons) do
+    local _, w = smallButton(b.id, b.label, b.big and 14 or 13)
+    width = math.max(width, w)
+  end
+  for i = 1, #buttons, 2 do
+    local xml = ""
+    for j = i, math.min(i + 1, #buttons) do
+      local b = buttons[j]
+      xml = xml .. smallButton(b.id, b.label, b.big and 14 or 13, nil, width, nil, b.big and 32 or 27)
+    end
+    row('<HorizontalLayout spacing="8" preferredHeight="32" childForceExpandWidth="false" childAlignment="MiddleRight">'
+      .. xml .. '</HorizontalLayout>', 32)
+  end
 
   local at = Theme.of(current).positions.info
   local y = at.y or bottom or INFO_BOTTOM
@@ -912,8 +928,7 @@ function UI_.xml(game)
   local state = game.state
   local parts = {}
 
-  -- The info panel and the corner buttons under it (bottom right), once per
-  -- UI size in use. The buttons sit clear of TTS's own Notes button.
+  -- The info panel with its buttons (bottom right), once per UI size in use.
   local hiddenFor = {}
   for _, color in ipairs(Tutorial.allColors) do
     if UI_.hidden(game, color) then hiddenFor[color] = true end
@@ -926,17 +941,10 @@ function UI_.xml(game)
   for i, g in ipairs(groups) do
     local vis, suffix = groupAttrs(groups, i)
     -- the info panel: at its own y, or just above the corner buttons
-    local infoBottom = positions.info.y or ((corner.y or 0) + math.ceil((UI_.CORNER_HEIGHT + 12) * g.scale))
+    -- its buttons end at the corner spot, clear of TTS's own Notes button
+    local infoBottom = positions.info.y or corner.y or INFO_BOTTOM
     local info, h = UI_.infoPanel(game, suffix, vis, infoBottom)
     parts[#parts + 1] = sized(info, g.scale)
-    local first, second = UI_.cornerButtons(game)
-    local function line(xml)
-      return '<HorizontalLayout spacing="6" preferredHeight="30" childForceExpandWidth="false" childAlignment="MiddleRight">'
-        .. xml .. '</HorizontalLayout>'
-    end
-    parts[#parts + 1] = sized(leftSide('<Panel id="cz_tidy' .. suffix .. '"' .. vis .. ' width="' .. UI_.INFO_WIDTH .. '" height="'
-      .. UI_.CORNER_HEIGHT .. '"' .. place("corner") .. PANEL .. '><VerticalLayout spacing="6" childForceExpandHeight="false">'
-      .. line(first) .. line(second) .. '</VerticalLayout></Panel>', "corner"), g.scale)
     for _, color in ipairs(g.colors) do infoTop[color] = { bottom = infoBottom, top = infoBottom + math.ceil(h * g.scale) } end
   end
 
@@ -1140,21 +1148,21 @@ function UI_.tabsFor(game, color)
   return out
 end
 
--- The buttons under the info panel, in two rows: Rulebooks (when the rules
--- list some), the rules' own buttons (rules.ui.buttons) and Tidy table; then
--- Change mat (when the game has mats to choose from) and Hide UI.
-UI_.CORNER_HEIGHT = 66
-function UI_.cornerButtons(game)
+-- The info panel's buttons, in order: { id, label, big }. Settings and New
+-- Game; Rulebooks (when the rules list some), the rules' own buttons
+-- (rules.ui.buttons) and Tidy table; Change mat (when the game has mats to
+-- choose from) and Hide UI.
+function UI_.panelButtons(game)
   use(game)
-  local first = ""
-  if game.rules.rulebooks and #game.rules.rulebooks > 0 then first = first .. smallButton("cz-rulebooks", say("rulebooks"), 12) end
+  local list = { { id = "cz-settings", label = say("settings") }, { id = "cz-setup", label = say("newGame"), big = true } }
+  if game.rules.rulebooks and #game.rules.rulebooks > 0 then list[#list + 1] = { id = "cz-rulebooks", label = say("rulebooks") } end
   for i, b in ipairs(game.rules.ui and game.rules.ui.buttons or {}) do
-    first = first .. smallButton("cz-button-" .. i, b.label, 12)
+    list[#list + 1] = { id = "cz-button-" .. i, label = b.label }
   end
-  first = first .. smallButton("cz-tidy", say("tidy"), 12)
-  local second = (Mats.sets(game.rules) and smallButton("cz-matmenu", say("changeMat"), 12) or "")
-    .. smallButton("cz-hideui", say("hideUI"), 12)
-  return first, second
+  list[#list + 1] = { id = "cz-tidy", label = say("tidy") }
+  if Mats.sets(game.rules) then list[#list + 1] = { id = "cz-matmenu", label = say("changeMat") } end
+  list[#list + 1] = { id = "cz-hideui", label = say("hideUI") }
+  return list
 end
 
 -- Where a colour's action bar sits: the default, moved in their Settings.

@@ -46,8 +46,8 @@ Theme.DEFAULT = {
   -- Where the panels sit on the screen: `anchor` (a TTS rectAlignment such as
   -- LowerRight, UpperLeft, MiddleCenter) and `x`, `y` offsets in pixels.
   positions = {
-    info = { anchor = "LowerRight", x = -12 },   -- y left out: just above the corner buttons
-    corner = { anchor = "LowerRight", x = -12, y = 70 }, -- Rulebooks, your buttons, Tidy table; Change mat, Hide UI
+    info = { anchor = "LowerRight", x = -12 },   -- the info panel and its buttons; y left out: at the corner's y
+    corner = { anchor = "LowerRight", x = -12, y = 70 }, -- where the info panel ends (clear of TTS's Notes button); Show tabs beside it
     bar = { anchor = "LowerCenter", x = 0, y = 210 }, -- the action bar (each player can move it up or down in Settings)
     counters = nil,  -- the turn's resources; nil: just above the action bar
     menus = { anchor = "MiddleCenter", x = 0, y = 0 }, -- New Game, Settings, the tutorial, choices, game over

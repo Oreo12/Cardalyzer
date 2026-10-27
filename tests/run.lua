@@ -164,8 +164,15 @@ test("the UI: info panel on the right, action bar above the hand, Tidy table in 
   local xml = tts.ui.xml
   assert(xml:find('id="cz_panel" rectAlignment="LowerRight"[^>]* width="300" height="%d+"'), "info panel on the right")
   assert(xml:find('id="cz_actions"[^>]*rectAlignment="LowerCenter" offsetXY="0 210"'), "action bar just above the hand")
-  assert(xml:find('id="cz_tidy"[^>]*rectAlignment="LowerRight" offsetXY="%-12 70"'), "Tidy table above TTS's Notes button")
-  assert(xml:find('id="cz_panel"[^>]*offsetXY="%-12 148"'), "info panel above it")
+  assert(xml:find('id="cz_panel"[^>]*offsetXY="%-12 70"'), "info panel above TTS's Notes button")
+  local panel = xml:sub((xml:find('id="cz_panel"', 1, true)))
+  local widths = {}
+  for _, id in ipairs({ "cz%-settings", "cz%-setup", "cz%-tidy", "cz%-hideui" }) do
+    widths[#widths + 1] = panel:match('id="' .. id .. '"[^>]*preferredWidth="(%d+)"')
+  end
+  assert(widths[1] and widths[1] == widths[2] and widths[2] == widths[3] and widths[3] == widths[4], "its buttons all one width: " .. table.concat(widths, ","))
+  assert(panel:find('id="cz%-setup" onClick="Cardalyzer_onUI" preferredHeight="32"'), "New Game a little taller")
+  assert(panel:find('id="cz%-tidy" onClick="Cardalyzer_onUI" preferredHeight="27"'), "than the rest")
   assert(not xml:find('outline="#E8B84A"', 1, true), "no yellow borders")
   assert(not xml:find('color="#0E1620F2"', 1, true), "no panel backgrounds")
   assert(xml:find('id="cz%-end"[^>]*fontSize="17"[^>]*colors="#E8B84A'), "End Turn: bigger, gold")
@@ -1534,11 +1541,10 @@ test("Settings: each player sets their own UI size and action bar height", funct
   assert(xml:find('id="cz%-setup"[^>]*fontSize="18"', from), "its buttons' text 25% bigger too (14 -> 18)")
   assert(xml:find('id="cz%-setup"[^>]*colors="#E8B84A', from), "buttons keep their look (New Game is primary)")
   assert(xml:find('id="cz_panel" visibility="White|Brown|Orange', 1, true), "everyone else keeps the normal one")
-  assert(xml:find('id="cz_tidy_2" visibility="Red" width="375"', 1, true), "and the corner buttons")
   assert(xml:find('id="cz_settings_Red" visibility="Red"[^>]* width="860"'), "menus too (660 + padding, 25% bigger)")
   local normalBottom = tonumber(xml:match('id="cz_panel"[^>]*offsetXY="%-12 (%d+)"'))
   local redBottom = tonumber(xml:match('id="cz_panel_2"[^>]*offsetXY="%-12 (%d+)"'))
-  assert(redBottom > normalBottom, "Red's info panel sits higher, above the bigger Tidy button")
+  eq(redBottom, normalBottom, "Red's bigger info panel ends at the same spot")
   for _ = 1, 10 do click(GUEST, "cz-uibigger") end
   assert(tts.ui.xml:find('id="cz_set_ui_Red_value"[^>]*>155%%<'), "stops at the largest")
 
@@ -2442,6 +2448,23 @@ test("a type's playYaw turns its cards in play, not in the market", function()
   game.rules.cardTypes.building.playYaw = nil
 end)
 
+test("each seat's name lies between its deck and discard pile", function()
+  local game = boot()
+  game.rules.layout = { mats = { seat = { image = "https://example.com/mat.png", label = true } } }
+  Cardalyzer_onStartGame(HOST)
+  local texts = tts.live(function(o) return o.type == "3DText" end)
+  eq(#texts, 2, "one per seat")
+  local s = game.layout.seats[1]
+  local t = texts[1].data
+  eq(t.Text.Text, game.state.players[1].name, "the seat's name")
+  eq(t.Transform.posX, (s.deck.position[1] + s.discard.position[1]) / 2, "between the deck")
+  eq(t.Transform.posZ, (s.deck.position[3] + s.discard.position[3]) / 2, "and the discard pile")
+  eq(t.Transform.rotX, 90, "lying flat")
+  game:tidy()
+  eq(#tts.live(function(o) return o.type == "3DText" end), 2, "kept, not doubled")
+  game.rules.layout = nil
+end)
+
 test("an area can lay its cards in a column down it", function()
   local Board = Cardalyzer.require("engine.board")
   local spot = { position = { 0, 1, 0 }, right = { 1, 0 }, forward = { 0, 1 }, size = { 3, 3, 20 }, column = true }
@@ -2492,7 +2515,6 @@ test("positions: every panel's anchor and offset", function()
   game:setup("White", true)
   local xml = tts.ui.xml
   assert(xml:find('id="cz_panel"[^>]* rectAlignment="UpperLeft" offsetXY="20 %-30"'), "the info panel")
-  assert(xml:find('id="cz_tidy"[^>]* rectAlignment="LowerLeft" offsetXY="20 15"'), "the corner buttons")
   local panel = xml:match('<Panel id="cz_panel".-</Panel>')
   assert(not panel:find('MiddleRight', 1, true), "a panel on the left reads from the left")
   assert(xml:find('id="cz_actions"[^>]* rectAlignment="LowerCenter" offsetXY="100 150"'), "the action bar")
