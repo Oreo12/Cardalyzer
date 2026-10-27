@@ -1,0 +1,49 @@
+{
+  "back": "art/back.jpg",
+  "sheets": [
+    {
+      "file": "art/sheet_1.jpg",
+      "numWidth": 10,
+      "numHeight": 2,
+      "count": 9
+    }
+  ],
+  "cards": {
+    "coin": {
+      "sheet": 1,
+      "index": 0
+    },
+    "strike": {
+      "sheet": 1,
+      "index": 1
+    },
+    "helper": {
+      "sheet": 1,
+      "index": 2
+    },
+    "scout": {
+      "sheet": 1,
+      "index": 3
+    },
+    "brute": {
+      "sheet": 1,
+      "index": 4
+    },
+    "banker": {
+      "sheet": 1,
+      "index": 5
+    },
+    "sage": {
+      "sheet": 1,
+      "index": 6
+    },
+    "tower": {
+      "sheet": 1,
+      "index": 7
+    },
+    "champion": {
+      "sheet": 1,
+      "index": 8
+    }
+  }
+}

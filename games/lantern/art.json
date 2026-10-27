@@ -1,0 +1,161 @@
+{
+  "back": "art/back.jpg",
+  "sheets": [
+    {
+      "file": "art/sheet_1.jpg",
+      "numWidth": 10,
+      "numHeight": 4,
+      "count": 37
+    }
+  ],
+  "cards": {
+    "ribbon": {
+      "sheet": 1,
+      "index": 0
+    },
+    "silk": {
+      "sheet": 1,
+      "index": 1
+    },
+    "porcelain": {
+      "sheet": 1,
+      "index": 2
+    },
+    "small_lantern": {
+      "sheet": 1,
+      "index": 3
+    },
+    "festival_banner": {
+      "sheet": 1,
+      "index": 4
+    },
+    "sky_lantern": {
+      "sheet": 1,
+      "index": 5
+    },
+    "gossip": {
+      "sheet": 1,
+      "index": 6
+    },
+    "hawker": {
+      "sheet": 1,
+      "index": 7
+    },
+    "juggler": {
+      "sheet": 1,
+      "index": 8
+    },
+    "tea_house": {
+      "sheet": 1,
+      "index": 9
+    },
+    "rag_picker": {
+      "sheet": 1,
+      "index": 10
+    },
+    "fan_dancer": {
+      "sheet": 1,
+      "index": 11
+    },
+    "fortune_teller": {
+      "sheet": 1,
+      "index": 12
+    },
+    "storyteller": {
+      "sheet": 1,
+      "index": 13
+    },
+    "lantern_maker": {
+      "sheet": 1,
+      "index": 14
+    },
+    "pawnbroker": {
+      "sheet": 1,
+      "index": 15
+    },
+    "silk_trader": {
+      "sheet": 1,
+      "index": 16
+    },
+    "night_market": {
+      "sheet": 1,
+      "index": 17
+    },
+    "acrobat": {
+      "sheet": 1,
+      "index": 18
+    },
+    "lamplighter": {
+      "sheet": 1,
+      "index": 19
+    },
+    "paper_charm": {
+      "sheet": 1,
+      "index": 20
+    },
+    "night_watch": {
+      "sheet": 1,
+      "index": 21
+    },
+    "heckler": {
+      "sheet": 1,
+      "index": 22
+    },
+    "pickpocket": {
+      "sheet": 1,
+      "index": 23
+    },
+    "town_crier": {
+      "sheet": 1,
+      "index": 24
+    },
+    "fortune_cookie": {
+      "sheet": 1,
+      "index": 25
+    },
+    "moon_cake": {
+      "sheet": 1,
+      "index": 26
+    },
+    "tinker": {
+      "sheet": 1,
+      "index": 27
+    },
+    "lamp_oil": {
+      "sheet": 1,
+      "index": 28
+    },
+    "kite_flyer": {
+      "sheet": 1,
+      "index": 29
+    },
+    "spice_merchant": {
+      "sheet": 1,
+      "index": 30
+    },
+    "firecracker": {
+      "sheet": 1,
+      "index": 31
+    },
+    "heirloom_fan": {
+      "sheet": 1,
+      "index": 32
+    },
+    "masked_dancer": {
+      "sheet": 1,
+      "index": 33
+    },
+    "golden_koi": {
+      "sheet": 1,
+      "index": 34
+    },
+    "caravan": {
+      "sheet": 1,
+      "index": 35
+    },
+    "jade_dragon": {
+      "sheet": 1,
+      "index": 36
+    }
+  }
+}

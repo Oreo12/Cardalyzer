@@ -60,7 +60,11 @@ function UI_.promptFor(game, seat)
   for _, t in ipairs(Actions.targets(game, seat, prompt)) do
     choices[#choices + 1] = { id = "cz-pick-" .. t.value, label = t.label }
   end
-  if prompt.optional then choices[#choices + 1] = { id = "cz-done", label = say(prompt.kind == "reminder" and "done" or "skip") } end
+  if prompt.optional then
+    local word = prompt.kind == "reminder" and "done" or "skip"
+    if prompt.kind == "react" then word = prompt.picked and "done" or "noReveal" end
+    choices[#choices + 1] = { id = "cz-done", label = say(word) }
+  end
   return Actions.promptText(game, prompt) .. more, choices
 end
 
@@ -652,6 +656,19 @@ function UI_.setRows(game)
   return UI_.optionRows("cz_sets", say("sets"), list)
 end
 
+-- The supply choice (cz-supply-<i>; 0 is random), when rules.supply lists presets.
+function UI_.supplyRows(game)
+  local supply = game.rules.supply
+  if not supply or not supply.presets or #supply.presets == 0 then return {} end
+  local chosen = game:setupChoice("supply") or supply.default or 0
+  local list = { { id = "cz-supply-0", label = say("random"), on = chosen == 0,
+    tooltip = "Lay out " .. (supply.count or 10) .. " piles picked at random." } }
+  for i, preset in ipairs(supply.presets) do
+    list[#list + 1] = { id = "cz-supply-" .. i, label = preset.label, on = chosen == i, tooltip = preset.about }
+  end
+  return UI_.optionRows("cz_supply", supply.label or say("supply"), list)
+end
+
 function UI_.setupPanel(game, color)
   use(game)
   local buttons = { { id = "cz-new", label = say("playGame") } }
@@ -674,6 +691,7 @@ function UI_.setupPanel(game, color)
     if on then add(UI_.kitSummaryRow(game)) end
   end
   for _, r in ipairs(UI_.setRows(game)) do add(r) end
+  for _, r in ipairs(UI_.supplyRows(game)) do add(r) end
   -- rules.ui.setupMenu(game, color, menu, UI) may change the menu (its
   -- title, its rows of XML, each rowHeight tall, and its buttons) or return
   -- XML of its own to draw instead. See README, "Customising the UI".

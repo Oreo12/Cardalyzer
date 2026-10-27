@@ -14,5 +14,7 @@ build:
 test: build
 	lua tests/run.lua
 	lua tests/fuzz.lua
+	python3 tools/bundle.py games/lantern -o build/lantern/Global.lua
+	lua tests/lantern.lua
 
 all: art test

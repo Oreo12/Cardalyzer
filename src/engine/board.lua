@@ -45,7 +45,11 @@ function Board.defaultDescription(game, card)
   if #card.scrapEffects > 0 then
     lines[#lines + 1] = "Scrap: " .. fx:describe(card.scrapEffects, card.text)
   end
+  if card.reactEffects and #card.reactEffects > 0 then
+    lines[#lines + 1] = "Reaction: " .. fx:describe(card.reactEffects, card.text)
+  end
   if card.defense then lines[#lines + 1] = "Defense " .. card.defense end
+  if card.points and card.points ~= 0 then lines[#lines + 1] = card.points .. (card.points == 1 and " point" or " points") end
   if card.text ~= "" then lines[#lines + 1] = card.text end
   return table.concat(lines, "\n")
 end

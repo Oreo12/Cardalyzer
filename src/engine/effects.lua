@@ -160,6 +160,46 @@ function Effects.new(rules)
     end,
   })
 
+  -- Gaining cards from the piles beside the market (fixed and supply piles).
+  -- gain:<card id> takes that pile's top card into the discard pile.
+  local function cardName(self_, id)
+    local ok, card = pcall(function() return self_.cards:get(id) end)
+    return ok and card.name or id
+  end
+  self:register("gain", {
+    apply = function(game, seat, _, _, effect)
+      require("engine.actions").gainFromPile(game, seat, effect.id)
+    end,
+    text = function(_, effect) return "Gain a " .. cardName(self, effect.id) end,
+  })
+  self:register("gain_card", {
+    apply = function(game, seat, amount)
+      game:prompt(seat, { kind = "free_buy", maxCost = amount, optional = true, includeFixed = true })
+    end,
+    text = function(amount) return "Gain a card costing up to " .. amount end,
+  })
+
+  -- Attacks: a handler with toOpponent(game, seat, victim, amount, ctx, effect)
+  -- hits each opponent in turn, and each may first reveal a reaction from
+  -- their hand (see Actions.hitOpponents).
+  self:register("opponents_gain", {
+    toOpponent = function(game, _, victim, _, _, effect)
+      require("engine.actions").gainFromPile(game, victim, effect.id)
+    end,
+    text = function(_, effect) return "Each opponent gains a " .. cardName(self, effect.id) end,
+  })
+  self:register("opponents_discard_to", {
+    toOpponent = function(game, _, victim, amount)
+      local extra = #game.state.players[victim].hand - amount
+      if extra > 0 then game:prompt(victim, { kind = "discard", count = extra, optional = false }) end
+    end,
+    text = function(amount) return "Each opponent discards down to " .. amount .. " cards" end,
+  })
+  self:register("block", {
+    apply = function(_, _, _, ctx) if ctx.attack then ctx.attack.blocked = true end end,
+    text = function() return "You are unaffected by the attack" end,
+  })
+
   for name, def in pairs(rules.customEffects or {}) do
     self:registerCustom(name, def)
   end
@@ -199,18 +239,33 @@ function Effects:registerCustom(name, def)
   self.custom[name] = def
 end
 
+-- An effect that hits each opponent (a keyword with toOpponent, or a custom
+-- effect with eachOpponent) goes through Actions.hitOpponents, so opponents
+-- can react to it.
 function Effects:apply(game, seat, list, ctx)
   for _, effect in ipairs(list) do
     if effect.key == "custom" then
       local def = self.custom[effect.fn]
       if not def then error("no custom effect named '" .. effect.fn .. "'", 0) end
       if def.apply then def.apply(game, seat, ctx or {}) end
+      if def.eachOpponent then require("engine.actions").hitOpponents(game, seat, effect, ctx or {}) end
     else
       local handler = self.handlers[effect.key]
       if not handler then error("no effect keyword '" .. effect.key .. "'", 0) end
-      handler.apply(game, seat, effect.amount, ctx or {}, effect)
+      if handler.apply then handler.apply(game, seat, effect.amount, ctx or {}, effect) end
+      if handler.toOpponent then require("engine.actions").hitOpponents(game, seat, effect, ctx or {}) end
     end
   end
+end
+
+-- Does this effect hit each opponent (an attack)?
+function Effects:isAttack(effect)
+  if effect.key == "custom" then
+    local def = self.custom[effect.fn]
+    return def ~= nil and def.eachOpponent ~= nil
+  end
+  local handler = self.handlers[effect.key]
+  return handler ~= nil and handler.toOpponent ~= nil
 end
 
 function Effects:describe(list, fallback)
@@ -232,7 +287,7 @@ function Effects:describe(list, fallback)
       if own then
         parts[#parts + 1] = require("engine.words").say(self.rules, "effect." .. effect.key, { n = effect.amount })
       else
-        parts[#parts + 1] = handler and handler.text and handler.text(effect.amount) or (effect.key .. " " .. effect.amount)
+        parts[#parts + 1] = handler and handler.text and handler.text(effect.amount, effect) or (effect.key .. " " .. effect.amount)
       end
     end
     if effect.ally then
@@ -246,7 +301,7 @@ end
 function Effects:validate(cards)
   local problems = {}
   for _, card in ipairs(cards.list) do
-    for _, list in ipairs({ card.effects, card.allyEffects, card.scrapEffects, card.doubleAllyEffects or {} }) do
+    for _, list in ipairs({ card.effects, card.allyEffects, card.scrapEffects, card.doubleAllyEffects or {}, card.reactEffects or {} }) do
       local flat = {}
       for _, effect in ipairs(list) do
         if effect.key == "choice" then
@@ -262,6 +317,8 @@ function Effects:validate(cards)
           end
         elseif not self.handlers[effect.key] then
           problems[#problems + 1] = "card '" .. card.id .. "' uses unknown keyword '" .. effect.key .. "'"
+        elseif effect.id and not cards.byId[effect.id] then
+          problems[#problems + 1] = "card '" .. card.id .. "' uses " .. effect.key .. ":" .. effect.id .. " but there's no card '" .. effect.id .. "'"
         end
       end
     end

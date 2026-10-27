@@ -104,6 +104,12 @@ function Cardalyzer_onUI(player, _, id)
     end
     return run(player.color, game.toggleSet, arg)
   end
+  if action == "supply" then
+    if not player.host and not player.promoted then
+      return tell(player.color, say("hostOnlySupply"))
+    end
+    return run(player.color, game.setSupply, tonumber(arg))
+  end
   if action == "kits" then
     -- The kit option: the host turns kits on (and gets their own kit menu);
     -- once they're on, anyone pressing it opens their own kit menu.

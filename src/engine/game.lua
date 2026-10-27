@@ -24,6 +24,7 @@ function Game.new(opts)
   self.art = opts.art
   self.cards = Cards.new(opts.cards)
   self.effects = Effects.new(self.rules)
+  self.effects.cards = self.cards -- so keywords that name a card can describe it
   self.random = opts.random or math.random
 
   local problems = self.effects:validate(self.cards)
@@ -34,9 +35,8 @@ function Game.new(opts)
   end
   if #problems > 0 then error("card data problems:\n  " .. table.concat(problems, "\n  "), 0) end
 
-  self.fixedIds = {}
-  for _, card in ipairs(self.cards:inDeck("fixed")) do self.fixedIds[#self.fixedIds + 1] = card.id end
   self.state = State.new(self.rules, Zones.defaultCount(self.rules))
+  self:updatePiles()
   self:relayout()
   -- Messages shown inside the UI (not saved): the latest few for everyone,
   -- and the latest one for each player colour.
@@ -70,12 +70,25 @@ function Game.playerRange(rules)
   return { min = players.min or #rules.seats, max = #rules.seats }
 end
 
+-- The piles beside the market, in display order (game.fixedIds): the fixed
+-- piles, then this game's supply piles (state.market.supply). On the table
+-- the supply starts a new row (game.fixedBreaks) when rules.layout.areas.fixed
+-- lays the piles out in rows.
+function Game:updatePiles()
+  self.fixedIds, self.fixedBreaks = {}, {}
+  for _, card in ipairs(self.cards:inDeck("fixed")) do self.fixedIds[#self.fixedIds + 1] = card.id end
+  for i, id in ipairs(self.state.market.supply or {}) do
+    if i == 1 then self.fixedBreaks[#self.fixedIds + 1] = true end
+    self.fixedIds[#self.fixedIds + 1] = id
+  end
+end
+
 -- Positions every pile for the number of seats in the current state.
 -- With rules.market.turnsWithPlayer the market is laid out facing the
 -- player whose turn it is.
 function Game:relayout()
   local facing = self.rules.market.turnsWithPlayer and self.state.started and self.state.turn.active or nil
-  self.layout = Zones.layout(self.rules, self.fixedIds, #self.state.players, facing)
+  self.layout = Zones.layout(self.rules, self.fixedIds, #self.state.players, facing, self.fixedBreaks)
 end
 
 function Game:draw(seat, n)
@@ -145,6 +158,11 @@ function Game:copyCard(seat, uid, id)
   Actions.checkAllies(self, seat)
 end
 
+-- Gains the top card of pile `id` into the seat's discard pile, like gain:<id>.
+function Game:gainFromPile(seat, id)
+  return Actions.gainFromPile(self, seat, id)
+end
+
 -- Queues a choice for a player; custom effects use this too, e.g.
 -- game:prompt(seat, { kind = "free_buy", maxCost = 4 }). See engine/actions.lua.
 function Game:prompt(seat, prompt)
@@ -159,7 +177,8 @@ function Game:setupState()
   self.state = State.new(self.rules, count)
   self.state.view = view -- keep zone GUIDs so zones aren't respawned
   Turn.setup(self.state, self.rules, self.cards, self.random, Turn.openingRule(self.rules, self:setupChoice("opening")),
-    self:setsInPlay(), self:kitsFor(count))
+    self:setsInPlay(), self:kitsFor(count), self:setupChoice("supply"))
+  self:updatePiles()
   Actions.setAsideEvents(self)
   Actions.startTurn(self, self.state.turn.active)
 end
@@ -270,6 +289,17 @@ function Game:toggleSet(key)
   return true
 end
 
+-- Picks the supply for the next New Game (host only): 0 is random, i is
+-- rules.supply.presets[i].
+function Game:setSupply(i)
+  local presets = self.rules.supply and self.rules.supply.presets or {}
+  if not i or (i ~= 0 and not presets[i]) then return false, "That isn't one of the supply options." end
+  self.state.view.setup = self.state.view.setup or {}
+  self.state.view.setup.supply = i
+  self:refreshUI()
+  return true
+end
+
 -- Picks option i of rules.openingHands for the next New Game (host only).
 function Game:setOpening(i)
   local options = self.rules.openingHands or {}
@@ -297,6 +327,7 @@ function Game:loadState(saved)
   end
   data.markets = data.markets or {}
   self.state = data
+  self:updatePiles()
   self:relayout()
   return true
 end

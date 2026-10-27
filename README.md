@@ -10,8 +10,19 @@ You don't need to write Lua for a typical card. Lua is only needed for the
 rare card that does something unusual.
 
 The first rules Cardalyzer ships with are for deck-builders: starter decks, a
-market row, drawing, turn cleanup and reshuffling. It comes with **Ember
-Guilds**, a small original sample game with placeholder art:
+market row or a supply of piles, drawing, turn cleanup and reshuffling. It
+comes with two small original sample games with placeholder art:
+
+- **Ember Guilds** (`games/sample`): a trade-row game. Players buy from a
+  changing row of cards, fight with Might and build buildings, and the last
+  player standing wins.
+- **Lantern Fair** (`games/lantern`): a supply game. Players buy from piles
+  that are always for sale, with Action and Buy phases, attacks and
+  reactions, and the most renown points win.
+
+To bring a deck-builder you already know to TTS, see the
+[porting guide](docs/PORTING.md), and start from the blank game in
+`games/template`.
 
 ![Four placeholder cards from the Ember Guilds sample game](docs/sample-cards.png)
 
@@ -44,7 +55,7 @@ Cardalyzer is early. Here's where each milestone stands:
 | 3. Market and buying | done; needs in-game testing |
 | 4. Effects: keyword effects, ally triggers, bases with defense, attacks | done; needs in-game testing |
 | 5. First real game fully playable | 2 to 4 players and reusing existing card art done; needs in-game testing. Next: porting a real game |
-| 6. Generalize and build a second tiny game | |
+| 6. Generalize and build a second tiny game | done: Lantern Fair, a supply game with phases, attacks and reactions; a porting guide and a blank template |
 | 7. Workshop template and release | |
 
 So today you can play a full game for 2 to 4 players:
@@ -52,7 +63,12 @@ So today you can play a full game for 2 to 4 players:
 - deal it from your spreadsheet, for the number of players the host picks,
 - play cards by dragging them from your hand into your play area, and get their effects,
 - trigger ally effects, including cards with two factions and wild cards,
-- buy from the market row and fixed piles,
+- buy from the market row and fixed piles, or from a supply of piles chosen
+  each game (at random or from a preset),
+- split a turn into phases (Action, then Buy) with Actions and Buys to spend,
+- score points on cards and end the game when a pile or several piles run out,
+- attack every other player at once, and answer an attack on your own screen
+  by revealing a reaction from your hand,
 - answer choices like "2 Gold or 2 Might" and "scrap a card" from an action panel,
 - attack any opponent and their buildings, with guard buildings that must fall first,
 - knock players out until one is left, who wins,
@@ -67,8 +83,10 @@ before you start.
 
 **What it's made for.** Games where, on your turn, you play cards from your
 hand, the cards give you resources or effects, you spend those resources, and
-then you clean up and draw. That covers deck-builders like Star Realms, Hero
-Realms, Ascension, Dominion, and the card play in Clank-style games.
+then you clean up and draw. That covers both common kinds of deck-builder:
+trade-row games, where a row of cards for sale keeps changing, and supply
+games, where the same piles are for sale all game. It also covers the card
+play in deck-building board games.
 
 **What it handles:**
 
@@ -78,16 +96,25 @@ Realms, Ascension, Dominion, and the card play in Clank-style games.
   discard, scrap from hand or the market, destroy a base, and "choose one".
 - Faction ally bonuses, cards that stay in play (bases), and guard cards that
   must be destroyed first.
-- A market row with any number of slots (0 removes it), piles that are always
-  for sale, and bought cards going to your discard pile or the top of your deck.
+- A market row with any number of slots (0 removes it), extra rows, piles
+  that are always for sale, a supply of piles picked for each game, and
+  bought cards going to your discard pile or the top of your deck.
+- Turns split into phases, with Actions and Buys (or anything you name) to
+  spend on playing and buying.
+- Points games: points on cards, ending when piles run out, after a number of
+  rounds, or when a shared pool is used up.
+- Attacks that hit every other player, and reactions they reveal from their
+  hand to block an attack or soften it.
 - Turning whole mechanics on or off (allies, bases, scrapping).
 - Lua for the occasional card that does something no keyword covers.
 
 **What it doesn't handle yet:**
 
-- **Acting on another player's turn.** There is no stack and no responses, so
-  there are no instants, counter-spells or interrupts. Effects happen when a
-  card is played, on its owner's turn.
+- **Acting on another player's turn**, beyond reactions. A player can reveal a
+  reaction when an attack hits them and answer choices an effect puts to
+  them, but there is no stack: no instants, counter-spells or interrupts of
+  other kinds. The attacker plays on while others decide whether to react;
+  anything still unanswered when their turn ends counts as not revealed.
 - **Triggered or always-on abilities** beyond ally bonuses and bases, such as
   "whenever an opponent draws" or "your other cards cost 1 less".
 - **Combat between cards.** Attacks go at a player or at their bases. There's
@@ -95,10 +122,9 @@ Realms, Ascension, Dominion, and the card play in Clank-style games.
 - **Coloured or typed costs.** A card costs one number of one buy resource.
 - **Targeting** beyond the built-in choices (a card to scrap or discard, a
   base to destroy).
-- **Different market behaviour.** You can resize or remove the row, but not
-  change how it works: a shop that refreshes each round, a draft, or bidding
-  would need new engine code. With the row removed, its empty zones still sit
-  on the table.
+- **Different market behaviour.** You can resize or remove the row, add rows
+  and use piles, but not change how a row works: a shop that refreshes each
+  round, a draft, or bidding would need new engine code.
 - **Boards, tokens and maps.** Only cards are tracked.
 - **Hidden roles, trick-taking, bidding, or real-time play.**
 - **More than four players, or teams.** Up to four seats fit on the two long
@@ -117,6 +143,10 @@ Realms, Ascension, Dominion, and the card play in Clank-style games.
 stack, instants, triggered and static abilities, coloured mana, blocking and
 targeting, none of which Cardalyzer has. Only a small share of simple cards
 would map to the current keywords; the rest would all be custom Lua.
+
+**Porting a published game** is your responsibility: only share a port on the
+Steam Workshop if you have the rights to its cards, names and art. The
+[porting guide](docs/PORTING.md) covers the steps.
 
 **Other games** can work if their turn looks like "play cards, gain things,
 spend them". Each mechanic lives in its own module that a game turns on or
@@ -181,6 +211,16 @@ download from:
    as-is. Re-running `make_sheets.py` resets these, so paste the URLs in again
    after you regenerate the art.
 3. Run `python tools/bundle.py games/sample` again.
+
+Lantern Fair builds the same way, into its own file:
+
+```sh
+python tools/csv2json.py games/lantern/cards.csv
+python tools/make_sheets.py games/lantern --title "Lantern Fair"
+python tools/bundle.py games/lantern -o build/lantern/Global.lua
+```
+
+Its `art.baseUrl` already points at this repository on GitHub.
 
 To play:
 
@@ -416,7 +456,9 @@ One row per card. The column order doesn't matter, but the names do.
 | `double_ally_effects` | no | Like `ally_effects`, but needs two other cards of the faction in play | `might:3` |
 | `scrap_effects` | no | Effects when you scrap it (remove it from the game). A faction prefix (`forge=might:8`) means it can only be scrapped while that ally is in play | `might:2` |
 | `condition` | no | For `objective` cards: the custom effect whose `check` says the goal is met | `sevenShips` |
-| `points` | no | Victory points the card is worth at the end of a points game (`win.type = "points"`) | `3` |
+| `points` | no | Victory points the card is worth at the end of a points game (`win.type = "points"`). Negative for a card that costs points | `3` |
+| `starting` | no | Copies in each player's starting deck, for a card that is also in a pile (`fixed` or `supply`) | `6` |
+| `react_effects` | no | A reaction: when an opponent's attack hits you, you may reveal this card from your hand for these effects. `block` makes the attack miss you | `block` |
 | `set` | no | Which set the card belongs to (a `key` from `rules.sets`); players choose sets in the New Game menu | `expansion1` |
 | `defense` | no | Damage needed to destroy a persistent card | `5` |
 | `text` | no | Extra rules text shown on the card | `Ally: take a free card.` |
@@ -427,7 +469,11 @@ The `deck` values work like this:
 - **`market`**: `copies` are shuffled into the market deck, which refills the row.
 - **`market:<key>`**: the same, for one of the extra markets in `rules.markets`.
 - **`fixed`**: a pile of `copies` that's always available next to the row.
-  The sample's Hireling works this way.
+  The sample's Hireling works this way. `rules.pileSizes` can size it by the
+  number of players.
+- **`supply`**: one of a pool of piles. Each game, `rules.supply.count` of
+  them are laid out as piles next to the fixed ones, picked at random or from
+  a preset the host chooses in the New Game menu (Lantern Fair's action cards).
 - **`dealt`**: at the start, each player is dealt `rules.deal.count` of these
   at random, straight into play (Star Realms' Gambits).
 - **`objective`**: secret goals. Each player is dealt `rules.objectives.count`
@@ -458,6 +504,11 @@ fine.
 | `destroy_base:1` | You may destroy an opponent's building, ignoring guards |
 | `draw_discard:1` | Draw a card, then discard a card |
 | `reminder` | Show the card's `text` to the player until they click Done (for rules not automated yet) |
+| `gain:silk` | Gain the top card of the `silk` pile (a `fixed` or `supply` pile) into your discard pile |
+| `gain_card:4` | Gain a card costing 4 or less from the piles or any market row |
+| `opponents_gain:gossip` | Attack: each opponent gains the top card of the `gossip` pile |
+| `opponents_discard_to:3` | Attack: each opponent discards down to 3 cards in hand, straight away |
+| `block` | In `react_effects`: the attack doesn't affect you |
 | `gold:2; draw:1` | Both |
 | `gold:3 \| might:3` | The player picks one |
 | `custom:luckyParrot` | Run `rules.customEffects.luckyParrot` |
@@ -473,6 +524,8 @@ Some keywords are always available:
 
 - `draw`, `opponent_discard`, `scrap_hand`, `scrap_required`, `scrap_row`, `destroy_base`,
   `draw_discard` and `reminder`.
+- `gain`, `gain_card`, `opponents_gain`, `opponents_discard_to` and `block`.
+  `gain` and `opponents_gain` take a card id instead of a number.
 - `custom:<name>`.
 - One keyword per resource and stat in your rules, using its `key`.
 
@@ -499,6 +552,9 @@ These are the fields in `games/<yours>/rules.lua`:
 | `kits` | `{ {key="red", set="red_kit", label="Red", handSize=6, stats={health=60}, requires={"exp1"}} }` | Premade starting kits. With Starting decks set to the kit option (named `kitName`, default "Kit") in the New Game menu, every player picks their own in a kit menu (the **Your kit** button on the right opens it for anyone): a premade kit, a random one (a premade kit nobody else picked), or a custom mix (see `kitParts`). Anyone who doesn't pick gets a random one. A kit's set supplies that player's `starter` cards and their `dealt` cards in play; its `market` cards join the market deck; `stats`/`handSize` replace the player's. A kit's set is never dealt otherwise. `requires` lists sets switched on when the kit is picked. `kitLabel` names the menu row (default "Starting decks") |
 | `kitParts` | `{ {key="leader", label="Leader", deck="dealt", type="leader", by="kit", stats=true}, {key="tricks", label="Tricks", deck="dealt", type="trick", count=2} }` | What a custom kit is mixed from. Each part takes cards of one `deck` (and `type`) from the kits' sets: `by = "kit"` picks which kit supplies the part (`stats = true` also brings that kit's stats and hand size); `count = n` picks n single cards from all the kits. Parts left unpicked are picked at random. Leave out for no custom option |
 | `kitRequires` | `{"exp1"}` | Sets switched on when the host turns kits on |
+| `supply` | `{count=8, label="Supply", presets={ {label="First game", cards={"juggler", "tea_house"}, about="…"} }, default=1}` | The supply (`supply` cards): how many piles each game uses, picked at random or from a preset. With presets, the New Game menu offers Random and each preset (`about` is its tooltip); `default` picks a preset until the host chooses. Piles are laid out cheapest first |
+| `pileSizes` | `{ gossip = function(players) return 10 * (players - 1) end, banner = {[2]=8, otherwise=12} }` | How many cards a `fixed` or `supply` pile starts with, by card id: a number, a table by player count, or a function of it. Others use `copies` |
+| `layout.areas.fixed` | `{columns=8}` | Lay the piles out in rows of up to this many, the supply starting its own row. With no market row they're centred |
 | `market.returnScrapped` | `true` | A scrapped card from a fixed pile goes back to its pile instead of the scrap pile (Star Realms' Explorers) |
 | `sets` | `{ {key="base", label="Base Game", always=true}, {key="exp1", label="Expansion", default=true} }` | Sets of cards (named in the `set` column) the host switches in or out in the New Game menu. `always` sets can't be switched off; `default` ones start on. Cards with no `set` are always in. `about` is the set's tooltip in the menu |
 | `market.faceActive` | `false` | Leave out to turn the market's cards to face the player whose turn it is; `false` keeps them facing seat 1 |
@@ -508,7 +564,7 @@ These are the fields in `games/<yours>/rules.lua`:
 | `cardTypes` | `wall = {persistent=true, guard=true}` | Types. Persistent ones stay in play and apply their effects again each turn; guard ones must be destroyed before their owner or other buildings can be attacked. `replay = false`: a persistent card doesn't apply its effects again each turn. `target = false`: it can't be attacked or destroyed (a hero that stays until you scrap it). `event = true`: revealed into the market row, it resolves at once for the player whose turn it is, then goes to the scrap pile and the slot refills |
 | `mechanics` | `{allies=true, persistent=true, scrap=true}` | Turn whole mechanics on or off |
 | `win` | `{type="stat_depleted", stat="health", atOrBelow=0}` | How the game is won. `stat_depleted`: attacks lower this stat; a player who drops to it is out (no more turns, can't be attacked); the last player left wins. `points`: the highest score wins when the game ends (see below). Either kind can add `check = function(game)` returning the winning seat, a list of seats (a shared win), or nil to play on |
-| `win` (points) | `{type="points", stat="honor", endWhen={pool={key="honor", amount=60}, marketEmpty=true}, finishRound=true}` | A score is the `points` on every card a player owns plus their `stat`, if given. The game ends when any `endWhen` is met: `marketEmpty` (row and deck run out), `fixedEmpty = n` (n fixed piles empty), `pool = {key, amount}` (a shared pool of that stat, taken from as players gain it, runs out; shown on the right), `rounds = n`, or `custom = function(game)`. With `finishRound`, the round is played out so everyone has the same number of turns. Equal top scores share the win. Scores show on the right |
+| `win` (points) | `{type="points", stat="honor", endWhen={pool={key="honor", amount=60}, marketEmpty=true}, finishRound=true}` | A score is the `points` on every card a player owns plus their `stat`, if given. The game ends when any `endWhen` is met: `marketEmpty` (row and deck run out), `fixedEmpty = n` (n fixed piles empty), `pool = {key, amount}` (a shared pool of that stat, taken from as players gain it, runs out; shown on the right), `rounds = n`, `pileEmpty = "id"` (that pile, or any pile in a list, runs out), or `custom = function(game)`. With `finishRound`, the round is played out so everyone has the same number of turns. Equal top scores share the win. Scores show on the right |
 | `art.baseUrl` | `"https://…/games/sample/"` | Where the card images are hosted (see [Using card art you already have](#using-card-art-you-already-have)) |
 | `layout` | `{seatDistance=10, cardSpacing=2.8, seatSpread=28}` | Table spacing; adjust if piles overlap your table's edge. `seatSpread` is how far apart two seats on the same side sit (default 10 × `cardSpacing`) |
 | `layout.seating` | `"around"` | Where the seats sit: `"sides"` (default), `"around"`, `"oneSide"`, or exact spots (see [Customising the table](#customising-the-table)) |
@@ -555,6 +611,7 @@ turn = {
   keepHand = false,       -- true: unplayed cards stay in the hand
   drawUpTo = false,       -- true: draw up to the hand size instead of a new hand
   keepResources = false,  -- true, or a list of keys: those pools carry over
+  skipAhead = false,      -- true: playing a card or buying that a later phase allows moves on to it
   onStart = function(game, seat) end,
   onEnd = function(game, seat) end,
 },
@@ -568,8 +625,30 @@ turn = {
 - **Costs**: `playCost` makes playing a type of card spend a resource, and
   `buyCost` does the same for every card bought (free buys from effects
   don't spend it).
-- Players still can't act on someone else's turn, except to answer a choice
-  an effect puts to them.
+- **Skipping ahead**: with `skipAhead`, playing a treasure or clicking Buy in
+  the Action phase moves the turn on to the Buy phase, so players don't have
+  to press Next first. There's no going back to an earlier phase.
+- Players can't act on someone else's turn, except to answer a choice an
+  effect puts to them, or to reveal a reaction (see
+  [Attacks and reactions](#attacks-and-reactions)).
+
+### Attacks and reactions
+
+An attack is an effect that hits each opponent: `opponents_gain:gossip`,
+`opponents_discard_to:3`, or a custom effect with `eachOpponent` (see
+[Custom effects](#custom-effects)). It goes to the other players one at a
+time, starting on the attacker's left.
+
+A card with `react_effects` is a reaction. When an attack reaches a player
+holding one, the attack waits and that player is asked, on their own screen,
+whether to reveal it. Its react effects apply to them at once (`draw:1` draws
+before the attack lands), and they may reveal another reaction. Then the
+attack lands, unless a reaction had `block`. The card stays in their hand.
+
+The attacker carries on meanwhile. A reaction still unanswered when the
+attacker ends their turn counts as not revealed, so nobody can hold up the
+game. Choices the attack gives the defender, such as which cards to discard,
+are answered straight away on the attacker's turn.
 
 ## Customising the UI
 
@@ -937,6 +1016,10 @@ More hooks a custom effect can have:
 - `whenYouUseAlly = function(game, seat, ctx, used)`: while in play, runs
   after one of its owner's ally abilities fires. `used` is
   `{ uid, card, faction }` (the ally's prefix, if it has one).
+- `eachOpponent = function(game, seat, victim, ctx)`: makes the effect an
+  attack. It runs once for each opponent it reaches (`victim`), after they've
+  had the chance to react; a blocked opponent is skipped. `apply`, if the
+  effect has one too, runs first, once, for the attacker.
 - `defenseMod = function(game, seat, ctx, base)`: while in play, returns a
   change to any building's defense. `base` is `{ uid, owner }`; `seat` is
   this card's owner ("your bases gain +1 Defense").
@@ -953,6 +1036,8 @@ turn it is (an event asking everyone); it shows on that player's screen.
 `game.state.turn.gained` holds what the active player gained this turn, per
 resource or stat (`gained.trade`), and `game.state.turn.allyFactions` which
 factions' ally abilities fired (`allyFactions.blob`).
+
+`game:gainFromPile(seat, id)` gains the top card of a pile, like `gain:<id>`.
 
 `game.state.turn.scrapped` counts the active player's cards scrapped this
 turn (`total`, and `handOrDiscard`). `game:addFaction(seat, uid, faction)`
@@ -1026,12 +1111,14 @@ print(Cardalyzer.game.state.market.row[1])       -- uid in the first market slot
 
 ```sh
 python tools/bundle.py games/sample
-lua tests/run.lua    # 35 tests of setup, buying, playing, allies, prompts, attacks, saving
-lua tests/fuzz.lua   # 200 random games: no errors, no lost cards, no leaked objects
+lua tests/run.lua      # the engine: setup, buying, playing, allies, prompts, attacks, saving
+lua tests/fuzz.lua     # 200 random games: no errors, no lost cards, no leaked objects
+python tools/bundle.py games/lantern -o build/lantern/Global.lua
+lua tests/lantern.lua  # Lantern Fair, including whole games played by simple bots
 ```
 
-Both run the real bundled script against a fake TTS. You should see
-`35 passed, 0 failed` and `fuzz ok`. On macOS and Linux, `make all` rebuilds everything and
+They run the real bundled script against a fake TTS. Each prints how many
+tests passed (none should fail), and the fuzz test prints `fuzz ok`. On macOS and Linux, `make all` rebuilds everything and
 then runs the tests.
 
 ## How it works
@@ -1066,11 +1153,14 @@ src/
     ui.lua           XML info panel, messages and the active player's action panel
     tutorial.lua     the in-game Tutorial pages and its hide/show option
     game.lua         facade that wires the modules together
-games/sample/
+games/sample/         Ember Guilds, the trade-row sample
   cards.csv          the card spreadsheet (edit this)
   rules.lua          everything game-specific (edit this)
   cards.json         generated by csv2json.py
   art/, art.json     generated by make_sheets.py
+games/lantern/        Lantern Fair, the supply sample
+games/template/       a blank game to copy when you port your own
+docs/PORTING.md       the porting guide
 tools/               csv2json.py, make_sheets.py, bundle.py, make_icons.py
 assets/icons/        the UI's counter symbols (coin, reticle, heart, shield)
 tests/               run.lua + fake TTS API
@@ -1081,4 +1171,4 @@ Cardalyzer. Please open an issue.
 
 ## License
 
-MIT. The sample game's cards and placeholder art are original.
+MIT. Both sample games' cards and placeholder art are original.
