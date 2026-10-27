@@ -31,14 +31,17 @@ end
 function Board.defaultDescription(game, card)
   local fx = game.effects
   local lines = {}
-  local def = game.rules.cardTypes and game.rules.cardTypes[card.type] or {}
+  local Cards = require("engine.cards")
+  local def = Cards.typeDef(game.rules, card)
   local header = (def.defeat and "Defeat " or "Cost ") .. card.cost
   if card.faction ~= "none" then
     local names = {}
     for _, f in ipairs(card.factions) do names[#names + 1] = Util.titleCase(f) end
     header = header .. " · " .. table.concat(names, " / ")
   end
-  lines[#lines + 1] = header .. " · " .. Util.titleCase(card.type)
+  local typeNames = {}
+  for _, t in ipairs(Cards.typesOf(card)) do typeNames[#typeNames + 1] = Util.titleCase(t) end
+  lines[#lines + 1] = header .. " · " .. table.concat(typeNames, " – ")
   if #card.effects > 0 then lines[#lines + 1] = fx:describe(card.effects, card.text) end
   if #card.allyEffects > 0 then
     lines[#lines + 1] = "Ally: " .. fx:describe(card.allyEffects, card.text)
@@ -369,8 +372,7 @@ local function draw(game, pile, uids)
   if pile.buyable and pile.style == "stack" then
     local top = game.cards:get(State.cardId(game.state, uids[n]))
     cost = top.cost
-    local def = game.rules.cardTypes and game.rules.cardTypes[top.type]
-    word = def and def.defeat and "defeat" or "buy"
+    word = require("engine.cards").typeDef(game.rules, top).defeat and "defeat" or "buy"
   end
   local waiting, readied = (pile.style == "stack") and 1 or n, {}
   local function ready(obj)

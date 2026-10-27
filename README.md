@@ -473,7 +473,7 @@ One row per card. The column order doesn't matter, but the names do.
 | `name` | yes | Name shown on the card | `War Anvil` |
 | `deck` | no (default `market`) | Which pile the card starts in: `starter`, `market`, `fixed` or `dealt` (see below) | `market` |
 | `faction` | no (default `none`) | Faction for ally effects and frame colour. Two factions: `forge/grove`. `any` counts as every faction; `anyname` counts as any card name for same-name allies | `forge` |
-| `type` | no (default `unit`) | A type from `cardTypes` in the rules | `building` |
+| `type` | no (default `unit`) | A type from `cardTypes` in the rules. Several types: `action/attack`. The card then has all of them: phases, prompts and play costs match any of them, and their `cardTypes` flags combine (a `unit/wall` stays in play and guards) | `building` |
 | `cost` | yes | Price in the market | `4` |
 | `copies` | yes | How many copies exist (see `deck`) | `1` |
 | `effects` | yes (may be empty) | What happens when it's played | `might:3` |

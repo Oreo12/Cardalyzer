@@ -132,9 +132,10 @@ def draw_card(card):
     d.text((CARD_W / 2 + 34, 56), card["name"], font=name_font, fill="white", anchor="mm")
 
     names = " / ".join(f.replace("_", " ").title() for f in factions)
-    subtitle = f"{names} · {card.get('type', 'unit').title()}"
-    if card.get("faction") in (None, "", "none") or names == card.get("type", "unit").title():
-        subtitle = card.get("type", "unit").title()
+    types = " – ".join(t.strip().title() for t in card.get("type", "unit").split("/"))
+    subtitle = f"{names} · {types}"
+    if card.get("faction") in (None, "", "none") or names == types:
+        subtitle = types
     d.text((CARD_W / 2, 122), subtitle, font=font(20), fill=(80, 80, 80), anchor="mm")
 
     # Art area placeholder
