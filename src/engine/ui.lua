@@ -13,6 +13,7 @@ local Actions = require("engine.actions")
 local Tutorial = require("engine.tutorial")
 local Theme = require("engine.theme")
 local Kits = require("engine.kits")
+local Mats = require("engine.mats")
 local Words = require("engine.words")
 
 local UI_ = {}
@@ -272,7 +273,7 @@ local TIPS = {
   ["cz-menuat-right"] = function() return "Menus and choices on the right of your screen, clear of TTS's own menus." end,
   ["cz-menuat-top"] = function() return "Menus and choices at the top of your screen." end,
 }
-for _, kind in ipairs({ "setup", "kit", "settings", "tutorial", "winner", "choice" }) do
+for _, kind in ipairs({ "setup", "kit", "settings", "mat", "tutorial", "winner", "choice" }) do
   TIPS["cz-tuck-" .. kind] = function() return "Tuck this away, just for you. A Show button by Tidy table brings it back." end
 end
 local function tipFor(id)
@@ -348,7 +349,7 @@ end
 -- bottom, and a private message for one player just above the info panel.
 UI_.INFO_WIDTH = 300
 -- Both sit clear of TTS's own Notes button in the bottom right corner.
-local INFO_BOTTOM = 112 -- the info panel's bottom edge
+local INFO_BOTTOM = 148 -- the info panel's bottom edge
 UI_.ACTION_BAR_Y = 210 -- the action bar's bottom edge by default: just above the on-screen hand
 UI_.BAR_STEP = 30 -- how far one press of Up / Down in Settings moves a player's bar
 
@@ -879,13 +880,40 @@ function UI_.settingsPanel(game, color)
     { { id = "cz-settingsclose", label = say("close") }, hideButton("settings") }, scale)
 end
 
+-- The Change mat menu, just for the player who opened it: which of the
+-- game's mats (rules.layout.mats.seat.sets) lies under their areas, and its
+-- style. Only players at the table have a mat.
+function UI_.matPanel(game, color)
+  use(game)
+  local seat, seatIndex = Mats.sets(game.rules), game:seatOfColor(color)
+  if not (seat and seatIndex) then return "" end
+  local pick = Mats.pickOf(game.rules, color, seatIndex, game.state.view.matPick)
+  local function choiceRow(id, label, buttons)
+    local xml = text(id, label, 15, 'preferredWidth="100" alignment="MiddleRight"' .. FX)
+    for _, b in ipairs(buttons) do xml = xml .. smallButton(b[1], b[2], 14, b[3]) end
+    return '<HorizontalLayout spacing="6" preferredHeight="30" childForceExpandWidth="false" childAlignment="MiddleCenter">'
+      .. xml .. '</HorizontalLayout>'
+  end
+  local sets, styles = {}, {}
+  for i, s in ipairs(seat.sets) do
+    sets[i] = { "cz-matset-" .. i, s.name or tostring(i), pick.set == i and "selected" or "secondary" }
+  end
+  for i = 1, #(seat.sets[pick.set].images or {}) do
+    styles[i] = { "cz-matstyle-" .. i, seat.styles and seat.styles[i] or tostring(i), pick.style == i and "selected" or "secondary" }
+  end
+  local rows = choiceRow("cz_mat_set_" .. color, say("mat"), sets)
+  if #styles > 1 then rows = rows .. choiceRow("cz_mat_style_" .. color, say("matStyle"), styles) end
+  return centrePanel("cz_matmenu_" .. color, color, say("changeMat"), accent(), 22, { rows, #styles > 1 and 76 or 38 },
+    { { id = "cz-matclose", label = say("close") }, hideButton("mat") }, UI_.scaleOf(game, color))
+end
+
 function UI_.xml(game)
   use(game)
   local state = game.state
   local parts = {}
 
-  -- The info panel and Tidy table (bottom right), once per UI size in use.
-  -- Tidy table sits clear of TTS's own Notes button; the info panel above it.
+  -- The info panel and the corner buttons under it (bottom right), once per
+  -- UI size in use. The buttons sit clear of TTS's own Notes button.
   local hiddenFor = {}
   for _, color in ipairs(Tutorial.allColors) do
     if UI_.hidden(game, color) then hiddenFor[color] = true end
@@ -898,12 +926,17 @@ function UI_.xml(game)
   for i, g in ipairs(groups) do
     local vis, suffix = groupAttrs(groups, i)
     -- the info panel: at its own y, or just above the corner buttons
-    local infoBottom = positions.info.y or ((corner.y or 0) + math.ceil(42 * g.scale))
+    local infoBottom = positions.info.y or ((corner.y or 0) + math.ceil((UI_.CORNER_HEIGHT + 12) * g.scale))
     local info, h = UI_.infoPanel(game, suffix, vis, infoBottom)
     parts[#parts + 1] = sized(info, g.scale)
-    parts[#parts + 1] = sized(leftSide('<Panel id="cz_tidy' .. suffix .. '"' .. vis .. ' width="' .. UI_.INFO_WIDTH .. '" height="30"'
-      .. place("corner") .. PANEL .. '><HorizontalLayout spacing="6" childForceExpandWidth="false" childAlignment="MiddleRight">'
-      .. UI_.cornerButtons(game) .. '</HorizontalLayout></Panel>', "corner"), g.scale)
+    local first, second = UI_.cornerButtons(game)
+    local function line(xml)
+      return '<HorizontalLayout spacing="6" preferredHeight="30" childForceExpandWidth="false" childAlignment="MiddleRight">'
+        .. xml .. '</HorizontalLayout>'
+    end
+    parts[#parts + 1] = sized(leftSide('<Panel id="cz_tidy' .. suffix .. '"' .. vis .. ' width="' .. UI_.INFO_WIDTH .. '" height="'
+      .. UI_.CORNER_HEIGHT .. '"' .. place("corner") .. PANEL .. '><VerticalLayout spacing="6" childForceExpandHeight="false">'
+      .. line(first) .. line(second) .. '</VerticalLayout></Panel>', "corner"), g.scale)
     for _, color in ipairs(g.colors) do infoTop[color] = { bottom = infoBottom, top = infoBottom + math.ceil(h * g.scale) } end
   end
 
@@ -936,7 +969,7 @@ function UI_.xml(game)
     if not kitOpen[color] then setupOpen[color] = true end
   end
   for _, which in ipairs({ { setupOpen, UI_.setupPanel, "setup" }, { kitOpen, UI_.kitPanel, "kit" },
-    { game.settingsOpen, UI_.settingsPanel, "settings" } }) do
+    { game.settingsOpen, UI_.settingsPanel, "settings" }, { game.matOpen, UI_.matPanel, "mat" } }) do
     local open = {}
     for color in pairs(which[1] or {}) do
       if shown(color) and not UI_.tucked(game, color, which[3]) then open[#open + 1] = color end
@@ -1091,13 +1124,14 @@ function UI_.tabsFor(game, color)
     setup = game.setupOpen and game.setupOpen[color] and not (game.kitMenuOpen and game.kitMenuOpen[color]),
     kit = game.kitMenuOpen and game.kitMenuOpen[color],
     settings = game.settingsOpen and game.settingsOpen[color],
+    mat = game.matOpen and game.matOpen[color],
     tutorial = game.tutorialOpen and game.tutorialOpen[color],
     winner = state.winner ~= nil,
     choice = state.started and not state.winner and seat ~= nil and state.players[seat].prompts[1] ~= nil,
   }
-  local names = { setup = say("newGame"), kit = game.rules.kitName or "Kit", settings = say("settings"),
+  local names = { setup = say("newGame"), kit = game.rules.kitName or "Kit", settings = say("settings"), mat = say("changeMat"),
     tutorial = say("tutorial"), winner = say("result"), choice = say("yourChoice") }
-  for _, kind in ipairs({ "choice", "winner", "setup", "kit", "settings", "tutorial" }) do
+  for _, kind in ipairs({ "choice", "winner", "setup", "kit", "settings", "mat", "tutorial" }) do
     if open[kind] and UI_.tucked(game, color, kind) then
       out[#out + 1] = { id = "cz-untuck-" .. kind, label = say("showPanel", { name = names[kind] }),
         kind = kind == "choice" and "primary" or nil }
@@ -1106,16 +1140,21 @@ function UI_.tabsFor(game, color)
   return out
 end
 
--- The buttons in the bottom-right corner: Rulebooks (when the rules list
--- some), the rules' own buttons (rules.ui.buttons), then Tidy table.
+-- The buttons under the info panel, in two rows: Rulebooks (when the rules
+-- list some), the rules' own buttons (rules.ui.buttons) and Tidy table; then
+-- Change mat (when the game has mats to choose from) and Hide UI.
+UI_.CORNER_HEIGHT = 66
 function UI_.cornerButtons(game)
   use(game)
-  local xml = ""
-  if game.rules.rulebooks and #game.rules.rulebooks > 0 then xml = xml .. smallButton("cz-rulebooks", say("rulebooks"), 12) end
+  local first = ""
+  if game.rules.rulebooks and #game.rules.rulebooks > 0 then first = first .. smallButton("cz-rulebooks", say("rulebooks"), 12) end
   for i, b in ipairs(game.rules.ui and game.rules.ui.buttons or {}) do
-    xml = xml .. smallButton("cz-button-" .. i, b.label, 12)
+    first = first .. smallButton("cz-button-" .. i, b.label, 12)
   end
-  return xml .. smallButton("cz-hideui", say("hideUI"), 12) .. smallButton("cz-tidy", say("tidy"), 12)
+  first = first .. smallButton("cz-tidy", say("tidy"), 12)
+  local second = (Mats.sets(game.rules) and smallButton("cz-matmenu", say("changeMat"), 12) or "")
+    .. smallButton("cz-hideui", say("hideUI"), 12)
+  return first, second
 end
 
 -- Where a colour's action bar sits: the default, moved in their Settings.

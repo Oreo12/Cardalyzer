@@ -244,7 +244,9 @@ To play:
    with no background: each player's name in their seat colour, their Health
    as a heart with the number on it (and, once they have buildings in play, a
    shield in front of it for each one, showing its defense), and their deck
-   and discard counts. **Tidy table** is a lone button below it, both clear of
+   and discard counts. Under it are **Settings** and **New Game**, then
+   **Rulebooks** (when the game has some) and **Tidy table**, then **Change
+   mat** (when the game has mats to choose from) and **Hide UI**, all clear of
    TTS's own Notes button in the corner:
    ```
                      Ember Guilds
@@ -254,6 +256,8 @@ To play:
                   Red        [♥ 40]
                        Deck 0 · Discard 0
                [Settings] [New Game]
+             [Rulebooks] [Tidy table]
+                          [Hide UI]
    ```
    Messages, such as "It's not your turn" or "Ember Smith ally: +2 Might",
    appear inside this panel (the last three for everyone, plus a private line
@@ -299,9 +303,9 @@ To play:
    that. So nothing of Cardalyzer's can trap you:
    - every panel in the middle of the screen (New Game, Settings, a choice,
      the winner, the tutorial) has a **Hide** button, which tucks it into a
-     **Show** button beside Tidy table. A choice you tuck away still waits
+     **Show** button beside the corner buttons. A choice you tuck away still waits
      for your answer;
-   - **Hide UI**, beside Tidy table, hides all of Cardalyzer's panels for you
+   - **Hide UI**, in the corner buttons, hides all of Cardalyzer's panels for you
      alone, leaving only **Show Cardalyzer**. You can also set a key for it
      in TTS's **Options → Game Keys** ("Cardalyzer: hide or show the UI");
    - **Menus** in Settings moves your menus away from the middle.
@@ -784,7 +788,7 @@ and `x`, `y` offsets in pixels from it.
 theme = {
   positions = {
     info = { anchor = "LowerRight", x = -12 },               -- no y: just above the corner buttons
-    corner = { anchor = "LowerRight", x = -12, y = 70 },     -- Rulebooks, your buttons, Hide UI, Tidy table
+    corner = { anchor = "LowerRight", x = -12, y = 70 },     -- Rulebooks, your buttons, Tidy table; Change mat, Hide UI
     bar = { anchor = "LowerCenter", x = 0, y = 210 },        -- the action bar
     counters = nil,                                          -- nil: just above the action bar
     menus = { anchor = "MiddleCenter", x = 0, y = 0 },       -- New Game, Settings, the tutorial, choices, game over
@@ -869,6 +873,11 @@ to face the middle, so one setting fits every seat.
 | `marketDeck` | left of the row | yes: the market deck isn't shown |
 | `scrap` | right of the fixed piles | yes: scrapped cards leave the table (nothing can be dropped there) |
 
+`play` and `bases` also take `column = true`: their cards then run in a
+column down the area (from the middle of the table toward the player)
+instead of a row across it, for a tall strip such as bases down the side of
+a mat.
+
 `marketDeck` and `scrap` take `{along, out}` from the middle of the market.
 An area turned off has no outline and no zone. Its cards still follow the
 rules, they just aren't shown on the table.
@@ -927,6 +936,25 @@ layout = {
   reads upright for that player. `image` is one picture for everyone, or one
   per seat colour with a `default` for the rest. `width`, `depth`, `along`
   and `out` change its size and place.
+- **Mats players choose:** give `seat` a list of `sets` instead of an
+  `image`, and each player picks their own with **Change mat** (under the
+  info panel). A set can come in several `styles`, one picture each:
+
+  ```lua
+  seat = {
+    width = 22, depth = 22 * 1562 / 2048, -- the pictures' own shape, so they aren't stretched
+    styles = { "Emblem", "Battle" },
+    sets = {
+      { name = "Blue Guild", color = "Blue", images = { "https://…/blue-emblem.jpg", "https://…/blue-battle.jpg" } },
+      { name = "Red Guild", color = "Red", images = { "https://…/red-emblem.jpg", "https://…/red-battle.jpg" } },
+    },
+  },
+  ```
+
+  A set's `color` makes it that seat colour's mat to start with; other seats
+  start on the sets in order. Each player's choice is saved with the game.
+  Give `width` and `depth` in the pictures' own proportions: a mat is laid at
+  exactly that size, so other proportions stretch the picture.
 - **`market`:** one mat under the market row, market deck, fixed piles and
   scrap pile. `x`, `z`, `width`, `depth` and `yaw` change it.
 - **`extra`:** any number of other mats anywhere on the table.

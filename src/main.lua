@@ -128,6 +128,11 @@ function handleUI(player, _, id)
   if action == "barup" then return game:moveBar(player.color, 1) end
   if action == "bardown" then return game:moveBar(player.color, -1) end
   if action == "barreset" then return game:moveBar(player.color, 0) end
+  -- and their own play mat (Change mat): cz-matset-<n> and cz-matstyle-<n>
+  if action == "matmenu" then return run(player.color, game.matMenu, player.color, true) end
+  if action == "matclose" then return game:matMenu(player.color, false) end
+  if action == "matset" then return run(player.color, game.setMat, player.color, "set", arg) end
+  if action == "matstyle" then return run(player.color, game.setMat, player.color, "style", arg) end
   if action == "tidy" then return run(player.color, game.tidy) end
   if action == "rulebooks" then return run(player.color, game.toggleRulebooks) end
   if action == "button" then return run(player.color, game.pressButton, tonumber(arg), player.color) end

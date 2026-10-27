@@ -259,12 +259,21 @@ end
 -- fit: the cards overlap, each a little higher than the last so they rest on
 -- one another instead of colliding.
 function Board.rowPositions(spot, n, gap, cardWidth)
-  if cardWidth and spot.size and n > 1 then
-    local fit = (spot.size[1] - cardWidth) / (n - 1)
+  local rx, rz = spot.right[1], spot.right[2]
+  local length = spot.size and spot.size[1]
+  if spot.column then
+    -- a column (rules.layout.areas.x.column): cards run down the area, from
+    -- the table centre toward the player, a card's depth apart
+    rx, rz = -spot.forward[1], -spot.forward[2]
+    length = spot.size and spot.size[3]
+    cardWidth = cardWidth and cardWidth * 3.4 / 2.4
+    gap = (cardWidth or 3.4) + 0.4
+  end
+  if cardWidth and length and n > 1 then
+    local fit = (length - cardWidth) / (n - 1)
     if fit < gap then gap = math.max(fit, cardWidth * 0.2) end
   end
   local rise = (cardWidth and gap < cardWidth) and 0.05 or 0
-  local rx, rz = spot.right[1], spot.right[2]
   local out = {}
   for i = 1, n do
     local along = (i - (n + 1) / 2) * gap

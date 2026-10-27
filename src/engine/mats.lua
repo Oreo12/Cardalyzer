@@ -15,6 +15,20 @@
 -- its seat's frame (as in rules.layout.areas), `x` and `z` move the market
 -- mat. A seat mat turns with its seat, so its picture reads upright for that
 -- player. Only http(s) pictures are used: every player's TTS fetches them.
+--
+-- Mats players choose between (Settings → Mat and Mat style):
+--
+--   seat = {
+--     styles = { "Emblem", "Battle" },          -- style names, in order
+--     sets = {
+--       { name = "Blue Guild", color = "Blue", images = { "https://…", "https://…" } }, -- one per style
+--       …
+--     },
+--   }
+--
+-- Each player picks a set and a style for their own mat (saved with the
+-- game). A set's `color` makes it that seat colour's mat to start with;
+-- otherwise seats start on the sets in order.
 local Mats = {}
 
 local function webUrl(url)
@@ -42,9 +56,33 @@ local function around(spots, origin, right, forward, margin)
   return (lo_a + hi_a) / 2, (lo_o + hi_o) / 2, hi_a - lo_a + 2 * margin, hi_o - lo_o + 2 * margin
 end
 
+-- The seat mat sets players choose between, or nil.
+function Mats.sets(rules)
+  local seat = rules.layout and rules.layout.mats and rules.layout.mats.seat
+  return seat and type(seat.sets) == "table" and #seat.sets > 0 and seat or nil
+end
+
+-- A seat's mat choice: { set = i, style = j }, from `picks` (state.view.matPick)
+-- or its starting one.
+function Mats.pickOf(rules, color, seatIndex, picks)
+  local seat = Mats.sets(rules)
+  if not seat then return nil end
+  local pick = picks and picks[color] or {}
+  local set = pick.set
+  if not set then
+    for i, s in ipairs(seat.sets) do
+      if s.color == color then set = i end
+    end
+  end
+  set = seat.sets[set or 0] and set or ((seatIndex - 1) % #seat.sets + 1)
+  local count = #(seat.sets[set].images or {})
+  local style = pick.style and pick.style >= 1 and pick.style <= count and pick.style or 1
+  return { set = set, style = style }
+end
+
 -- Every mat to lay: { key, image, position, yaw, width, depth }.
--- `colors` lists the seat colours in seat order.
-function Mats.spots(rules, layout, colors)
+-- `colors` lists the seat colours in seat order; `picks` is state.view.matPick.
+function Mats.spots(rules, layout, colors, picks)
   local mats = rules.layout and rules.layout.mats
   if not mats then return {} end
   -- TTS sets a spawned tile's bottom at this height: on the table.
@@ -54,6 +92,8 @@ function Mats.spots(rules, layout, colors)
   if seat then
     for i, s in ipairs(layout.seats) do
       local image = type(seat.image) == "table" and (seat.image[colors[i]] or seat.image.default) or seat.image
+      local pick = Mats.pickOf(rules, colors[i], i, picks)
+      if pick then image = (seat.sets[pick.set].images or {})[pick.style] end
       -- the seat's frame, from its play area
       local origin = { s.play.position[1], s.play.position[3] }
       local right, forward = s.play.right, s.play.forward
@@ -116,7 +156,7 @@ function Mats.build(game)
   for i, p in ipairs(game.state.players) do colors[i] = p.color end
   local thickness = game.rules.layout and game.rules.layout.mats and game.rules.layout.mats.thickness or 0.1
   local wanted = {}
-  for _, m in ipairs(Mats.spots(game.rules, game.layout, colors)) do
+  for _, m in ipairs(Mats.spots(game.rules, game.layout, colors, view.matPick)) do
     wanted[m.key] = true
     local sig = signature(m)
     local have = view.mats[m.key]
