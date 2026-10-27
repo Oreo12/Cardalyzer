@@ -79,8 +79,7 @@ function UI_.actions(game)
 
   out.prompt, out.choices = UI_.promptFor(game, seat)
 
-  local canPlay = 0
-  for _, uid in ipairs(p.hand) do if Actions.playable(game, seat, uid) then canPlay = canPlay + 1 end end
+  local canPlay = Actions.playAllCount(game, seat)
   if canPlay > 0 and not Actions.handBlocked(game, seat) then add(out.buttons, "cz-playall", say("playAll", { n = canPlay })) end
 
   local key, label = Actions.resourceFor(game.rules, "attack")

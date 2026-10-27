@@ -2951,5 +2951,39 @@ test("skipAhead: a play or buy for a later phase moves the turn on; a refused on
   game.rules.turn = nil
 end)
 
+test("skipAhead: Play all with nothing to play in this phase plays the next phase's cards", function()
+  local game = boot()
+  game.rules.turn = {
+    phases = {
+      { key = "action", label = "Action", play = "unit", buy = false },
+      { key = "buy", label = "Buy", play = "building" },
+    },
+    skipAhead = true,
+  }
+  Cardalyzer_onStartGame(HOST)
+  local s, p = game.state, game.state.players[1]
+  for _, uid in ipairs(p.hand) do p.deck[#p.deck + 1] = uid end
+  p.hand = {}
+  local State = Cardalyzer.require("engine.state")
+  p.hand[1] = State.newCard(s, "seed_vault")
+  p.hand[2] = State.newCard(s, "seed_vault")
+  game:refreshUI()
+  assert(tts.ui.xml:find("Play all (2)", 1, true), "Play all offers the Buy phase's cards")
+  eq(s.turn.phase, 1, "drawing the UI doesn't move the turn on")
+  assert(game:playAll(1), "Play all")
+  eq(s.turn.phase, 2, "moved on to the Buy phase")
+  eq(#p.hand, 0, "played both")
+  -- with an action to play, Play all stays in the Action phase
+  game = boot()
+  game.rules.turn = { phases = { { key = "action", play = "unit" }, { key = "buy", play = "building" } }, skipAhead = true }
+  Cardalyzer_onStartGame(HOST)
+  local pl = game.state.players[1]
+  pl.hand[#pl.hand + 1] = State.newCard(game.state, "seed_vault")
+  assert(game:playAll(1), "Play all")
+  eq(game.state.turn.phase, 1, "still the Action phase")
+  eq(#pl.hand, 1, "the building waits")
+  game.rules.turn = nil
+end)
+
 print(string.format("\n%d passed, %d failed", passed, failed))
 if failed > 0 then os.exit(1) end

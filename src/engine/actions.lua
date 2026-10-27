@@ -384,6 +384,34 @@ function Actions.typeMatches(filter, c)
   return false
 end
 
+-- What Play all would play: the number of cards playable in this phase, or,
+-- with rules.turn.skipAhead and nothing playable now, in the first later
+-- phase that has some (and that phase). The turn is left in its phase.
+function Actions.playAllCount(game, seat)
+  local turn = game.state.turn
+  local function count()
+    local n = 0
+    for _, uid in ipairs(game.state.players[seat].hand) do
+      if Actions.playable(game, seat, uid) then n = n + 1 end
+    end
+    return n
+  end
+  local n = count()
+  local t = game.rules.turn
+  if n > 0 or not (t and t.skipAhead and t.phases) then return n, nil end
+  local saved = turn.phase
+  for i = (saved or 1) + 1, #t.phases do
+    turn.phase = i
+    n = count()
+    if n > 0 then
+      turn.phase = saved
+      return n, i
+    end
+  end
+  turn.phase = saved
+  return 0, nil
+end
+
 function Actions.playAll(game, seat)
   local ok, why = isActive(game, seat)
   if not ok then return fail(why) end
@@ -391,6 +419,8 @@ function Actions.playAll(game, seat)
   if waiting then return fail(say(game, "firstDo", { what = Actions.promptText(game, waiting) })) end
   local hand = game.state.players[seat].hand
   if #hand == 0 then return fail(say(game, "handEmpty")) end
+  local _, later = Actions.playAllCount(game, seat)
+  if later then game.state.turn.phase = later end
   -- Plays every card it can, in hand order, again and again (a card played
   -- may draw more or pay for the next); stops early if a card played asks
   -- for a card from the hand first.
