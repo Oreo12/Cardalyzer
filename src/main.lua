@@ -220,6 +220,14 @@ function Cardalyzer_onBuy(obj, color)
   run(color, game.buyObject, seat, obj.getGUID(), obj.getGMNotes())
 end
 
+-- Hire buttons on market cards to hire for a turn (types with hire = true).
+function Cardalyzer_onHire(obj, color)
+  if not game then return end
+  local seat = game:seatOfColor(color)
+  if not seat then return tell(color, say("takeASeat")) end
+  run(color, game.hire, seat, obj.getGMNotes())
+end
+
 -- A player dropped something. Engine cards are handled by Game:dropped: a
 -- hand card on your play area is played, a card dropped on the scrap pile is
 -- scrapped, and anything else goes back where it belongs.

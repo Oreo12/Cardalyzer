@@ -3372,5 +3372,39 @@ test("conditions on effects: only while a stat, resource or count reaches a leve
   assert(problems[1] and problems[1]:find("condition on 'luck'", 1, true), tostring(problems[1]))
 end)
 
+test("hiring a market card for one turn: Hire button, effects now, back under the market deck", function()
+  local game = boot()
+  local Util = Cardalyzer.require("engine.util")
+  game.rules.cardTypes.mercenary = { hire = true }
+  local merc = game.cards:get("tide_runner") -- +2 Gold
+  merc.type = "mercenary"
+  Cardalyzer_onStartGame(HOST)
+  local s, p = game.state, game.state.players[1]
+  local uid = Cardalyzer.require("engine.state").newCard(s, "tide_runner")
+  s.market.deck[#s.market.deck + 1] = s.market.row[1]
+  s.market.row[1] = uid
+  Cardalyzer.require("engine.board").sync(game)
+  local obj = getObjectFromGUID(s.view.piles["market.row.1"][1])
+  local labels = {}
+  for _, b in ipairs(obj.buttons) do labels[#labels + 1] = b.label end
+  local all = table.concat(labels, "|")
+  assert(all:find("Hire · 1", 1, true) and all:find("Buy · 1", 1, true), "Hire and Buy buttons: " .. all)
+  p.resources.gold = 0
+  local ok = game:hire(1, uid)
+  assert(not ok, "costs 1 Gold")
+  p.resources.gold = 1
+  Cardalyzer_onHire(obj, "White")
+  assert(Util.indexOf(p.play, uid), "in play")
+  eq(p.resources.gold, 2, "paid 1, got its +2")
+  assert(s.market.row[1] ~= uid and s.market.row[1] ~= "", "the slot refilled")
+  Cardalyzer_onEndTurn(HOST)
+  eq(s.market.deck[1], uid, "at the bottom of the market deck")
+  assert(not Util.indexOf(p.discard, uid) and not Util.indexOf(p.deck, uid), "not the player's")
+  -- a plain market card has no Hire button and can't be hired
+  local other = s.market.row[2]
+  ok = game:hire(2, other)
+  assert(not ok, "not a card to hire")
+end)
+
 print(string.format("\n%d passed, %d failed", passed, failed))
 if failed > 0 then os.exit(1) end
