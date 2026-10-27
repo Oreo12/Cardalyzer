@@ -44,7 +44,7 @@ end
 --   target = false   it can't be attacked or destroyed (Star Realms' Heroes)
 --   event = true     revealed into the market row, it resolves and is scrapped
 function Actions.typeDef(game, c)
-  return game.rules.cardTypes and game.rules.cardTypes[c.type] or {}
+  return require("engine.cards").typeDef(game.rules, c)
 end
 
 -- Fills the market row from the market deck. An Event revealed this way is
@@ -278,9 +278,14 @@ end
 local function pay(player, cost)
   if cost then player.resources[cost.key] = (player.resources[cost.key] or 0) - (cost.amount or 1) end
 end
+-- The play cost for a card: its first type that has one.
 local function playCost(game, c)
   local costs = game.rules.turn and game.rules.turn.playCost
-  return costs and costs[c.type]
+  if not costs then return nil end
+  for _, t in ipairs(require("engine.cards").typesOf(c)) do
+    if costs[t] then return costs[t] end
+  end
+  return nil
 end
 local function resourceLabel(game, key)
   for _, r in ipairs(game.rules.resources or {}) do
@@ -373,12 +378,14 @@ end
 
 -- Does a type filter match this card? true (any), a type ("ship") or a list
 -- of types ({ "base", "outpost" }). Used by flags and prompt filters.
+-- A card with several types ("action/attack") matches if any of them does.
 function Actions.typeMatches(filter, c)
   if filter == true then return true end
-  if type(filter) == "string" then return c.type == filter end
+  local Cards = require("engine.cards")
+  if type(filter) == "string" then return Cards.hasType(c, filter) end
   if type(filter) == "table" then
     for _, t in ipairs(filter) do
-      if t == c.type then return true end
+      if Cards.hasType(c, t) then return true end
     end
   end
   return false
@@ -711,8 +718,7 @@ end
 function Actions.guards(game, seat)
   local out = {}
   for _, uid in ipairs(game.state.players[seat].bases) do
-    local def = game.rules.cardTypes and game.rules.cardTypes[card(game, uid).type]
-    if def and def.guard then out[#out + 1] = uid end
+    if Actions.typeDef(game, card(game, uid)).guard then out[#out + 1] = uid end
   end
   return out
 end

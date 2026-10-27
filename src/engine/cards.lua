@@ -109,6 +109,11 @@ local function parseRow(row, index)
   for _, f in ipairs(Util.split(blank(row.faction) and "none" or row.faction, "/")) do
     factions[#factions + 1] = Util.trim(f)
   end
+  -- "action/attack": the card has every one of these types (type is the first)
+  local types = {}
+  for _, t in ipairs(Util.split(blank(row.type) and "unit" or row.type, "/")) do
+    types[#types + 1] = Util.trim(t)
+  end
 
   -- Double ally effects fire when two other cards of the faction are in play.
   local groups = Cards.allyGroups(ally)
@@ -128,7 +133,8 @@ local function parseRow(row, index)
     allyGroups = groups,
     doubleAllyEffects = double,
     condition = not blank(row.condition) and row.condition or nil, -- objective: custom effect whose check() says it's met
-    type = blank(row.type) and "unit" or row.type,
+    type = types[1],
+    types = types,
     cost = tonumber(row.cost) or 0,
     copies = tonumber(row.copies) or 1,
     effects = effects,
@@ -152,6 +158,37 @@ function Cards.new(rows)
     lib.list[#lib.list + 1] = card
   end
   return lib
+end
+
+-- A card's types: { "action", "attack" } ("action/attack"), or its one type.
+-- (A type changed from Lua, card.type = "monster", wins over the list.)
+function Cards.typesOf(card)
+  if card.types and card.types[1] == card.type then return card.types end
+  return { card.type }
+end
+
+-- Does the card have this type?
+function Cards.hasType(card, t)
+  for _, own in ipairs(Cards.typesOf(card)) do
+    if own == t then return true end
+  end
+  return false
+end
+
+-- The card's entry in rules.cardTypes, its types' entries combined: a flag
+-- set by any of its types counts (persistent, guard, defeat, event...), the
+-- first type to give a value wins otherwise. An empty table if none.
+function Cards.typeDef(rules, card)
+  local types = Cards.typesOf(card)
+  local defs = rules.cardTypes or {}
+  if #types == 1 then return defs[types[1]] or {} end
+  local merged = {}
+  for _, t in ipairs(types) do
+    for k, v in pairs(defs[t] or {}) do
+      if merged[k] == nil or v == true then merged[k] = v end
+    end
+  end
+  return merged
 end
 
 function Cards:get(id)

@@ -245,8 +245,8 @@ function Turn.fillMarket(state)
 end
 
 function Turn.isPersistent(rules, card)
-  local def = rules.cardTypes and rules.cardTypes[card.type]
-  return def ~= nil and def.persistent == true and rules.mechanics.persistent ~= false
+  local def = require("engine.cards").typeDef(rules, card)
+  return def.persistent == true and rules.mechanics.persistent ~= false
 end
 
 -- The seat after `seat` in turn order, skipping players who are out.

@@ -3300,5 +3300,41 @@ test("next_effects: the card stays in play and its effects come at the start of 
   eq(Cardalyzer.require("engine.board").describe(game, c):find("Next turn: Draw 2, %+1 Gold") ~= nil, true, "tooltip")
 end)
 
+test("a card can have several types: filters, phases, play costs and type flags see them all", function()
+  local game = boot()
+  local Cards = Cardalyzer.require("engine.cards")
+  local Actions = Cardalyzer.require("engine.actions")
+  local lib = Cards.new({ { id = "a", name = "A", cost = 1, copies = 1, effects = "", type = "action / attack" } })
+  local a = lib:get("a")
+  eq(a.type, "action", "the first type")
+  eq(table.concat(a.types, ","), "action,attack", "both types")
+  assert(Cards.hasType(a, "attack") and not Cards.hasType(a, "unit"), "hasType")
+  assert(Actions.typeMatches("attack", a) and Actions.typeMatches({ "treasure", "action" }, a), "filters match any type")
+  -- type flags combine: a unit that is also a wall is a guard that stays in play
+  local c = game.cards:get("tide_runner")
+  c.type, c.types = "unit", { "unit", "wall" }
+  local def = Actions.typeDef(game, c)
+  assert(def.persistent and def.guard, "flags from both types")
+  -- phases and play costs: the first type with a cost
+  game.rules.resources[#game.rules.resources + 1] = { key = "actions", label = "Actions", start = 1 }
+  game.rules.turn = {
+    phases = { { key = "a", label = "A", play = "wall" } },
+    playCost = { wall = { key = "actions", amount = 1 } },
+  }
+  Cardalyzer_onStartGame(HOST)
+  local p = game.state.players[1]
+  local uid = Cardalyzer.require("engine.state").newCard(game.state, "tide_runner")
+  p.hand[#p.hand + 1] = uid
+  local apprentice
+  for _, u in ipairs(p.hand) do if game.state.cards[u] == "apprentice" then apprentice = u end end
+  assert(not game:play(1, apprentice), "a plain unit can't be played in a wall phase")
+  assert(game:play(1, uid), "the unit/wall can")
+  eq(p.resources.actions, 0, "paid the wall's play cost")
+  assert(Cardalyzer.require("engine.util").indexOf(p.bases, uid), "stays in play, as a wall does")
+  eq(Actions.guards(game, 1)[1], uid, "and guards")
+  assert(Cardalyzer.require("engine.board").describe(game, c):find("Unit – Wall", 1, true), "both types in the tooltip")
+  game.rules.turn = nil
+end)
+
 print(string.format("\n%d passed, %d failed", passed, failed))
 if failed > 0 then os.exit(1) end

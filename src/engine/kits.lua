@@ -36,7 +36,7 @@ end
 function Kits.cardsOf(game, kit, deck, cardType)
   local out = {}
   for _, card in ipairs(game.cards:inDeck(deck)) do
-    if card.set == kit.set and (not cardType or card.type == cardType) then out[#out + 1] = card end
+    if card.set == kit.set and (not cardType or require("engine.cards").hasType(card, cardType)) then out[#out + 1] = card end
   end
   return out
 end
