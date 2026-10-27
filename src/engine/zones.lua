@@ -91,7 +91,8 @@ end
 -- out, all in table units. rules.layout.areas changes any of these
 -- ({ play = { out = 3 } }), or turns an area off with false: its cards are
 -- then not shown on the table. With bases off, cards that stay in play sit
--- in the play area instead.
+-- in the play area instead. `column = true` lays the play or bases area's
+-- cards in a column down the area instead of a row across it.
 function Zones.seatAreas(rules)
   local gap = layoutValue(rules, "cardSpacing")
   local areas = {
@@ -178,6 +179,7 @@ function Zones.layout(rules, fixedIds, count, facing, breaks)
     local a = areas[name]
     local s = spot(f, name == "hand" and y + 2 or y, a.along, a.out, ownYaw or yaw, { a.width, height, a.depth })
     s.hidden = a.hidden
+    s.column = a.column
     return s
   end
   for seat = 1, count do

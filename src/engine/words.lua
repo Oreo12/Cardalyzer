@@ -88,6 +88,9 @@ Words.DEFAULT = {
   -- Settings
   uiSize = "UI size",
   actionBar = "Action bar",
+  mat = "Mat",
+  matStyle = "Mat style",
+  changeMat = "Change mat",
   up = "Up",
   down = "Down",
   reset = "Reset",

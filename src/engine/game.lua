@@ -12,6 +12,7 @@ local UI_ = require("engine.ui")
 local Tutorial = require("engine.tutorial")
 local Rulebooks = require("engine.rulebooks")
 local Kits = require("engine.kits")
+local Mats = require("engine.mats")
 local Words = require("engine.words")
 
 local Game = {}
@@ -498,10 +499,48 @@ function Game:setMenuAt(color, where)
   return true
 end
 
+-- Changes one player's own play mat (rules.layout.mats.seat.sets):
+-- which = "set" or "style", n its number. Saved; re-lays just the mats.
+function Game:setMat(color, which, n)
+  local seat = Mats.sets(self.rules)
+  if not seat then return false, "This game has no mats to choose from." end
+  local seatIndex = nil
+  for i, p in ipairs(self.state.players) do
+    if p.color == color then seatIndex = i end
+  end
+  if not seatIndex then return false, "Only players at the table have a mat." end
+  local view = self.state.view
+  view.matPick = view.matPick or {}
+  local pick = Mats.pickOf(self.rules, color, seatIndex, view.matPick)
+  n = tonumber(n)
+  if which == "set" and n and seat.sets[n] then
+    pick.set = n
+    pick.style = math.min(pick.style, #(seat.sets[n].images or {}))
+  elseif which == "style" and n and n >= 1 and n <= #(seat.sets[pick.set].images or {}) then
+    pick.style = n
+  else
+    return false, "There's no such mat."
+  end
+  view.matPick[color] = pick
+  Mats.build(self)
+  self:refreshUI()
+  return true
+end
+
 -- A panel opened again shows again, even if it was tucked away.
 function Game:untuck(color, kind)
   local t = self.state.view.tucked and self.state.view.tucked[color]
   if t then t[kind] = nil end
+end
+
+-- Opens or closes the Change mat menu for one player. Not saved.
+function Game:matMenu(color, open)
+  if open and not self:seatOfColor(color) then return false, "Only players at the table have a mat." end
+  if open then self:untuck(color, "mat") end
+  self.matOpen = self.matOpen or {}
+  self.matOpen[color] = open or nil
+  self:refreshUI()
+  return true
 end
 
 -- Opens or closes the settings menu for one player. Not saved.

@@ -165,7 +165,7 @@ test("the UI: info panel on the right, action bar above the hand, Tidy table in 
   assert(xml:find('id="cz_panel" rectAlignment="LowerRight"[^>]* width="300" height="%d+"'), "info panel on the right")
   assert(xml:find('id="cz_actions"[^>]*rectAlignment="LowerCenter" offsetXY="0 210"'), "action bar just above the hand")
   assert(xml:find('id="cz_tidy"[^>]*rectAlignment="LowerRight" offsetXY="%-12 70"'), "Tidy table above TTS's Notes button")
-  assert(xml:find('id="cz_panel"[^>]*offsetXY="%-12 112"'), "info panel above it")
+  assert(xml:find('id="cz_panel"[^>]*offsetXY="%-12 148"'), "info panel above it")
   assert(not xml:find('outline="#E8B84A"', 1, true), "no yellow borders")
   assert(not xml:find('color="#0E1620F2"', 1, true), "no panel backgrounds")
   assert(xml:find('id="cz%-end"[^>]*fontSize="17"[^>]*colors="#E8B84A'), "End Turn: bigger, gold")
@@ -2374,6 +2374,62 @@ test("play mats under each seat and the market, extra mats, the table picture", 
   Cardalyzer_onStartGame(HOST)
   eq(#tts.live(function(o) return o.tags.cz_mat end), 3 + 1 + 1, "re-laid for three players")
   game.rules.layout = nil
+end)
+
+test("players choose their own mat and its style in Settings", function()
+  local game = boot()
+  local function url(set, style) return "https://example.com/" .. set .. "-" .. style .. ".png" end
+  local layout = { mats = { seat = {
+    styles = { "Plain", "Fancy" },
+    sets = {
+      { name = "Sun", images = { url("sun", 1), url("sun", 2) } },
+      { name = "Moon", color = "White", images = { url("moon", 1), url("moon", 2) } },
+      { name = "Star", images = { url("star", 1) } },
+    },
+  } } }
+  game.rules.layout = layout
+  Cardalyzer_onStartGame(HOST)
+  local function matOf(g, seat)
+    local have = g.state.view.mats["seat." .. seat]
+    return have and getObjectFromGUID(have.guid).data.CustomImage.ImageURL
+  end
+  eq(matOf(game, 1), url("moon", 1), "White starts on the set given its colour")
+  eq(matOf(game, 2), url("moon", 1), "Red starts on the sets in seat order")
+  assert(tts.ui.xml:find('id="cz-matmenu"', 1, true), "a Change mat button")
+  click(HOST, "cz-matmenu")
+  assert(tts.ui.xml:find('id="cz_matmenu_White"', 1, true), "the Change mat menu")
+  assert(tts.ui.xml:find('id="cz-matset-3"', 1, true), "a button per set")
+  assert(tts.ui.xml:find('id="cz-matstyle-2"', 1, true), "a button per style")
+  click(HOST, "cz-matstyle-2")
+  eq(matOf(game, 1), url("moon", 2), "the style changed")
+  click(HOST, "cz-matset-1")
+  eq(matOf(game, 1), url("sun", 2), "the set changed, keeping the style")
+  click(HOST, "cz-matset-3")
+  eq(matOf(game, 1), url("star", 1), "a set with fewer styles falls back to one it has")
+  eq(matOf(game, 2), url("moon", 1), "Red's mat is untouched")
+  eq(#tts.live(function(o) return o.tags.cz_mat end), 2, "old mats replaced, not piled up")
+  -- saved: a reload keeps the choice and the mats
+  local saved = onSave()
+  local objects, order = tts.objects, tts.order
+  dofile("build/Global.lua")
+  tts.objects, tts.order = objects, order
+  onLoad(saved)
+  local again = Cardalyzer.game
+  eq(again.state.view.matPick.White.set, 3, "kept after a reload")
+  eq(again:setMat("Purple", "set", 1), false, "spectators have no mat")
+  eq(again:setMat("White", "set", 9), false, "no such set")
+  game.rules.layout = nil
+end)
+
+test("an area can lay its cards in a column down it", function()
+  local Board = Cardalyzer.require("engine.board")
+  local spot = { position = { 0, 1, 0 }, right = { 1, 0 }, forward = { 0, 1 }, size = { 3, 3, 20 }, column = true }
+  local at = Board.rowPositions(spot, 3, 2.8, 2.4)
+  eq(at[1][1], 0, "no sideways step")
+  eq(at[1][3] > at[2][3] and at[2][3] > at[3][3], true, "down the area, from the centre side")
+  eq(math.floor((at[1][3] - at[2][3]) * 10 + 0.5), 38, "a card's depth apart")
+  local packed = Board.rowPositions(spot, 9, 2.8, 2.4)
+  assert(packed[1][3] - packed[9][3] <= 20 - 3.4 + 0.01, "closes up to fit")
 end)
 
 test("symbols: replace or add pictures, the defense symbol, the counters' look and sizes", function()
