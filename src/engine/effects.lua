@@ -17,8 +17,12 @@ end
 function Effects.new(rules)
   local self = setmetatable({ handlers = {}, custom = {}, rules = rules }, Effects)
 
+  -- The game's own resources and stats are registered first, and a built-in
+  -- keyword with the same name doesn't replace them (see Effects:register).
+  self.own = {}
   for _, res in ipairs(rules.resources or {}) do
     local key, label = res.key, res.label or Util.titleCase(res.key)
+    self.own[key] = true
     self:register(key, {
       apply = function(game, seat, amount)
         local pools = game.state.players[seat].resources
@@ -31,6 +35,7 @@ function Effects.new(rules)
 
   for _, stat in ipairs(rules.stats or {}) do
     local key, label = stat.key, stat.label or Util.titleCase(stat.key)
+    self.own[key] = true
     self:register(key, {
       apply = function(game, seat, amount)
         local stats = game.state.players[seat].stats
@@ -220,6 +225,33 @@ function Effects.new(rules)
     end,
     text = function(_, effect) return "Put a card from your hand in your " .. areaLabel(effect.id) end,
   })
+  -- Damage to each opponent's win stat (rules.win.stat): the Attack button
+  -- uses it too. Their cards in play can change it (whenAttacked), and their
+  -- reactions can prevent some (prevent:N) or all of it (block).
+  self:register("opponents_damage", {
+    toOpponent = function(game, attacker, victim, amount, _, _, hit)
+      local stat = game.rules.win and game.rules.win.stat
+      if not stat then return end
+      local blow = { damage = amount - (hit and hit.prevented or 0), attacker = attacker }
+      local Actions = require("engine.actions")
+      Actions.trigger(game, victim, "whenAttacked", blow)
+      local stats = game.state.players[victim].stats
+      stats[stat] = (stats[stat] or 0) - math.max(0, blow.damage)
+      Actions.checkWin(game)
+    end,
+    text = function(amount)
+      local stat = rules.win and rules.win.stat
+      local label = stat
+      for _, st in ipairs(rules.stats or {}) do if st.key == stat then label = st.label or st.key end end
+      return amount .. " damage" .. (label and (" to " .. label) or "")
+    end,
+  })
+  self:register("prevent", {
+    apply = function(_, _, amount, ctx)
+      if ctx.attack then ctx.attack.prevented = (ctx.attack.prevented or 0) + amount end
+    end,
+    text = function(amount) return "Prevent " .. amount .. " damage" end,
+  })
   self:register("block", {
     apply = function(_, _, _, ctx) if ctx.attack then ctx.attack.blocked = true end end,
     text = function() return "Block the attack" end,
@@ -249,6 +281,8 @@ function Effects.noteGain(game, seat, key, amount)
 end
 
 function Effects:register(key, handler)
+  -- a built-in keyword never replaces the game's own resource or stat of that name
+  if self.handlers[key] and self.own and self.own[key] then return end
   self.handlers[key] = handler
 end
 
