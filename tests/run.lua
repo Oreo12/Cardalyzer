@@ -1448,7 +1448,8 @@ test("the winner is announced, with Play Again? to set up the next game", functi
   game.state.players[1].resources.might = 5
   click(WHITE, "cz-attack-2")
   local xml = tts.ui.xml
-  assert(xml:find('id="cz_winner"[^>]*rectAlignment="MiddleCenter"'), "winner panel in the middle")
+  assert(xml:find('id="cz_winner_White"[^>]*rectAlignment="MiddleCenter"'), "winner panel in the middle")
+  assert(xml:find('id="cz_winner_Red" visibility="Red"', 1, true), "one for each player")
   assert(xml:find(">White wins!<", 1, true), "names the winner")
   assert(xml:find('id="cz%-again"[^>]*>Play Again%?<'), "Play Again? button")
   local said = false
@@ -1459,7 +1460,7 @@ test("the winner is announced, with Play Again? to set up the next game", functi
   click(WHITE, "cz-again")
   xml = tts.ui.xml
   assert(xml:find('id="cz_setup_White"', 1, true), "Play Again? opens the setup menu")
-  assert(not xml:find('id="cz_winner" visibility="White', 1, true), "the winner panel steps aside for it")
+  assert(not xml:find('id="cz_winner_White"', 1, true), "the winner panel steps aside for it")
   click(WHITE, "cz-new")
   eq(game.state.winner, nil, "a new game")
   assert(not tts.ui.xml:find("cz_winner", 1, true), "winner panel gone")
@@ -2983,6 +2984,126 @@ test("skipAhead: Play all with nothing to play in this phase plays the next phas
   eq(game.state.turn.phase, 1, "still the Action phase")
   eq(#pl.hand, 1, "the building waits")
   game.rules.turn = nil
+end)
+
+test("panels can be tucked away and shown again, per player", function()
+  local game = boot()
+  Cardalyzer_onStartGame(HOST)
+  click(HOST, "cz-setup")
+  local xml = tts.ui.xml
+  assert(xml:find('id="cz%-tuck%-setup"[^>]*>Hide<'), "the setup menu has Hide")
+  click(HOST, "cz-tuck-setup")
+  xml = tts.ui.xml
+  assert(not xml:find('id="cz_setup_White"', 1, true), "tucked away")
+  assert(xml:find('id="cz_tabs_White" visibility="White"', 1, true), "a tab for White")
+  assert(xml:find('id="cz%-untuck%-setup"[^>]*>Show New Game<'), "Show New Game")
+  click(HOST, "cz-untuck-setup")
+  assert(tts.ui.xml:find('id="cz_setup_White"', 1, true), "back")
+  assert(not tts.ui.xml:find("cz_tabs_White", 1, true), "no tab")
+  -- tucked, then closed and opened again: it shows
+  click(HOST, "cz-tuck-setup")
+  click(HOST, "cz-setup")
+  assert(tts.ui.xml:find('id="cz_setup_White"', 1, true), "opening it again shows it")
+  click(HOST, "cz-setupclose")
+  -- a choice: tucked, still waiting; answered, the next one shows
+  local p = game.state.players[1]
+  game.effects:apply(game, 1, { { key = "discard", amount = 1 } }, {})
+  game:refreshUI()
+  assert(tts.ui.xml:find('id="cz%-tuck%-choice"'), "a choice has Hide")
+  click(HOST, "cz-tuck-choice")
+  assert(not tts.ui.xml:find('id="cz_choice"', 1, true), "choice tucked away")
+  assert(tts.ui.xml:find('id="cz%-untuck%-choice"[^>]*>Show your choice<'), "Show your choice")
+  eq(#p.prompts, 1, "still waiting")
+  click(HOST, "cz-pick-" .. p.hand[1])
+  eq(#p.prompts, 0, "answered")
+  game.effects:apply(game, 1, { { key = "discard", amount = 1 } }, {})
+  game:refreshUI()
+  assert(tts.ui.xml:find('id="cz_choice"', 1, true), "the next choice shows")
+  -- the winner panel
+  game.state.winner = 1
+  game:refreshUI()
+  click(GUEST, "cz-tuck-winner")
+  assert(tts.ui.xml:find('id="cz_winner_White"', 1, true), "still there for White")
+  assert(not tts.ui.xml:find('id="cz_winner_Red"', 1, true), "tucked away for Red")
+  assert(tts.ui.xml:find('id="cz_tabs_Red"', 1, true), "Red's tab")
+end)
+
+test("Hide UI hides everything for one player; the hotkey toggles it; saved", function()
+  local game = boot()
+  Cardalyzer_onStartGame(HOST)
+  local xml = tts.ui.xml
+  assert(xml:find('id="cz%-hideui"[^>]*>Hide UI<'), "Hide UI by Tidy table")
+  click(HOST, "cz-hideui")
+  xml = tts.ui.xml
+  assert(not xml:find('id="cz_actions"', 1, true), "White's action bar is gone")
+  assert(xml:find('id="cz_panel"[^>]*visibility="[^"]*Red', 1, false), "the info panel is still there for Red")
+  assert(not xml:find('id="cz_panel[^"]*" visibility="[^"]*White'), "but not for White")
+  assert(xml:find('id="cz%-showui"[^>]*>Show Cardalyzer<'), "Show Cardalyzer")
+  local restored = boot(game:save())
+  assert(restored.state.view.uiHidden.White, "kept after a reload")
+  click(HOST, "cz-showui")
+  assert(tts.ui.xml:find('id="cz_actions"', 1, true), "back")
+  -- the hotkey
+  local hotkey = tts.hotkeys and tts.hotkeys[1]
+  if hotkey then
+    hotkey.fn("White")
+    assert(restored.state.view.uiHidden.White, "the hotkey hides")
+    hotkey.fn("White")
+    assert(not restored.state.view.uiHidden.White, "and shows")
+  end
+end)
+
+test("each player chooses where menus and choices go", function()
+  local game = boot()
+  Cardalyzer_onStartGame(HOST)
+  click(HOST, "cz-settings")
+  assert(tts.ui.xml:find('id="cz%-menuat%-left"[^>]*>Left<'), "a Menus row in Settings")
+  click(HOST, "cz-menuat-left")
+  local xml = tts.ui.xml
+  assert(xml:find('id="cz_settings_White"[^>]*rectAlignment="MiddleLeft"'), "White's menus on the left")
+  game.effects:apply(game, 1, { { key = "discard", amount = 1 } }, {})
+  game:refreshUI()
+  assert(tts.ui.xml:find('id="cz_choice"[^>]*rectAlignment="MiddleLeft"'), "and White's choices")
+  click(GUEST, "cz-setup")
+  click(HOST, "cz-menuat-middle")
+  assert(tts.ui.xml:find('id="cz_choice"[^>]*rectAlignment="MiddleCenter"'), "back in the middle")
+  local ok = game:setMenuAt("White", "sideways")
+  assert(not ok, "only the four places")
+end)
+
+test("a click that removes a button with a tooltip redraws the UI to clear it", function()
+  local game = boot()
+  Cardalyzer_onStartGame(HOST)
+  click(HOST, "cz-settings")
+  local sets = 0
+  local real = UI.setXml
+  UI.setXml = function(x) if x == "" then sets = sets + 1 end; real(x) end
+  click(HOST, "cz-settingsclose")
+  UI.setXml = real
+  eq(sets, 1, "cleared once")
+  assert(tts.ui.xml:find('id="cz_panel"', 1, true), "and drawn again")
+  -- a button that stays (Settings opens a menu) doesn't
+  sets = 0
+  UI.setXml = function(x) if x == "" then sets = sets + 1 end; real(x) end
+  click(HOST, "cz-settings")
+  UI.setXml = real
+  eq(sets, 0, "nothing to clear")
+  -- Hide UI: still there for everyone else, but gone for White
+  sets = 0
+  UI.setXml = function(x) if x == "" then sets = sets + 1 end; real(x) end
+  click(HOST, "cz-hideui")
+  UI.setXml = real
+  eq(sets, 1, "cleared for Hide UI too")
+  assert(game.buttonsShown.Red["cz-hideui"] and not game.buttonsShown.White["cz-hideui"], "buttons tracked per player")
+  -- a button whose panel moves (Menus: Left moves Settings)
+  click(HOST, "cz-showui")
+  click(HOST, "cz-settings")
+  sets = 0
+  UI.setXml = function(x) if x == "" then sets = sets + 1 end; real(x) end
+  click(HOST, "cz-menuat-left")
+  click(HOST, "cz-barup")
+  UI.setXml = real
+  eq(sets, 1, "cleared when its panel moved, not when it stayed put")
 end)
 
 print(string.format("\n%d passed, %d failed", passed, failed))
