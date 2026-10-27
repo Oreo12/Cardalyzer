@@ -1215,7 +1215,7 @@ function Actions.pick(game, seat, value)
     Actions.settle(game, seat)
     return true
   elseif kind == "scrap" then
-    local from
+    local from = nil
     if Util.removeValue(player.hand, value) then
       from = "hand"
     elseif Util.removeValue(player.discard, value) then

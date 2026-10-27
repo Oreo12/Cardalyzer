@@ -30,6 +30,8 @@ DECKS = {"starter", "market", "fixed", "dealt", "objective", "supply"}
 # faction (blob=combat:2, ally effects only).
 SINGLE = re.compile(r"^(?:[\w]+\s*:\s*-?\d+|custom\s*:\s*[\w-]+|(?:gain|opponents_gain|set_aside|set_aside_hand)\s*:\s*[a-z0-9_]+|reminder|block)$")
 FACTION_PREFIX = re.compile(r"^[\w]+\s*=\s*")
+# A condition in front of an effect: mastery>=10=combat:5
+COND_PREFIX = re.compile(r"^\w+\s*(?:>=|<=|>|<)\s*-?\d+\s*=\s*")
 ID = re.compile(r"^[a-z0-9_]+$")
 
 
@@ -47,7 +49,7 @@ def parse_int(value, field, card_id, errors, allow_blank=False):
 def check_effects(value, field, card_id, errors):
     value = (value or "").strip()
     for part in filter(None, (p.strip() for p in value.split(";"))):
-        body = FACTION_PREFIX.sub("", part)
+        body = FACTION_PREFIX.sub("", COND_PREFIX.sub("", part))
         for option in (o.strip() for o in body.split("|")):
             if not SINGLE.match(option):
                 errors.append(f"card '{card_id}': {field} entry '{part}' should look like keyword:amount")

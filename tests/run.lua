@@ -3336,5 +3336,41 @@ test("a card can have several types: filters, phases, play costs and type flags 
   game.rules.turn = nil
 end)
 
+test("conditions on effects: only while a stat, resource or count reaches a level", function()
+  local game = boot()
+  local Cards = Cardalyzer.require("engine.cards")
+  local list = Cards.parseEffects("gold:1; health>=45=might:5; hand<=2=draw:1; blob=might:1")
+  eq(list[2].cond.key, "health", "parsed")
+  eq(list[2].cond.op, ">=")
+  eq(list[2].cond.n, 45)
+  eq(list[4].ally, "blob", "faction prefixes still parse")
+  eq(game.effects:describe({ list[2] }), "(Health 45+) +5 Might", "described")
+  eq(game.effects:describe({ list[3] }), "(Hand 2 or less) Draw 1", "a count")
+  Cardalyzer_onStartGame(HOST)
+  local p = game.state.players[1]
+  game.effects:apply(game, 1, { list[2] }, {})
+  eq(p.resources.might, 0, "Health 40: not yet")
+  p.stats.health = 45
+  game.effects:apply(game, 1, { list[2] }, {})
+  eq(p.resources.might, 5, "Health 45: unlocked")
+  local hand = #p.hand
+  game.effects:apply(game, 1, { list[3] }, {})
+  eq(#p.hand, hand, "5 cards in hand: no draw")
+  p.hand = { p.hand[1] }
+  game.effects:apply(game, 1, { list[3] }, {})
+  eq(#p.hand, 2, "1 card in hand: drew")
+  -- played this turn
+  local played = Cards.parseEffects("played>1=gold:3")
+  game.effects:apply(game, 1, played, {})
+  eq(p.resources.gold, 0, "nothing played yet")
+  game.state.turn.played = { "x", "y" }
+  game.effects:apply(game, 1, played, {})
+  eq(p.resources.gold, 3, "two played")
+  -- an unknown key is reported at load
+  local bad = Cards.new({ { id = "a", name = "A", cost = 1, copies = 1, effects = "luck>=3=gold:1" } })
+  local problems = game.effects:validate(bad)
+  assert(problems[1] and problems[1]:find("condition on 'luck'", 1, true), tostring(problems[1]))
+end)
+
 print(string.format("\n%d passed, %d failed", passed, failed))
 if failed > 0 then os.exit(1) end

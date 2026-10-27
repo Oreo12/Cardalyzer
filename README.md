@@ -107,6 +107,7 @@ play in deck-building board games.
   hand to block an attack or soften it.
 - Monsters and villains in the market that players defeat with their attack
   resource for a reward, instead of buying them.
+- Abilities that unlock at a level: "with 10+ Mastery, +5 Might".
 - Cards whose effects come on your next turn (they stay in play until then),
   and set-aside areas of each player's own: a mat for cards kept out of the
   deck, set aside until next turn, or called back when the player chooses.
@@ -541,6 +542,14 @@ fine.
 | `gold:2; draw:1` | Both |
 | `gold:3 \| might:3` | The player picks one |
 | `custom:luckyParrot` | Run `rules.customEffects.luckyParrot` |
+
+In any column, an effect can need a level first: `mastery>=10=might:5`
+gives 5 Might only while the player has 10 or more Mastery. The left side is
+any resource or stat, or a count: `hand`, `deck` and `discard` (cards in
+them), `played` (cards played this turn) or `defeated` (cards defeated this
+turn). The comparisons are `>=`, `<=`, `>` and `<`. Tooltips show it as
+"(Mastery 10+) +5 Might". A typo in the left side is reported when the mod
+loads.
 
 In `ally_effects` only, an effect can name the faction it needs:
 `veil=scrap_row:1` fires when a Veil card is in play, whatever the card's own

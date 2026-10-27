@@ -57,7 +57,7 @@ function Turn.setup(state, rules, cards, random, opening, sets, kits, supplyChoi
   local function inDeck(deck)
     local out = {}
     for _, card in ipairs(cards:inDeck(deck)) do
-      local ok
+      local ok = nil
       if card.set and kitSets[card.set] then
         ok = deck == "market" and (inKit[card.set] or kitMarket[card.id]) -- a kit's trade cards, when the kit is played
       else

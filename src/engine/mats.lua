@@ -24,7 +24,7 @@ end
 -- The box around a set of spots, in the frame of the first: centre along and
 -- out, width and depth.
 local function around(spots, origin, right, forward, margin)
-  local lo_a, hi_a, lo_o, hi_o
+  local lo_a, hi_a, lo_o, hi_o = nil, nil, nil, nil
   for _, s in ipairs(spots) do
     if not s.hidden then
       local dx, dz = s.position[1] - origin[1], s.position[3] - origin[2]

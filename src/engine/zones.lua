@@ -58,7 +58,7 @@ Zones.frameAt = frameAt
 local function seatFrame(seat, count, distance, spread, rules, grow)
   grow = grow or 0
   local seating = rules and rules.layout and rules.layout.seating or "sides"
-  local own
+  local own = nil
   if type(seating) == "function" then
     own = seating(seat, count, rules)
   elseif type(seating) == "table" then

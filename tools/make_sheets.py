@@ -106,9 +106,18 @@ def one_effect(part):
     return f"{sign}{value} {key.replace('_', ' ').title()}"
 
 
+COND = re.compile(r"^(\w+)\s*(>=|<=|>|<)\s*(-?\d+)\s*=\s*(.+)$")
+COND_WORDS = {">=": "{k} {n}+", "<=": "{k} {n} or less", ">": "{k} more than {n}", "<": "{k} less than {n}"}
+
+
 def effect_text(effects):
     parts = []
     for part in filter(None, (p.strip() for p in effects.split(";"))):
+        cond = COND.match(part)
+        if cond:
+            key, op, n, part = cond.groups()
+            parts.append(f"({COND_WORDS[op].format(k=key.replace('_', ' ').title(), n=n)}) " + effect_text(part))
+            continue
         faction, sep, rest = part.partition("=")
         prefix = f"({faction.strip().replace('_', ' ').title()}) " if sep else ""
         body = rest if sep else part
