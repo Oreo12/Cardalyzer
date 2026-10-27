@@ -409,6 +409,21 @@ test("a corrupt save starts fresh instead of crashing", function()
   eq(game.state.started, false, "another game's save starts fresh")
 end)
 
+test("loading another game's save clears that game's cards off the table", function()
+  local game = boot()
+  Cardalyzer_onStartGame(HOST)
+  local cards = function() return count(function(o) return o.data and o.data.GMNotes end) end
+  assert(cards() > 0, "cards out")
+  local saved = onSave():gsub('"apprentice"', '"ribbon"')
+  local objects, order = tts.objects, tts.order
+  dofile("build/Global.lua")
+  tts.objects, tts.order = objects, order
+  onLoad(saved)
+  eq(Cardalyzer.game.state.started, false, "fresh")
+  eq(cards(), 0, "the old game's cards are gone")
+  eq(count(ofType("ScriptingTrigger")), #Cardalyzer.require("engine.zones").zoneSpots(Cardalyzer.game.layout), "no zones left over")
+end)
+
 ---------------------------------------------------------------------------
 -- Actions: buying, playing, allies, prompts, attacks
 ---------------------------------------------------------------------------
