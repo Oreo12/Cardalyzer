@@ -267,9 +267,38 @@ end
 -- An effect that hits each opponent (a keyword with toOpponent, or a custom
 -- effect with eachOpponent) goes through Actions.hitOpponents, so opponents
 -- can react to it.
+-- What a condition's key counts for this player: a resource or stat, or
+-- hand, deck, discard (cards in them), played (cards played this turn),
+-- defeated (cards defeated this turn).
+function Effects.condValue(game, seat, key)
+  local p = game.state.players[seat]
+  if p.resources[key] ~= nil then return p.resources[key] end
+  if p.stats[key] ~= nil then return p.stats[key] end
+  if key == "hand" or key == "deck" or key == "discard" then return #p[key] end
+  local turn = game.state.turn
+  if key == "played" then return seat == turn.active and #(turn.played or {}) or 0 end
+  if key == "defeated" then return seat == turn.active and (turn.defeated or 0) or 0 end
+  return 0
+end
+
+-- Is an effect's condition (mastery>=10=...) met for this player?
+function Effects.condMet(game, seat, cond)
+  if not cond then return true end
+  local v = Effects.condValue(game, seat, cond.key)
+  if cond.op == ">=" then return v >= cond.n end
+  if cond.op == "<=" then return v <= cond.n end
+  if cond.op == ">" then return v > cond.n end
+  return v < cond.n
+end
+
+-- Condition keys that aren't a resource or stat.
+Effects.COUNTS = { hand = true, deck = true, discard = true, played = true, defeated = true }
+
 function Effects:apply(game, seat, list, ctx)
   for _, effect in ipairs(list) do
-    if effect.key == "custom" then
+    if not Effects.condMet(game, seat, effect.cond) then
+      -- (its condition isn't met: skipped)
+    elseif effect.key == "custom" then
       local def = self.custom[effect.fn]
       if not def then error("no custom effect named '" .. effect.fn .. "'", 0) end
       if def.apply then def.apply(game, seat, ctx or {}) end
@@ -318,8 +347,23 @@ function Effects:describe(list, fallback)
     if effect.ally then
       parts[#parts] = "(" .. Util.titleCase(effect.ally) .. ") " .. parts[#parts]
     end
+    if effect.cond and parts[#parts] then
+      parts[#parts] = "(" .. self:describeCond(effect.cond) .. ") " .. parts[#parts]
+    end
   end
   return table.concat(parts, ", ")
+end
+
+-- "Mastery 10+", "Hand 3 or less", "Played more than 2".
+function Effects:describeCond(cond)
+  local label = Util.titleCase(cond.key)
+  for _, list in ipairs({ self.rules and self.rules.resources or {}, self.rules and self.rules.stats or {} }) do
+    for _, r in ipairs(list) do if r.key == cond.key then label = r.label or label end end
+  end
+  if cond.op == ">=" then return label .. " " .. cond.n .. "+" end
+  if cond.op == "<=" then return label .. " " .. cond.n .. " or less" end
+  if cond.op == ">" then return label .. " more than " .. cond.n end
+  return label .. " less than " .. cond.n
 end
 
 -- Returns a list of problems, e.g. a card using a keyword the rules don't define.
@@ -334,6 +378,12 @@ function Effects:validate(cards)
           for _, option in ipairs(effect.options) do flat[#flat + 1] = option end
         else
           flat[#flat + 1] = effect
+        end
+      end
+      for _, effect in ipairs(list) do
+        local c = effect.cond
+        if c and not Effects.COUNTS[c.key] and not self.handlers[c.key] then
+          problems[#problems + 1] = "card '" .. card.id .. "' has a condition on '" .. c.key .. "', which isn't a resource, stat or count"
         end
       end
       for _, effect in ipairs(flat) do

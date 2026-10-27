@@ -2,7 +2,7 @@
 -- modules and the chosen game's rules and data into build/Global.lua.
 local Game = require("engine.game")
 
-local game
+local game = nil
 
 -- Errors and refusals go to the info panel, not broadcasts: TTS draws
 -- broadcast text behind custom UI, so it would get hidden.
@@ -92,7 +92,7 @@ local function clearStuckTooltip(color, before, wasAt, id)
   end, 0.5)
 end
 
-local handleUI
+local handleUI = nil
 
 -- Every XML button; the action is in the button id (see engine/ui.lua).
 function Cardalyzer_onUI(player, value, id)

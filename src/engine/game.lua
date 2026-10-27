@@ -210,7 +210,7 @@ function Game:setsInPlay()
   local chosen = self:setupChoice("sets")
   local out = {}
   for _, set in ipairs(self.rules.sets) do
-    local on
+    local on = nil
     if set.always then
       on = true
     elseif chosen then
@@ -289,7 +289,7 @@ end
 -- Switches set `key` in or out of the next New Game (host only). Sets marked
 -- always can't be switched off.
 function Game:toggleSet(key)
-  local set
+  local set = nil
   for _, s in ipairs(self.rules.sets or {}) do
     if s.key == key then set = s end
   end

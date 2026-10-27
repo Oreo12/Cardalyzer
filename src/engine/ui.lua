@@ -20,7 +20,7 @@ local UI_ = {}
 -- The rules being drawn, so the small helpers below can read the theme.
 -- UI_.xml (and every panel builder called on its own) sets it first.
 local current = {}
-local currentGame
+local currentGame = nil
 local function use(game)
   current = game.rules
   currentGame = game
@@ -542,7 +542,7 @@ function UI_.titleBox(game)
   use(game)
   local theme = Theme.of(game.rules)
   local t = theme.title
-  local inner, h
+  local inner, h = nil, nil
   if t.image then
     h = t.height
     inner = '<Image id="cz_title" image="' .. Theme.assetName(t.image) .. '" preserveAspect="true" preferredHeight="' .. h .. '" />'
@@ -1027,7 +1027,7 @@ function UI_.xml(game)
       if counters then
         local s = UI_.scaleOf(game, p.color)
         -- at their own place, or just above that player's action bar
-        local where
+        local where = nil
         if positions.counters then
           where = place("counters")
         else

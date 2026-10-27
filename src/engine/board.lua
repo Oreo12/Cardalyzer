@@ -368,7 +368,7 @@ local function draw(game, pile, uids)
   if n == 0 then return removeOld() end
 
   local lock = pile.style ~= "hand"
-  local cost, word
+  local cost, word = nil, nil
   if pile.buyable and pile.style == "stack" then
     local top = game.cards:get(State.cardId(game.state, uids[n]))
     cost = top.cost

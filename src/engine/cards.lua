@@ -36,15 +36,25 @@ end
 -- "trade:2; draw:1; custom:myFn" -> { {key="trade", amount=2}, {key="draw", amount=1}, {key="custom", fn="myFn"} }
 -- "trade:2 | combat:2"           -> { {key="choice", options={ {key="trade",...}, {key="combat",...} }} }
 -- "blob=combat:2"                -> { {key="combat", amount=2, ally="blob"} } (ally effects only)
+-- "mastery>=10=combat:5"         -> { {key="combat", amount=5, cond={key="mastery", op=">=", n=10}} }
+--                                   (only while the player has 10 or more mastery; any column)
 function Cards.parseEffects(str)
   local list = {}
   if str == nil or str == "" then return list end
   for _, part in ipairs(Util.split(str, ";")) do
     part = Util.trim(part)
     if part ~= "" then
+      -- (= nil matters: in TTS's MoonSharp a bare `local x` in a loop keeps
+      -- the previous iteration's value)
+      local cond = nil
+      local ckey, op, n, after = part:match("^([%w_]+)%s*([<>]=?)%s*(%-?%d+)%s*=%s*(.+)$")
+      if ckey then
+        cond = { key = ckey, op = op, n = tonumber(n) }
+        part = Util.trim(after)
+      end
       local faction, rest = part:match("^([%w_]+)%s*=%s*(.+)$")
       if faction then part = Util.trim(rest) end
-      local effect
+      local effect = nil
       if part:find("|", 1, true) then
         effect = { key = "choice", options = {} }
         for _, option in ipairs(Util.split(part, "|")) do
@@ -54,6 +64,7 @@ function Cards.parseEffects(str)
         effect = parseOne(part)
       end
       effect.ally = faction
+      effect.cond = cond
       list[#list + 1] = effect
     end
   end
