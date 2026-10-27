@@ -107,6 +107,9 @@ play in deck-building board games.
   hand to block an attack or soften it.
 - Monsters and villains in the market that players defeat with their attack
   resource for a reward, instead of buying them.
+- Cards whose effects come on your next turn (they stay in play until then),
+  and set-aside areas of each player's own: a mat for cards kept out of the
+  deck, set aside until next turn, or called back when the player chooses.
 - Turning whole mechanics on or off (allies, bases, scrapping).
 - Lua for the occasional card that does something no keyword covers.
 
@@ -480,6 +483,7 @@ One row per card. The column order doesn't matter, but the names do.
 | `condition` | no | For `objective` cards: the custom effect whose `check` says the goal is met | `sevenShips` |
 | `points` | no | Victory points the card is worth at the end of a points game (`win.type = "points"`). Negative for a card that costs points | `3` |
 | `starting` | no | Copies in each player's starting deck, for a card that is also in a pile (`fixed` or `supply`) | `6` |
+| `next_effects` | no | Effects at the start of the owner's next turn. The card stays in play until then (not discarded at cleanup), then goes at the end of that turn | `draw:2` |
 | `react_effects` | no | A reaction: when an opponent's attack hits you, you may reveal this card from your hand for these effects. `block` makes the attack miss you | `block` |
 | `set` | no | Which set the card belongs to (a `key` from `rules.sets`); players choose sets in the New Game menu | `expansion1` |
 | `defense` | no | Damage needed to destroy a persistent card | `5` |
@@ -532,6 +536,8 @@ fine.
 | `opponents_gain:gossip` | Attack: each opponent gains the top card of the `gossip` pile |
 | `opponents_discard_to:3` | Attack: each opponent discards down to 3 cards in hand, straight away |
 | `block` | In `react_effects`: the attack doesn't affect you |
+| `set_aside:tavern` | Put this card into your `tavern` area (one of `rules.areas`) |
+| `set_aside_hand:later` | Put a card from your hand into your `later` area |
 | `gold:2; draw:1` | Both |
 | `gold:3 \| might:3` | The player picks one |
 | `custom:luckyParrot` | Run `rules.customEffects.luckyParrot` |
@@ -547,8 +553,9 @@ Some keywords are always available:
 
 - `draw`, `opponent_discard`, `scrap_hand`, `scrap_required`, `scrap_row`, `destroy_base`,
   `draw_discard` and `reminder`.
-- `gain`, `gain_card`, `defeat_free`, `opponents_gain`, `opponents_discard_to` and `block`.
-  `gain` and `opponents_gain` take a card id instead of a number.
+- `gain`, `gain_card`, `defeat_free`, `opponents_gain`, `opponents_discard_to`, `block`,
+  `set_aside` and `set_aside_hand`. `gain` and `opponents_gain` take a card id
+  instead of a number; `set_aside` and `set_aside_hand` take an area's key.
 - `custom:<name>`.
 - One keyword per resource and stat in your rules, using its `key`.
 
@@ -578,6 +585,7 @@ These are the fields in `games/<yours>/rules.lua`:
 | `supply` | `{count=8, label="Supply", presets={ {label="First game", cards={"juggler", "tea_house"}, about="…"} }, default=1}` | The supply (`supply` cards): how many piles each game uses, picked at random or from a preset. With presets, the New Game menu offers Random and each preset (`about` is its tooltip); `default` picks a preset until the host chooses. Piles are laid out cheapest first |
 | `pileSizes` | `{ gossip = function(players) return 10 * (players - 1) end, banner = {[2]=8, otherwise=12} }` | How many cards a `fixed` or `supply` pile starts with, by card id: a number, a table by player count, or a function of it. Others use `copies` |
 | `layout.areas.fixed` | `{columns=8}` | Lay the piles out in rows of up to this many, the supply starting its own row. With no market row they're centred |
+| `areas` | `{ {key="exile", label="Exile"}, {key="later", label="Set aside", at="nextTurn"}, {key="tavern", label="Tavern", at="call", returns="play"} }` | Set-aside areas: a pile of each player's own beside their discard pile, for cards out of their deck but still theirs (they count for points). `at` says what brings cards back: `"nextTurn"` (the start of the owner's next turn), `"call"` (a Call button on the owner's turn), or nothing (they stay). `returns` says where they go: `"hand"` (default), `"play"` (their effects apply) or `"discard"`. `shown = false` keeps an area off the table; `layout.areas.<key> = {along, out}` moves it |
 | `market.returnScrapped` | `true` | A scrapped card from a fixed pile goes back to its pile instead of the scrap pile (Star Realms' Explorers) |
 | `sets` | `{ {key="base", label="Base Game", always=true}, {key="exp1", label="Expansion", default=true} }` | Sets of cards (named in the `set` column) the host switches in or out in the New Game menu. `always` sets can't be switched off; `default` ones start on. Cards with no `set` are always in. `about` is the set's tooltip in the menu |
 | `market.faceActive` | `false` | Leave out to turn the market's cards to face the player whose turn it is; `false` keeps them facing seat 1 |
@@ -1051,6 +1059,11 @@ More hooks a custom effect can have:
   each time its owner defeats a card in the market. `defeated` is
   `{ uid, card }`; `game.state.turn.defeated` counts them this turn. The
   defeated card's own effects see `ctx.defeated = true`.
+- `onCall = function(game, seat, ctx)`: runs when the card is called out of
+  a set-aside area (an area with `at = "call"`).
+- `atNextTurn = function(game, seat, job)`: runs for jobs queued with
+  `game:atNextTurn(seat, { custom = "<name>", ... })`, at the start of that
+  player's next turn ("at the start of your next turn, gain 2 Gold").
 - `eachOpponent = function(game, seat, victim, ctx)`: makes the effect an
   attack. It runs once for each opponent it reaches (`victim`), after they've
   had the chance to react; a blocked opponent is skipped. `apply`, if the
@@ -1073,6 +1086,10 @@ resource or stat (`gained.trade`), and `game.state.turn.allyFactions` which
 factions' ally abilities fired (`allyFactions.blob`).
 
 `game:gainFromPile(seat, id)` gains the top card of a pile, like `gain:<id>`.
+`game:setAside(seat, uid, key)` puts a card from the player's hand, play or
+discard pile into their area `key`; `game.state.players[seat].areas[key]`
+lists what's there. A card with `next_effects` sees `ctx.nextTurn = true`
+when they apply.
 
 `game.state.turn.scrapped` counts the active player's cards scrapped this
 turn (`total`, and `handOrDiscard`). `game:addFaction(seat, uid, faction)`

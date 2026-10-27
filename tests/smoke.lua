@@ -46,7 +46,10 @@ local function count()
       end
     end
   end
-  for _, p in ipairs(s.players) do visit(p.deck); visit(p.hand); visit(p.discard); visit(p.play); visit(p.bases) end
+  for _, p in ipairs(s.players) do
+    visit(p.deck); visit(p.hand); visit(p.discard); visit(p.play); visit(p.bases); visit(p.lasting or {})
+    for _, a in pairs(p.areas or {}) do visit(a) end
+  end
   visit(s.market.deck); visit(s.market.row); visit(s.market.scrap)
   for _, pile in pairs(s.market.fixed) do visit(pile) end
   for _, m in ipairs(s.markets or {}) do visit(m.deck); visit(m.row) end

@@ -158,6 +158,19 @@ function Game:copyCard(seat, uid, id)
   Actions.checkAllies(self, seat)
 end
 
+-- Puts card `uid` (from the player's hand, play or discard pile) into their
+-- set-aside area `key` (rules.areas), like set_aside:<key>.
+function Game:setAside(seat, uid, key)
+  return Actions.setAside(self, seat, uid, key)
+end
+
+-- Queues a job for the start of this seat's next turn: { custom = name, ... }.
+-- The custom effect's atNextTurn(game, seat, job) runs then.
+function Game:atNextTurn(seat, job)
+  local jobs = self.state.players[seat].nextJobs
+  jobs[#jobs + 1] = job
+end
+
 -- Gains the top card of pile `id` into the seat's discard pile, like gain:<id>.
 function Game:gainFromPile(seat, id)
   return Actions.gainFromPile(self, seat, id)
@@ -329,6 +342,8 @@ function Game:loadState(saved)
   -- Fields added since older saves were made.
   for _, p in ipairs(data.players) do
     p.objectives, p.completed = p.objectives or {}, p.completed or {}
+    p.areas, p.lasting, p.nextJobs = p.areas or {}, p.lasting or {}, p.nextJobs or {}
+    for _, a in ipairs(self.rules.areas or {}) do p.areas[a.key] = p.areas[a.key] or {} end
   end
   data.markets = data.markets or {}
   self.state = data
@@ -587,6 +602,7 @@ function Game:play(seat, uid) return self:act(Actions.play, seat, uid) end
 function Game:playAll(seat) return self:act(Actions.playAll, seat) end
 function Game:buy(seat, uid) return self:act(Actions.buy, seat, uid) end
 function Game:defeat(seat, uid) return self:act(Actions.defeat, seat, uid) end
+function Game:call(seat, uid) return self:act(Actions.call, seat, uid) end
 function Game:scrapFromPlay(seat, uid) return self:act(Actions.scrapFromPlay, seat, uid) end
 function Game:attack(seat, target, baseUid) return self:act(Actions.attack, seat, target, baseUid) end
 function Game:pick(seat, value) return self:act(Actions.pick, seat, value) end

@@ -34,7 +34,11 @@ function State.new(rules, count)
       owed = {},    -- things owed at the start of their next turn, e.g. { discard = 1 }
       flags = {},   -- this turn only, e.g. flags.buyToTop for "put the next card you buy on top"
       out = false,  -- knocked out (see Actions.checkWin); turns skip them
+      areas = {},   -- set-aside areas (rules.areas): { [key] = { uids } }
+      lasting = {}, -- cards with next_effects, kept in play until the owner's next turn
+      nextJobs = {}, -- game:atNextTurn jobs, run at the start of the owner's next turn
     }
+    for _, a in ipairs(rules.areas or {}) do player.areas[a.key] = {} end
     State.resetResources(player, rules)
     for _, stat in ipairs(rules.stats or {}) do
       player.stats[stat.key] = stat.start or 0

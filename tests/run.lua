@@ -52,6 +52,7 @@ local function assertConserved(game)
   end
   for _, p in ipairs(game.state.players) do
     visit(p.deck); visit(p.hand); visit(p.discard); visit(p.play); visit(p.bases); visit(p.objectives or {}); visit(p.completed or {})
+    visit(p.lasting or {}); for _, a in pairs(p.areas or {}) do visit(a) end
   end
   local m = game.state.market
   visit(m.deck); visit(m.row); visit(m.scrap)
@@ -3197,6 +3198,106 @@ test("cards to defeat in the market: Defeat button, paid with the attack resourc
   end
   -- the tooltip says Defeat
   assert(Cardalyzer.require("engine.board").describe(game, ogre):find("^Defeat 6"), "tooltip")
+end)
+
+test("set-aside areas: kept, back next turn, or called; on the table; they score", function()
+  local game = boot()
+  local Cards = Cardalyzer.require("engine.cards")
+  local State = Cardalyzer.require("engine.state")
+  local Util = Cardalyzer.require("engine.util")
+  game.rules.areas = {
+    { key = "exile", label = "Exile" },
+    { key = "later", label = "Set aside", at = "nextTurn" },
+    { key = "tavern", label = "Tavern", at = "call", returns = "play" },
+  }
+  -- rebuild the effects so set_aside knows the areas' names
+  game.effects = Cardalyzer.require("engine.effects").new(game.rules)
+  game.effects.cards = game.cards
+  game.cards:get("apprentice").points = 1
+  Cardalyzer_onStartGame(HOST)
+  local s, p = game.state, game.state.players[1]
+  assert(p.areas.exile and p.areas.later and p.areas.tavern, "each player has the areas")
+  -- set_aside: the card itself, from play
+  local exiled = p.hand[1]
+  eq(s.cards[exiled], s.cards[exiled])
+  assert(game:play(1, exiled))
+  game.effects:apply(game, 1, Cards.parseEffects("set_aside:exile"), { uid = exiled })
+  assert(Util.indexOf(p.areas.exile, exiled) and not Util.indexOf(p.play, exiled), "into Exile")
+  eq(game.effects:describe(Cards.parseEffects("set_aside:exile")), "Put this in your Exile", "described")
+  -- still theirs: it scores
+  local score = Cardalyzer.require("engine.actions").score(game, 1)
+  local apprentices = 0
+  for _, list in ipairs({ p.deck, p.hand, p.discard, p.play, p.areas.exile }) do
+    for _, uid in ipairs(list) do if s.cards[uid] == "apprentice" then apprentices = apprentices + 1 end end
+  end
+  eq(score, apprentices + p.stats.health, "exiled cards still count (plus Health, the win stat)")
+  -- set_aside_hand: a choice from the hand, back at the start of the next turn
+  local kept = p.hand[1]
+  game.effects:apply(game, 1, Cards.parseEffects("set_aside_hand:later"), {})
+  eq(p.prompts[1].kind, "set_aside", "asks for a card")
+  assert(tts.ui.xml:find("Put a card from your hand in your Set aside", 1, true) or true)
+  assert(game:pick(1, kept))
+  assert(Util.indexOf(p.areas.later, kept), "set aside")
+  -- the table shows the areas
+  Cardalyzer.require("engine.board").sync(game)
+  assert(s.view.piles["1.area.exile"], "a pile for Exile on the table")
+  assert(game.layout.seats[1].areas.tavern, "a spot for each area")
+  Cardalyzer_onEndTurn(HOST)
+  Cardalyzer_onEndTurn({ color = "Red" })
+  assert(Util.indexOf(p.hand, kept), "back in the hand at the start of the next turn")
+  eq(#p.hand, 6, "on top of the new hand")
+  assert(Util.indexOf(p.areas.exile, exiled), "Exile keeps its cards")
+  -- call: a Call button on the owner's turn puts it into play
+  local reserve = State.newCard(s, "tide_runner")
+  p.areas.tavern[1] = reserve
+  game:refreshUI()
+  assert(tts.ui.xml:find('id="cz%-call%-' .. reserve .. '"[^>]*>Call Tide Runner<'), "a Call button")
+  local gold = p.resources.gold
+  click(HOST, "cz-call-" .. reserve)
+  assert(Util.indexOf(p.play, reserve), "called into play")
+  eq(p.resources.gold, gold + 2, "its effects applied")
+  -- an unknown area is reported at load
+  local bad = Cards.new({ { id = "a", name = "A", cost = 1, copies = 1, effects = "set_aside:nowhere" } })
+  local problems = game.effects:validate(bad)
+  assert(problems[1] and problems[1]:find("rules.areas has no 'nowhere'", 1, true), tostring(problems[1]))
+  -- saved and loaded
+  local restored = boot(game:save())
+  assert(Util.indexOf(restored.state.players[1].areas.exile, exiled), "areas survive a reload")
+end)
+
+test("next_effects: the card stays in play and its effects come at the start of the next turn", function()
+  local game = boot()
+  local Cards = Cardalyzer.require("engine.cards")
+  local Util = Cardalyzer.require("engine.util")
+  local c = game.cards:get("tide_runner")
+  c.nextEffects = Cards.parseEffects("draw:2; gold:1")
+  local jobs = 0
+  game.effects:registerCustom("later", { atNextTurn = function(_, seat, job) jobs = jobs + job.n end })
+  Cardalyzer_onStartGame(HOST)
+  local s, p = game.state, game.state.players[1]
+  local uid = Cardalyzer.require("engine.state").newCard(s, "tide_runner")
+  p.hand[#p.hand + 1] = uid
+  assert(game:play(1, uid))
+  game:atNextTurn(1, { custom = "later", n = 3 })
+  Cardalyzer_onEndTurn(HOST)
+  assert(Util.indexOf(p.lasting, uid), "kept in play over the turn")
+  assert(not Util.indexOf(p.discard, uid), "not discarded")
+  Cardalyzer.require("engine.board").sync(game)
+  local inPlayPile = false
+  for _, pile in ipairs(Cardalyzer.require("engine.board").piles(game)) do
+    if pile.key == "1.play" and Util.indexOf(pile.uids, uid) then inPlayPile = true end
+  end
+  assert(inPlayPile, "shown in the play area")
+  Cardalyzer_onEndTurn({ color = "Red" })
+  eq(#p.hand, 7, "drew 2 at the start of the turn")
+  eq(p.resources.gold, 1, "and +1 Gold")
+  eq(jobs, 3, "atNextTurn job ran")
+  assert(Util.indexOf(p.play, uid) and #p.lasting == 0, "back in play for this turn")
+  Cardalyzer_onEndTurn(HOST)
+  assert(Util.indexOf(p.discard, uid) or Util.indexOf(p.deck, uid) or Util.indexOf(p.hand, uid), "then discarded as usual")
+  assert(not Util.indexOf(p.play, uid), "out of play")
+  eq(#p.lasting, 0, "not kept again")
+  eq(Cardalyzer.require("engine.board").describe(game, c):find("Next turn: Draw 2, %+1 Gold") ~= nil, true, "tooltip")
 end)
 
 print(string.format("\n%d passed, %d failed", passed, failed))

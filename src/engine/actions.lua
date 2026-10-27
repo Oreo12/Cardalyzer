@@ -585,6 +585,78 @@ function Actions.defeatable(game, uid)
   return Actions.typeDef(game, card(game, uid)).defeat == true
 end
 
+---------------------------------------------------------------------------
+-- Set-aside areas: piles of a player's own outside their deck (rules.areas),
+-- such as a tavern mat, an exile mat or an inner circle. Cards there are
+-- still theirs (they count for points). Each area says what brings them back:
+--   at = "nextTurn"  at the start of the owner's next turn
+--   at = "call"      when the owner presses Call on their turn
+--   (none)           they stay
+-- and where they go: returns = "hand" (default), "play" (effects apply) or "discard".
+---------------------------------------------------------------------------
+
+function Actions.areaDef(game, key)
+  for _, a in ipairs(game.rules.areas or {}) do if a.key == key then return a end end
+  return nil
+end
+
+-- Moves uid from the seat's hand, play, bases or discard pile into area `key`.
+function Actions.setAside(game, seat, uid, key)
+  local p = game.state.players[seat]
+  if not p.areas[key] then error("no set-aside area '" .. tostring(key) .. "' in rules.areas", 0) end
+  for _, from in ipairs({ "hand", "play", "bases", "discard", "lasting" }) do
+    if Util.removeValue(p[from], uid) then
+      local area = p.areas[key]
+      area[#area + 1] = uid
+      return true
+    end
+  end
+  return false
+end
+
+-- Sends a card out of an area to where the area returns its cards.
+local function fromArea(game, seat, uid, def)
+  local p = game.state.players[seat]
+  Util.removeValue(p.areas[def.key], uid)
+  local to = def.returns or "hand"
+  if to == "play" then
+    Actions.enterPlay(game, seat, uid)
+  else
+    p[to][#p[to] + 1] = uid
+  end
+end
+
+-- Cards the seat can call now (areas with at = "call"): { {uid, area}, ... }.
+function Actions.callable(game, seat)
+  local out = {}
+  if game.state.turn.active ~= seat then return out end
+  for _, def in ipairs(game.rules.areas or {}) do
+    if def.at == "call" then
+      for _, uid in ipairs(game.state.players[seat].areas[def.key] or {}) do out[#out + 1] = { uid = uid, area = def.key } end
+    end
+  end
+  return out
+end
+
+-- Calls a card out of an area. A custom effect's onCall(game, seat, ctx) on
+-- the card runs too ("call this to draw 2").
+function Actions.call(game, seat, uid)
+  local ok, why = isActive(game, seat)
+  if not ok then return fail(why) end
+  for _, c in ipairs(Actions.callable(game, seat)) do
+    if c.uid == uid then
+      local cd = card(game, uid)
+      fromArea(game, seat, uid, Actions.areaDef(game, c.area))
+      for _, effect in ipairs(cd.effects) do
+        local def = effect.key == "custom" and game.effects.custom[effect.fn]
+        if def and def.onCall then def.onCall(game, seat, { uid = uid, card = cd }) end
+      end
+      return true
+    end
+  end
+  return fail(say(game, "cantUse"))
+end
+
 function Actions.scrapFromPlay(game, seat, uid)
   local ok, why = isActive(game, seat)
   if not ok then return fail(why) end
@@ -696,7 +768,9 @@ function Actions.score(game, seat)
   local p = game.state.players[seat]
   local win = game.rules.win or {}
   local total = win.stat and (p.stats[win.stat] or 0) or 0
-  for _, list in ipairs({ p.deck, p.hand, p.discard, p.play, p.bases }) do
+  local lists = { p.deck, p.hand, p.discard, p.play, p.bases, p.lasting or {} }
+  for _, area in pairs(p.areas or {}) do lists[#lists + 1] = area end
+  for _, list in ipairs(lists) do
     for _, uid in ipairs(list) do total = total + (card(game, uid).points or 0) end
   end
   return total
@@ -945,6 +1019,10 @@ function Actions.promptText(game, prompt)
     })
   end
   if kind == "pick" then return say(game, "chooseCard") end
+  if kind == "set_aside" then
+    local def = Actions.areaDef(game, prompt.area)
+    return say(game, "setAsideFrom", { area = def and def.label or prompt.area })
+  end
   if kind == "defeat" then return say(game, "defeatUpTo", { n = prompt.maxCost or "any" }) end
   if kind == "react" then
     local source = prompt.source and card(game, prompt.source)
@@ -1057,6 +1135,8 @@ function Actions.targets(game, seat, prompt)
     for _, other in ipairs(game:opponentsOf(seat)) do
       out[#out + 1] = { value = tostring(other), label = state.players[other].name }
     end
+  elseif kind == "set_aside" then
+    for _, uid in ipairs(player.hand) do addIf(uid) end
   elseif kind == "react" then
     for _, uid in ipairs(reactions(game, seat, prompt)) do
       out[#out + 1] = { value = uid, label = say(game, "reveal", { card = card(game, uid).name }) }
@@ -1167,6 +1247,8 @@ function Actions.pick(game, seat, value)
     for key, n in pairs(prompt.owe or {}) do owed[key] = (owed[key] or 0) + n end
   elseif kind == "react" then
     reveal(game, seat, value, prompt)
+  elseif kind == "set_aside" then
+    Actions.setAside(game, seat, value, prompt.area)
   elseif kind == "place_bought" and value == "top" then
     Util.removeValue(player.discard, prompt.uid)
     player.deck[#player.deck + 1] = prompt.uid
@@ -1293,6 +1375,32 @@ function Actions.startTurn(game, seat)
     Actions.prompt(game, seat, { kind = "discard", count = player.owed.discard, optional = false })
     player.owed.discard = 0
   end
+  -- Cards kept in play from last turn (next_effects): their effects now,
+  -- then they're in play as usual and go at this turn's cleanup.
+  turn.lastingDone = {}
+  local lasting = player.lasting or {}
+  player.lasting = {}
+  for _, uid in ipairs(lasting) do
+    local c = card(game, uid)
+    player.play[#player.play + 1] = uid
+    turn.lastingDone[uid] = true
+    game.effects:apply(game, seat, c.nextEffects, { uid = uid, card = c, nextTurn = true })
+  end
+  -- Areas whose cards come back at the start of the owner's turn.
+  for _, def in ipairs(game.rules.areas or {}) do
+    if def.at == "nextTurn" then
+      local list = {}
+      for _, uid in ipairs(player.areas[def.key] or {}) do list[#list + 1] = uid end
+      for _, uid in ipairs(list) do fromArea(game, seat, uid, def) end
+    end
+  end
+  -- Jobs queued for this turn (game:atNextTurn).
+  local jobs = player.nextJobs or {}
+  player.nextJobs = {}
+  for _, job in ipairs(jobs) do
+    local def = game.effects.custom[job.custom]
+    if def and def.atNextTurn then def.atNextTurn(game, seat, job) end
+  end
   for _, uid in ipairs(player.bases) do
     local c = card(game, uid)
     if Actions.typeDef(game, c).replay ~= false then
@@ -1338,6 +1446,17 @@ function Actions.endTurn(game, seat)
     end
   end
   for _, uid in ipairs(keep) do Util.removeValue(player.play, uid) end
+  -- Cards played this turn with next_effects stay in play until the owner's
+  -- next turn (player.lasting), instead of being discarded.
+  local done = turn.lastingDone or {}
+  local stay = {}
+  for _, uid in ipairs(player.play) do
+    if #card(game, uid).nextEffects > 0 and not done[uid] then stay[#stay + 1] = uid end
+  end
+  for _, uid in ipairs(stay) do
+    Util.removeValue(player.play, uid)
+    player.lasting[#player.lasting + 1] = uid
+  end
 
   Turn.endTurn(game.state, game.rules, game.random)
   for _, uid in ipairs(keep) do player.hand[#player.hand + 1] = uid end

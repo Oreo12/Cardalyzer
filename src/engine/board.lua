@@ -46,6 +46,9 @@ function Board.defaultDescription(game, card)
   if #card.scrapEffects > 0 then
     lines[#lines + 1] = "Scrap: " .. fx:describe(card.scrapEffects, card.text)
   end
+  if card.nextEffects and #card.nextEffects > 0 then
+    lines[#lines + 1] = "Next turn: " .. fx:describe(card.nextEffects, card.text)
+  end
   if card.reactEffects and #card.reactEffects > 0 then
     lines[#lines + 1] = "Reaction: " .. fx:describe(card.reactEffects, card.text)
   end
@@ -180,14 +183,21 @@ function Board.piles(game)
     local s = layout.seats[seat]
     add(seat .. ".deck", p.deck, s.deck, "stack", false)
     add(seat .. ".discard", p.discard, s.discard, "stack", true)
+    -- cards kept from last turn (next_effects) sit at the start of the play row
+    local played = {}
+    for _, uid in ipairs(p.lasting or {}) do played[#played + 1] = uid end
+    for _, uid in ipairs(p.play) do played[#played + 1] = uid end
+    for _, a in ipairs(game.rules.areas or {}) do
+      add(seat .. ".area." .. a.key, p.areas and p.areas[a.key] or {}, s.areas[a.key], "stack", true)
+    end
     if s.bases.hidden then
       -- no bases area: cards that stay in play sit at the end of the play row
       local both = {}
-      for _, uid in ipairs(p.play) do both[#both + 1] = uid end
+      for _, uid in ipairs(played) do both[#both + 1] = uid end
       for _, uid in ipairs(p.bases) do both[#both + 1] = uid end
       add(seat .. ".play", both, s.play, "row", true)
     else
-      add(seat .. ".play", p.play, s.play, "row", true)
+      add(seat .. ".play", played, s.play, "row", true)
       add(seat .. ".bases", p.bases, s.bases, "row", true)
     end
     add(seat .. ".hand", p.hand, s.hand, "hand", true, nil, s.deck.position)
