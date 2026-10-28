@@ -10,7 +10,7 @@ does something unusual.
 
 ![Four placeholder cards from the Ember Guilds sample game](docs/sample-cards.png)
 
-**[Get started »](docs/GettingStarted.md)** · [Play a game](docs/Playing.md) ·
+**[Get started »](docs/GettingStarted.md)** · [Steam Workshop](https://steamcommunity.com/sharedfiles/filedetails/?id=3829026544) · [Play a game](docs/Playing.md) ·
 [Port a game you know](docs/PORTING.md) · [All documentation](#documentation)
 
 ---
@@ -105,7 +105,7 @@ tokens, no more than four players and no teams. See
 | 4. Effects: keywords, faction bonuses, buildings and guards, attacks | Done |
 | 5. A first full game, playable by 2 to 4 players | Done |
 | 6. A second, different game (Lantern Fair), a porting guide and a blank template | Done |
-| 7. Steam Workshop release | In progress |
+| 7. [Steam Workshop](https://steamcommunity.com/sharedfiles/filedetails/?id=3829026544) release | Done |
 | 8. Co-operative games: players win or lose together against an automated enemy with its own turns and deck, plus a shuffled turn-order deck | Planned |
 | 9. Several games in one save, switched from a menu, each keeping its own progress | Planned |
 
