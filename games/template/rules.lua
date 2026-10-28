@@ -1,6 +1,6 @@
 -- A blank game to start from. Copy this folder (games/template) to
--- games/<yours>, then change cards.csv and this file. The README's "Rules
--- file reference" lists every field; docs/PORTING.md walks through porting a
+-- games/<yours>, then change cards.csv and this file. docs/Rules.md lists
+-- every field; docs/PORTING.md walks through porting a
 -- deck-builder you already know. Fields you don't need can be deleted: the
 -- engine uses sensible defaults.
 local rules = {

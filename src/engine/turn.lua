@@ -212,7 +212,7 @@ end
 
 -- Draws n cards for a seat, reshuffling the discard pile into the deck when
 -- the deck runs out. Returns the uids drawn (fewer than n if both are empty).
--- With `noShuffle` (rules.reshuffle = false, as in Aeon's End) the discard
+-- With `noShuffle` (rules.reshuffle = false) the discard
 -- pile is turned over instead: the first card discarded is drawn first.
 function Turn.draw(state, seat, n, random, noShuffle)
   local player = state.players[seat]

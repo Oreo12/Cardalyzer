@@ -374,7 +374,7 @@ local function wrappedHeight(msg, size)
 end
 
 -- A seat's row: name (bold with a marker on its turn), then a shield per
--- base in play with its defense, then its stats, e.g. the heart and Authority.
+-- base in play with its defense, then its stats, e.g. the heart and Health.
 -- Returns XML and height.
 local function seatRow(game, seat)
   local state, rules = game.state, game.rules
@@ -759,7 +759,7 @@ function UI_.setupPanel(game, color)
   for _, r in ipairs(UI_.supplyRows(game)) do add(r) end
   -- rules.ui.setupMenu(game, color, menu, UI) may change the menu (its
   -- title, its rows of XML, each rowHeight tall, and its buttons) or return
-  -- XML of its own to draw instead. See README, "Customising the UI".
+  -- XML of its own to draw instead. See docs/Customising.md, "Your Own New Game Menu".
   local menu = { title = say("setupTitle"), rows = rows, rowHeight = 30, buttons = buttons }
   local custom = game.rules.ui and game.rules.ui.setupMenu
   if custom then
