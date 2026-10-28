@@ -239,9 +239,11 @@ function Zones.layout(rules, fixedIds, count, facing, breaks)
   for _, r in ipairs(pileRows) do widest = math.max(widest, #r) end
   local x0 = first + (n - 1) * gap + gap * 1.5
   if n == 0 then x0 = columns and -(widest - 1) / 2 * gap or 0 end
+  -- rules.layout.areas[id] = { along, out } moves one fixed pile (by card id)
   for r, ids in ipairs(pileRows) do
     for j, id in ipairs(ids) do
-      result.market.fixed[id] = spot(centre, y, x0 + (j - 1) * gap, mainOut + (r - 1) * pitch, yaw)
+      local o = type(over[id]) == "table" and over[id] or {}
+      result.market.fixed[id] = spot(centre, y, o.along or x0 + (j - 1) * gap, o.out or mainOut + (r - 1) * pitch, yaw)
     end
   end
   result.market.scrap = piece("scrap", x0 + widest * gap + gap * 0.5)

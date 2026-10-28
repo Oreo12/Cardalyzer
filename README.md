@@ -880,7 +880,9 @@ column down the area (from the middle of the table toward the player)
 instead of a row across it, for a tall strip such as bases down the side of
 a mat.
 
-`marketDeck` and `scrap` take `{along, out}` from the middle of the market.
+`marketDeck` and `scrap` take `{along, out}` from the middle of the market,
+and so does each fixed pile, by its card id (`hireling = { along = 9, out = 0 }`),
+to line the piles up with slots printed on a market mat.
 An area turned off has no outline and no zone. Its cards still follow the
 rules, they just aren't shown on the table.
 
