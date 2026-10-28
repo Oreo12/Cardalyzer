@@ -55,7 +55,7 @@ is only needed for the odd card that does something no keyword covers.
 The quickest way to see what Cardalyzer does is to play **Ember Guilds**, the
 sample game.
 
-1. Subscribe to Cardalyzer on the Steam Workshop.
+1. Subscribe to [Cardalyzer on the Steam Workshop](https://steamcommunity.com/sharedfiles/filedetails/?id=3829026544).
 2. Start TTS and choose **Create → Singleplayer** (or host a multiplayer game).
 3. Open **Games → Workshop**, and load **Cardalyzer**.
 4. Sit at **White**, and press **New Game** in the panel on the right.
