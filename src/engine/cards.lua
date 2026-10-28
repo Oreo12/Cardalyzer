@@ -35,7 +35,7 @@ end
 
 -- "trade:2; draw:1; custom:myFn" -> { {key="trade", amount=2}, {key="draw", amount=1}, {key="custom", fn="myFn"} }
 -- "trade:2 | combat:2"           -> { {key="choice", options={ {key="trade",...}, {key="combat",...} }} }
--- "blob=combat:2"                -> { {key="combat", amount=2, ally="blob"} } (ally effects only)
+-- "forge=might:2"               -> { {key="might", amount=2, ally="forge"} } (ally effects only)
 -- "mastery>=10=combat:5"         -> { {key="combat", amount=5, cond={key="mastery", op=">=", n=10}} }
 --                                   (only while the player has 10 or more mastery; any column)
 function Cards.parseEffects(str)
@@ -140,7 +140,7 @@ local function parseRow(row, index)
     deck = deck,
     set = not blank(row.set) and row.set or nil, -- which set (expansion) the card belongs to
     faction = factions[1],
-    factions = factions, -- "blob/machine_cult" is in both; "any" counts as every faction
+    factions = factions, -- "forge/grove" is in both; "any" counts as every faction
     allyGroups = groups,
     doubleAllyEffects = double,
     condition = not blank(row.condition) and row.condition or nil, -- objective: custom effect whose check() says it's met

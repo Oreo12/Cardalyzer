@@ -13,7 +13,7 @@ local Actions = {}
 local function fail(msg) return false, msg end
 
 -- Sends a scrapped card to the scrap pile. With rules.market.returnScrapped,
--- a card from a fixed pile (Star Realms' Explorers) goes back to its pile instead.
+-- a card from a fixed pile (an always-available pile) goes back to its pile instead.
 -- `from` says where it came from ("play", "hand", "discard", "row"): the
 -- player's own scraps this turn are counted in state.turn.scrapped
 -- ({ total, handOrDiscard }), and scraps from hand or discard pile trigger
@@ -41,7 +41,7 @@ end
 -- A card's entry in rules.cardTypes (an empty table if none). Besides
 -- persistent and guard, a type can set:
 --   replay = false   a persistent card doesn't apply its effects again each turn
---   target = false   it can't be attacked or destroyed (Star Realms' Heroes)
+--   target = false   it can't be attacked or destroyed (a hero)
 --   event = true     revealed into the market row, it resolves and is scrapped
 function Actions.typeDef(game, c)
   return require("engine.cards").typeDef(game.rules, c)
@@ -234,7 +234,7 @@ local function triggerPlayed(game, seat, uid, c)
 end
 
 -- Plays a card from hand. state.turn.played lists the uids played this turn,
--- in order, for effects like "draw a card for each Blob card you've played".
+-- in order, for effects like "draw a card for each Forge card you've played".
 ---------------------------------------------------------------------------
 -- Turn structure (rules.turn): phases, and costs for playing and buying.
 --   phases = { { key = "action", label = "Action", play = { "action" }, buy = false, attack = false },
@@ -588,7 +588,7 @@ end
 Actions.defeat = keepPhaseIfRefused(defeatNow)
 
 -- Hires a card from a market row for this turn (a type with hire = true,
--- Shards of Infinity's Mercenaries): pays its cost like a buy, puts it
+-- a mercenary): pays its cost like a buy, puts it
 -- straight into play (its effects apply), and at the end of the turn it goes
 -- to the bottom of its market's deck instead of the discard pile.
 local function hireNow(game, seat, uid)
@@ -716,7 +716,7 @@ function Actions.scrapFromPlay(game, seat, uid)
 end
 
 -- Can this card in play use its scrap ability now? A scrap ability written
--- with a faction prefix ("blob=combat:8", from "Ally: scrap this card from
+-- with a faction prefix ("forge=might:8", from "Ally: scrap this card from
 -- play...") needs an ally of that faction in play.
 function Actions.canScrap(game, seat, uid)
   local c = card(game, uid)

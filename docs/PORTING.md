@@ -18,7 +18,7 @@ The repo has three games to copy from:
 
 **Check that the game fits.** Cardalyzer runs games where you play cards from
 your hand, they give you resources or effects, you spend those, then you clean
-up and draw. Read [Limits and compatibility](../README.md#limits-and-compatibility)
+up and draw. Read [Limits and compatibility](Limits.md)
 first. If most of the game's cards would need code, it isn't a good fit yet.
 
 **Check that you may share it.** A port of a published game is for your own
@@ -80,7 +80,7 @@ row, the Buy button).
 ## 3. Write the card spreadsheet
 
 `cards.csv` has one row per **different** card; `copies` says how many there
-are. The [Card spreadsheet reference](../README.md#card-spreadsheet-reference)
+are. The [Card spreadsheet reference](Cards.md)
 lists every column. Some tips:
 
 - **Ids** are lowercase with `_`: `royal_guard`. Keywords that name a card,
@@ -88,7 +88,7 @@ lists every column. Some tips:
 - **Effects** are `keyword:amount`, separated by `;`: `draw:2; coin:1`. A
   choice is `coin:2 | draw:2`. The keywords are your resource and stat keys
   plus the built-in ones in
-  [Writing effects](../README.md#writing-effects).
+  [Writing effects](Cards.md#writing-effects).
 - **Write what you can't automate in `text`.** A card whose effect has no
   keyword can use `reminder`: the card's text is shown to the player, who
   resolves it by hand. That lets you play the whole game first and automate
@@ -140,8 +140,8 @@ turn = {
 ```
 
 A card type that no phase lets you play (victory cards, curses) simply can't
-be played. The [Rules file reference](../README.md#rules-file-reference)
-lists every field, and [How a turn runs](../README.md#how-a-turn-runs) covers
+be played. The [Rules file reference](Rules.md)
+lists every field, and [How a turn runs](Rules.md#how-a-turn-runs) covers
 phases, attacks and reactions.
 
 ## 5. Write the custom effects
@@ -184,7 +184,7 @@ heckle = {
 },
 ```
 
-[Custom effects](../README.md#custom-effects) lists the prompts and the hooks
+[Custom effects](CustomEffects.md) lists the prompts and the hooks
 for cards in play ("whenever you play…", "at the end of your turn…").
 
 ## 6. Card images
@@ -192,7 +192,7 @@ for cards in play ("whenever you play…", "at the end of your turn…").
 **Using your own sheets.** Write `art.json` yourself and don't run
 `make_sheets.py`, which would overwrite it. It names each sheet's URL and size
 and which slot each card id uses; see
-[Using card art you already have](../README.md#using-card-art-you-already-have).
+[Using card art you already have](Customising.md#using-card-art-you-already-have).
 The engine lists any card with no slot when the game loads.
 
 **Using placeholders.** `make_sheets.py` draws a plain card for every row,
@@ -219,7 +219,7 @@ CZ_BUILD=build/mygame/Global.lua lua tests/smoke.lua
 tests one card at a time and plays whole games.
 
 Then play it: paste `build/mygame/Global.lua` into Global's script in TTS on
-an empty table (see [Try the sample game](../README.md#try-the-sample-game))
+an empty table (see [Load a Build into Tabletop Simulator](GettingStarted.md#load-a-build-into-tabletop-simulator))
 and press **New Game**.
 
 ## Checklist
