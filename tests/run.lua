@@ -3666,5 +3666,20 @@ test("a card used with its Use button lies turned sideways until its owner's nex
   eq(yaw(), flat, "upright again on its owner's turn")
 end)
 
+test("a fixed pile can be placed by its card id, like the market deck and scrap pile", function()
+  local game = boot()
+  local Zones = Cardalyzer.require("engine.zones")
+  local function near(a, b) return math.abs(a - b) < 0.01 end
+  local before = Zones.layout(game.rules, game.fixedIds, 2).market.fixed.hireling.position
+  game.rules.layout = { areas = { market = { x = -2 }, hireling = { along = 7.5, out = 1 } } }
+  local after = Zones.layout(game.rules, game.fixedIds, 2).market.fixed.hireling.position
+  assert(near(after[1], 5.5) and near(after[3], 1), "moved from the middle of the market")
+  assert(not near(before[1], after[1]), "not where it was")
+  Cardalyzer_onStartGame(HOST)
+  local obj = getObjectFromGUID(game.state.view.piles["fixed.hireling"][1])
+  assert(near(obj.position[1], 5.5), "the pile is laid there")
+  assertConserved(game)
+end)
+
 print(string.format("\n%d passed, %d failed", passed, failed))
 if failed > 0 then os.exit(1) end
