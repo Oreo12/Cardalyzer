@@ -100,7 +100,7 @@ type does. A type can have any of these:
 | `hire = true` | In a market row it also has a **Hire** button: hiring pays its cost and puts it straight into play for its effects, and at the end of the turn it goes to the bottom of the market deck instead of to the player |
 | `faceDown = true` | Its cards are dealt face down (see [Dealt cards](#dealt-cards)): only their owner sees them, and they do nothing until the owner presses **Reveal** on their turn. Then they go into play and their effects apply |
 | `buyTo = "play"` | When bought (or taken free), its cards go straight into play instead of the discard pile, and their effects apply at once (a hero that joins you) |
-| `scrapCorner = { right, top }` | Where the **Scrap** button sits on its cards (see `ui.scrapButton` in [Customising](Customising.md)) |
+| `scrapAt = 0.9` | How far down its cards the **Scrap** button goes (see `ui.scrapButton` in [Customising](Customising.md)) |
 | `playYaw = 90` | Its cards turn 90 degrees (or `270`) once they're in a player's play area, for cards printed sideways. They're upright in the market |
 
 **`mechanics`** turns whole mechanics on or off: `allies` (faction bonuses),

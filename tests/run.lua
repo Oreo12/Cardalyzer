@@ -3654,39 +3654,39 @@ test("a type with buyTo = \"play\" goes straight into play when bought", functio
   game.rules.cardTypes.champion = nil
 end)
 
-test("cards in play with a scrap ability get a Scrap button on their bottom-left corner", function()
+test("cards in play with a scrap ability get a see-through Scrap button across them", function()
   local game = boot()
   Cardalyzer_onStartGame(HOST)
   local s, p = game.state, game.state.players[1]
   local State = Cardalyzer.require("engine.state")
+  local Board = Cardalyzer.require("engine.board")
   local scout, squire = State.newCard(s, "shade_scout"), State.newCard(s, "squire") -- Scrap: +2 Might; none
   p.play[#p.play + 1] = scout
   p.play[#p.play + 1] = squire
-  Cardalyzer.require("engine.board").sync(game, { instant = true })
+  Board.sync(game, { instant = true })
   local objs = {}
   for _, guid in ipairs(s.view.piles["1.play"]) do
     local o = getObjectFromGUID(guid)
     objs[o.data.GMNotes] = o
   end
   local o = objs[scout]
-  eq(#(o.decals or {}), 1, "the scrap symbol on the card")
-  assert(o.decals[1].url:find("scrap.png", 1, true), "the scrap symbol: " .. o.decals[1].url)
-  local d = o.decals[1]
-  assert(d.position[1] > 0.8 and d.position[3] > 1.2, "on its bottom-left corner")
-  eq(d.scale[1], 0.38, "the default size")
-  -- a corner set in rules.ui.scrapButton: top-right at 17.5% across, 88% down
+  eq(o.decals, nil, "nothing stuck on the card (it would show when inspected)")
+  eq(#o.buttons, 1, "one button")
+  local b = o.buttons[1]
+  eq(b.label, "Scrap", "labelled")
+  eq(b.click_function, "Cardalyzer_onScrapIcon", "clicks scrap it")
+  assert(b.tooltip:find("Scrap Shade Scout", 1, true), "tooltip: " .. b.tooltip)
+  assert(b.color[4] < 1, "see-through")
+  eq(b.position[1], 0, "centred across the card")
+  assert(b.position[3] > 1 and b.position[3] < 1.53, "near the bottom, still on the card: " .. b.position[3])
+  eq(#objs[squire].buttons, 0, "no button on a card without a scrap ability")
+  -- rules.ui.scrapButton.at: how far down the card
   game.rules.ui = game.rules.ui or {}
-  game.rules.ui.scrapButton = { size = 0.4, corner = { right = 0.175, top = 0.88 } }
+  game.rules.ui.scrapButton = { at = 0.5 }
   local placed = tts.newObject("Card", {})
-  Cardalyzer.require("engine.board").addScrapButton(game, placed, State.newCard(s, "shade_scout"))
-  local pd = placed.decals[1]
-  assert(math.abs(pd.position[1] - (1.095 - (0.175 * 2.19 - 0.2))) < 1e-6, "x: " .. pd.position[1])
-  assert(math.abs(pd.position[3] - (0.88 * 3.06 + 0.2 - 1.53)) < 1e-6, "z: " .. pd.position[3])
+  Board.addScrapButton(game, placed, State.newCard(s, "shade_scout"))
+  eq(placed.buttons[1].position[3], 0, "halfway down: the middle")
   game.rules.ui.scrapButton = nil
-  eq(#o.buttons, 1, "a button over it")
-  eq(o.buttons[1].click_function, "Cardalyzer_onScrapIcon", "clicks scrap it")
-  assert(o.buttons[1].tooltip:find("Scrap Shade Scout", 1, true), "tooltip: " .. o.buttons[1].tooltip)
-  eq(objs[squire].decals, nil, "no symbol on a card without a scrap ability")
   -- someone else can't scrap White's card; White can
   Cardalyzer_onScrapIcon(o, "Red")
   assert(Cardalyzer.require("engine.util").indexOf(p.play, scout), "still in play")
@@ -3694,21 +3694,21 @@ test("cards in play with a scrap ability get a Scrap button on their bottom-left
   Cardalyzer_onScrapIcon(o, "White")
   eq(p.resources.might, might + 2, "scrapped for +2 Might")
   assert(not Cardalyzer.require("engine.util").indexOf(p.play, scout), "gone from play")
-  -- a type printed sideways: the printed bottom-left is another corner
+  -- a type printed sideways (or a card turned as used): across the card as it reads
   game.rules.cardTypes.unit = game.rules.cardTypes.unit or {}
   game.rules.cardTypes.unit.playYaw = 90
   local obj = tts.newObject("Card", {})
-  Cardalyzer.require("engine.board").addScrapButton(game, obj, State.newCard(s, "shade_scout"))
-  assert(obj.decals[1].position[1] < 0 and obj.decals[1].position[3] > 0, "turned with the card")
-  eq(obj.decals[1].rotation[2], 90, "and the symbol upright")
-  eq(obj.decals[1].scale[1], obj.decals[1].scale[2], "the same size as on upright cards")
+  Board.addScrapButton(game, obj, State.newCard(s, "shade_scout"))
+  local sb = obj.buttons[1]
+  assert(sb.position[1] > 0.5 and sb.position[3] == 0, "toward the reader's bottom")
+  eq(sb.rotation[2], 90, "turned to read upright")
+  assert(sb.width > b.width, "as wide as the card reads")
   game.rules.cardTypes.unit.playYaw = nil
   -- rules.ui.scrapButton = false: none
-  game.rules.ui = game.rules.ui or {}
   game.rules.ui.scrapButton = false
   local plain = tts.newObject("Card", {})
-  Cardalyzer.require("engine.board").addScrapButton(game, plain, State.newCard(s, "shade_scout"))
-  eq(plain.decals, nil, "turned off")
+  Board.addScrapButton(game, plain, State.newCard(s, "shade_scout"))
+  eq(#plain.buttons, 0, "turned off")
   game.rules.ui.scrapButton = nil
 end)
 

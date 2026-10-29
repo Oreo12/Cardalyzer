@@ -358,55 +358,56 @@ local function addBuyButton(game, obj, cost, word, hire)
   })
 end
 
--- The Scrap button on a card in play with a scrap ability: the scrap symbol
--- (theme symbols, "scrap") stuck on the card, with a clear button over it
--- (Cardalyzer_onScrapIcon). rules.ui.scrapButton: false for none (Scrap
--- buttons go in the action bar instead), or
---   size    the symbol's width in table units, the same on every card (0.38)
---   corner  where the symbol's top-right corner goes, as fractions of the
---           printed card from its left and top edges: { right, top }
---           (default near the bottom-left corner, hanging a little over)
--- A card type's scrapCorner = { right, top } overrides corner for its cards
--- (a game whose bases print the scrap symbol somewhere else); it can also be
--- function(card) returning one (cards of one type printed differently by set). "Printed"
--- means as the card reads: a type turned by playYaw (printed sideways)
--- counts its left and top as they read in play.
+-- The Scrap button on a card in play with a scrap ability: a see-through
+-- button across the card, like Buy, clicked by the card's owner
+-- (Cardalyzer_onScrapIcon). TTS leaves script buttons out of a card's
+-- Alt-zoom preview, so the whole card can still be read. rules.ui.scrapButton:
+-- false for none (Scrap buttons go in the action bar instead), or
+--   at       how far down the printed card the button's middle goes (0.9),
+--            e.g. level with a scrap ability printed on the cards
+--   color, textColor ("#RRGGBB" or {r, g, b, a}), fontSize, width, height
+-- A card type's scrapAt (a number, or function(card) returning one, for
+-- cards of one type printed differently by set) overrides `at` for its
+-- cards. "Printed" means as the card reads: a card turned by playYaw (printed
+-- sideways), or turned as used, has the button across it the way it reads.
+-- `turned` is how far the card is turned in play (degrees).
 Board.CARD_W, Board.CARD_H = 2.19, 3.06
-function Board.addScrapButton(game, obj, uid)
+Board.BUTTON_UNITS = 410 -- button size units per table unit on a card
+function Board.addScrapButton(game, obj, uid, turned)
   local look = game.rules.ui and game.rules.ui.scrapButton
   if look == false then return end
   look = type(look) == "table" and look or {}
   local c = game:cardOf(uid)
   if not c or #c.scrapEffects == 0 then return end
   local def = require("engine.cards").typeDef(game.rules, c)
-  local yaw = (def.playYaw or 0) % 360
-  local turned = yaw == 90 or yaw == 270
-  local size = look.size or 0.38
+  local yaw = (turned or def.playYaw or 0) % 360
+  local sideways = yaw == 90 or yaw == 270
+  -- the card as it reads: width across, height down
   local w, h = Board.CARD_W, Board.CARD_H
-  if turned then w, h = h, w end -- the printed card's width and height
-  local corner = def.scrapCorner
-  if type(corner) == "function" then corner = corner(c) end
-  corner = corner or look.corner or { right = (size - 0.05) / w, top = 1 - (size - 0.05) / h }
-  -- the symbol's centre, measured from the printed card's left and top
-  local across = corner.right * w - size / 2
-  local down = corner.top * h + size / 2
-  -- to the card object's own position: +x is its left, +z its bottom
-  local x, z
-  if turned then
-    x, z = Board.CARD_W / 2 - down, Board.CARD_H / 2 - across
-  else
-    x, z = Board.CARD_W / 2 - across, down - Board.CARD_H / 2
-  end
-  if yaw == 180 or yaw == 270 then x, z = -x, -z end
-  -- the symbol turns with the print, so it reads upright
-  obj.setDecals({ { name = "cz_scrap", url = require("engine.ui").symbolUrl(game.rules, "scrap"),
-    position = { x, 0.25, z }, rotation = { 90, (180 - yaw) % 360, 0 }, scale = { size, size, 1 } } })
+  if sideways then w, h = h, w end
+  local at = def.scrapAt
+  if type(at) == "function" then at = at(c) end
+  at = at or look.at or 0.9
+  local units = Board.BUTTON_UNITS
+  local height = look.height or 230
+  -- the button's middle, down from the card's centre, kept on the card
+  local down = math.min(at * h, h - height / units / 2 - 0.03) - h / 2
+  -- in button coordinates (x mirrored, +z the card's bottom), toward the
+  -- reader's "down" for each way the card can lie
+  local x, z = 0, down
+  if yaw == 90 then x, z = down, 0
+  elseif yaw == 180 then z = -down
+  elseif yaw == 270 then x, z = -down, 0 end
   local words = require("engine.words")
   obj.createButton({
-    click_function = "Cardalyzer_onScrapIcon", function_owner = Global, label = "",
-    position = { -x, 0.3, z }, width = math.floor(size * 470), height = math.floor(size * 470),
-    color = { 0, 0, 0, 0 }, hover_color = { 1, 1, 1, 0.25 }, press_color = { 1, 1, 1, 0.45 },
+    click_function = "Cardalyzer_onScrapIcon", function_owner = Global,
+    label = words.say(game.rules, "scrapButton"),
     tooltip = words.say(game.rules, "scrap", { card = c.name, effects = game.effects:describe(c.scrapEffects, c.text) }),
+    position = { x, 0.3, z }, rotation = { 0, yaw, 0 },
+    width = look.width or math.floor((w - 0.3) * units), height = height, font_size = look.fontSize or 150,
+    color = Util.color(look.color) or { 0.1, 0.1, 0.1, 0.55 },
+    hover_color = { 0.2, 0.2, 0.2, 0.8 }, press_color = { 0.35, 0.35, 0.35, 0.9 },
+    font_color = Util.color(look.textColor) or { 1, 0.85, 0.35 },
   })
 end
 
@@ -519,7 +520,7 @@ local function draw(game, pile, uids)
   local function ready(obj)
     if cost then addBuyButton(game, obj, cost, word, hire) end
     local uid = inPlay and obj.getGMNotes()
-    if uid and not (pile.secret and pile.secret[uid]) then Board.addScrapButton(game, obj, uid) end
+    if uid and not (pile.secret and pile.secret[uid]) then Board.addScrapButton(game, obj, uid, pile.turned and pile.turned[uid] or 0) end
     readied[#readied + 1] = obj
     if #readied == waiting then
       removeOld()

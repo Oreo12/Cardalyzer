@@ -50,6 +50,7 @@ Words.DEFAULT = {
   done = "Done",
   more = " (+{n} more)",
   buy = "Buy · {n}",
+  scrapButton = "Scrap",
   defeat = "Defeat · {n}",
   hire = "Hire · {n}",
   defeated = "{name} defeated {card}: {effects}",
