@@ -193,15 +193,26 @@ function Board.piles(game)
     for _, a in ipairs(game.rules.areas or {}) do
       add(seat .. ".area." .. a.key, p.areas and p.areas[a.key] or {}, s.areas[a.key], "stack", true)
     end
+    -- face-down cards (not yet revealed) sit first in the bases row, hidden
+    -- from everyone but their owner
+    local bases = {}
+    for _, uid in ipairs(p.facedown or {}) do bases[#bases + 1] = uid end
+    for _, uid in ipairs(p.bases) do bases[#bases + 1] = uid end
     if s.bases.hidden then
       -- no bases area: cards that stay in play sit at the end of the play row
       local both = {}
       for _, uid in ipairs(played) do both[#both + 1] = uid end
-      for _, uid in ipairs(p.bases) do both[#both + 1] = uid end
+      for _, uid in ipairs(bases) do both[#both + 1] = uid end
       add(seat .. ".play", both, s.play, "row", true)
     else
       add(seat .. ".play", played, s.play, "row", true)
-      add(seat .. ".bases", p.bases, s.bases, "row", true)
+      add(seat .. ".bases", bases, s.bases, "row", true)
+    end
+    local holder = seat .. (s.bases.hidden and ".play" or ".bases")
+    if p.facedown and #p.facedown > 0 and list[#list] and list[#list].key == holder then
+      local secret = {}
+      for _, uid in ipairs(p.facedown) do secret[uid] = p.color end
+      list[#list].secret = secret
     end
     -- How far each card in play is turned: its type's playYaw (cards printed
     -- sideways, such as bases, read the right way up in play but not in the
@@ -364,11 +375,22 @@ function Board.clearPile(game, key)
 end
 
 -- A pile's signature: its uids in order. Unchanged signature = nothing to redraw.
-local function signature(uids, turned)
-  if not turned or not next(turned) then return table.concat(uids, ",") end
+local function signature(uids, turned, secret)
+  if (not turned or not next(turned)) and not secret then return table.concat(uids, ",") end
   local parts = {}
-  for i, uid in ipairs(uids) do parts[i] = turned[uid] and (uid .. "*" .. turned[uid]) or uid end
+  for i, uid in ipairs(uids) do
+    parts[i] = (turned and turned[uid] and (uid .. "*" .. turned[uid]) or uid) .. (secret and secret[uid] and "~" or "")
+  end
   return table.concat(parts, ",")
+end
+
+-- Every player colour but the owner's (and the GM's): who mustn't see a
+-- face-down card. TTS shows them its hidden face, as for a card in a hand.
+local COLORS = { "White", "Brown", "Red", "Orange", "Yellow", "Green", "Teal", "Blue", "Purple", "Pink", "Grey" }
+local function hideFrom(obj, owner)
+  local others = {}
+  for _, c in ipairs(COLORS) do if c ~= owner then others[#others + 1] = c end end
+  obj.setHiddenFrom(others)
 end
 
 -- Whether every card of a pile lies sideways (a quarter turn either way).
@@ -456,6 +478,10 @@ local function draw(game, pile, uids)
       local r = rot
       if pile.turned and pile.turned[uid] then r = { rot[1], (rot[2] + pile.turned[uid]) % 360, rot[3] } end
       guids[i] = spawn(game, data(Board.cardData(game, uid)), positions[i], r, ready)
+      if pile.secret and pile.secret[uid] then
+        local obj = getObjectFromGUID(guids[i])
+        if obj then hideFrom(obj, pile.secret[uid]) end
+      end
     end
   end
 end
@@ -463,7 +489,7 @@ end
 function Board.renderPile(game, pile)
   game.state.view.at = game.state.view.at or {}
   draw(game, pile, pile.uids)
-  game.state.view.sig[pile.key] = signature(pile.uids, pile.turned)
+  game.state.view.sig[pile.key] = signature(pile.uids, pile.turned, pile.secret)
 end
 
 -- Animation timing in seconds. rules.animate = false turns animation off;
@@ -486,13 +512,14 @@ end
 -- A short-lived copy of a card that flies from one place to another. It's
 -- locked and can't be picked up. When it lands the pile draws the real card
 -- beneath it, and the copy is removed a moment later, once that has appeared.
-local function fly(game, uid, from, to, rot, delay)
+local function fly(game, uid, from, to, rot, delay, owner)
   after(delay, function()
     local obj = spawnObjectData({
       data = Board.cardData(game, uid),
       position = { from[1], from[2] + timing(game, "lift", Board.LIFT), from[3] },
       rotation = rot,
     })
+    if owner then hideFrom(obj, owner) end
     obj.setLock(true)
     obj.interactable = false
     obj.setPositionSmooth({ to[1], to[2] + timing(game, "lift", Board.LIFT) * 0.4, to[3] }, false, true)
@@ -518,7 +545,7 @@ function Board.sync(game, opts)
   view.facing = view.facing or {}
   for _, pile in ipairs(Board.piles(game)) do
     local key = pile.key
-    local sig = signature(pile.uids, pile.turned)
+    local sig = signature(pile.uids, pile.turned, pile.secret)
     local old = view.sig[key]
     -- Same cards, but the pile itself moved (the market turning to face a new
     -- player): glide its objects to the new spot.
@@ -576,7 +603,7 @@ function Board.sync(game, opts)
         for _, f in ipairs(flights) do
           local delay = dealt * timing(game, "stagger", Board.STAGGER)
           dealt = dealt + 1
-          fly(game, f.uid, f.from, f.to, rot, delay)
+          fly(game, f.uid, f.from, f.to, rot, delay, pile.secret and pile.secret[f.uid])
           view.at[f.uid] = f.to
           landed = math.max(landed, delay + Board.TRAVEL)
         end

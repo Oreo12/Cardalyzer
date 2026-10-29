@@ -121,6 +121,9 @@ function UI_.actions(game)
     local name = game:cardOf(a.uid).name
     add(out.buttons, "cz-use-" .. a.uid, a.def.text and say("useWith", { card = name, text = a.def.text }) or say("use", { card = name }))
   end
+  for _, uid in ipairs(p.facedown or {}) do
+    add(out.buttons, "cz-reveal-" .. uid, say("reveal", { card = game:cardOf(uid).name }))
+  end
   local goalLabel = game.rules.objectives and game.rules.objectives.label or "goal"
   for _, uid in ipairs(Actions.completable(game, seat)) do
     add(out.buttons, "cz-goal-" .. uid, say("complete", { card = game:cardOf(uid).name }))

@@ -204,6 +204,8 @@ function handleUI(player, _, id)
     run(player.color, game.nextPhase, seat)
   elseif action == "use" then
     run(player.color, game.activate, seat, arg)
+  elseif action == "reveal" then
+    run(player.color, game.reveal, seat, arg)
   elseif action == "call" then
     run(player.color, game.call, seat, arg)
   elseif action == "goal" then

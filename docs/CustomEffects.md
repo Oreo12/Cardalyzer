@@ -57,8 +57,9 @@ card's effects are described.
 - **`seat`**, the number of the player who played the card.
 - **`ctx`**, the card the effect came from: `ctx.uid` (this copy's id) and
   `ctx.card` (its name, cost, factions and so on). A card with `next_effects`
-  sees `ctx.nextTurn = true` when they happen, and a defeated monster's
-  effects see `ctx.defeated = true`.
+  sees `ctx.nextTurn = true` when they happen, a defeated monster's
+  effects see `ctx.defeated = true`, and a face-down card's effects see
+  `ctx.revealed = true` when its owner reveals it ("when you reveal this...").
 
 [Back to Top](#custom-effects-lua-for-unusual-cards)
 

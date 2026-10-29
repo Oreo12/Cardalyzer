@@ -367,7 +367,7 @@ function Game:loadState(saved)
   for _, p in ipairs(data.players) do
     p.objectives, p.completed = p.objectives or {}, p.completed or {}
     p.areas, p.lasting, p.nextJobs = p.areas or {}, p.lasting or {}, p.nextJobs or {}
-    p.exhausted = p.exhausted or {}
+    p.exhausted, p.facedown = p.exhausted or {}, p.facedown or {}
     for _, a in ipairs(self.rules.areas or {}) do p.areas[a.key] = p.areas[a.key] or {} end
   end
   data.markets = data.markets or {}
@@ -675,6 +675,7 @@ function Game:done(seat) return self:act(Actions.done, seat) end
 function Game:endTurn(seat) return self:act(Actions.endTurn, seat) end
 function Game:completeObjective(seat, uid) return self:act(Actions.completeObjective, seat, uid) end
 function Game:activate(seat, uid) return self:act(Actions.activate, seat, uid) end
+function Game:reveal(seat, uid) return self:act(Actions.reveal, seat, uid) end
 function Game:nextPhase(seat) return self:act(Actions.nextPhase, seat) end
 
 -- A Buy button was clicked on a market card or a fixed pile's deck object.
