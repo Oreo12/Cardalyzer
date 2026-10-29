@@ -389,11 +389,9 @@ function Board.addScrapButton(game, obj, uid)
     x, z = Board.CARD_W / 2 - across, down - Board.CARD_H / 2
   end
   if yaw == 180 or yaw == 270 then x, z = -x, -z end
-  -- turned a quarter, TTS squeezes a card's decal across, so it's widened
-  -- back: the symbol looks the same size on every card
-  local wide = turned and size * Board.CARD_H / Board.CARD_W or size
+  -- the symbol turns with the print, so it reads upright
   obj.setDecals({ { name = "cz_scrap", url = require("engine.ui").symbolUrl(game.rules, "scrap"),
-    position = { x, 0.25, z }, rotation = { 90, (180 - yaw) % 360, 0 }, scale = { wide, size, 1 } } })
+    position = { x, 0.25, z }, rotation = { 90, (180 - yaw) % 360, 0 }, scale = { size, size, 1 } } })
   local words = require("engine.words")
   obj.createButton({
     click_function = "Cardalyzer_onScrapIcon", function_owner = Global, label = "",

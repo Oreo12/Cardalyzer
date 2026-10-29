@@ -3664,6 +3664,7 @@ test("cards in play with a scrap ability get a Scrap button on their bottom-left
   Cardalyzer.require("engine.board").addScrapButton(game, obj, State.newCard(s, "shade_scout"))
   assert(obj.decals[1].position[1] < 0 and obj.decals[1].position[3] > 0, "turned with the card")
   eq(obj.decals[1].rotation[2], 90, "and the symbol upright")
+  eq(obj.decals[1].scale[1], obj.decals[1].scale[2], "the same size as on upright cards")
   game.rules.cardTypes.unit.playYaw = nil
   -- rules.ui.scrapButton = false: none
   game.rules.ui = game.rules.ui or {}
