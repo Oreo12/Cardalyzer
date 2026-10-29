@@ -151,6 +151,7 @@ ui = {
 | `ui.describeCard` | `function(game, card, text) return text end` changes a card's tooltip on the table; `text` is Cardalyzer's own |
 | `ui.buyButton` | The look of the Buy button on market cards: `{ color="#1A1A1A", textColor="#FFD95A", fontSize=150, width=900, height=260, position={0, 0.6, 1.7} }` |
 | `ui.messages` | `{ count=3, chat=true }`: how many messages the info panel shows (0 for none), and whether they're copied to chat |
+| `ui.scrapButton` | The **Scrap** button on cards in play that have a scrap ability: the scrap symbol (`scrap.png`, or `theme.symbols.pictures.scrap`) on the card, clicked by its owner. `{ size = 0.38, corner = { right, top } }`: its width in table units (the same on every card), and where its top-right corner goes as fractions of the printed card from its left and top edges, so it can sit over a scrap symbol printed on the cards. A card type's `scrapCorner` (a `{ right, top }` or a `function(card)` returning one) overrides `corner` for its cards; sideways-printed types (`playYaw`) measure as they read. `false` puts Scrap buttons in the action bar instead |
 | `ui.turnUsedCards` | `false` stops cards that were used with their **Use** button from turning sideways |
 
 [Back to Top](#customising-the-look-of-your-game)
