@@ -349,6 +349,58 @@ local function addBuyButton(game, obj, cost, word, hire)
   })
 end
 
+-- The Scrap button on a card in play with a scrap ability: the scrap symbol
+-- (theme symbols, "scrap") stuck on the card, with a clear button over it
+-- (Cardalyzer_onScrapIcon). rules.ui.scrapButton: false for none (Scrap
+-- buttons go in the action bar instead), or
+--   size    the symbol's width in table units, the same on every card (0.38)
+--   corner  where the symbol's top-right corner goes, as fractions of the
+--           printed card from its left and top edges: { right, top }
+--           (default near the bottom-left corner, hanging a little over)
+-- A card type's scrapCorner = { right, top } overrides corner for its cards
+-- (a game whose bases print the scrap symbol somewhere else); it can also be
+-- function(card) returning one (cards of one type printed differently by set). "Printed"
+-- means as the card reads: a type turned by playYaw (printed sideways)
+-- counts its left and top as they read in play.
+Board.CARD_W, Board.CARD_H = 2.19, 3.06
+function Board.addScrapButton(game, obj, uid)
+  local look = game.rules.ui and game.rules.ui.scrapButton
+  if look == false then return end
+  look = type(look) == "table" and look or {}
+  local c = game:cardOf(uid)
+  if not c or #c.scrapEffects == 0 then return end
+  local def = require("engine.cards").typeDef(game.rules, c)
+  local yaw = (def.playYaw or 0) % 360
+  local turned = yaw == 90 or yaw == 270
+  local size = look.size or 0.38
+  local w, h = Board.CARD_W, Board.CARD_H
+  if turned then w, h = h, w end -- the printed card's width and height
+  local corner = def.scrapCorner
+  if type(corner) == "function" then corner = corner(c) end
+  corner = corner or look.corner or { right = (size - 0.05) / w, top = 1 - (size - 0.05) / h }
+  -- the symbol's centre, measured from the printed card's left and top
+  local across = corner.right * w - size / 2
+  local down = corner.top * h + size / 2
+  -- to the card object's own position: +x is its left, +z its bottom
+  local x, z
+  if turned then
+    x, z = Board.CARD_W / 2 - down, Board.CARD_H / 2 - across
+  else
+    x, z = Board.CARD_W / 2 - across, down - Board.CARD_H / 2
+  end
+  if yaw == 180 or yaw == 270 then x, z = -x, -z end
+  -- the symbol turns with the print, so it reads upright
+  obj.setDecals({ { name = "cz_scrap", url = require("engine.ui").symbolUrl(game.rules, "scrap"),
+    position = { x, 0.25, z }, rotation = { 90, (180 - yaw) % 360, 0 }, scale = { size, size, 1 } } })
+  local words = require("engine.words")
+  obj.createButton({
+    click_function = "Cardalyzer_onScrapIcon", function_owner = Global, label = "",
+    position = { -x, 0.3, z }, width = math.floor(size * 470), height = math.floor(size * 470),
+    color = { 0, 0, 0, 0 }, hover_color = { 1, 1, 1, 0.25 }, press_color = { 1, 1, 1, 0.45 },
+    tooltip = words.say(game.rules, "scrap", { card = c.name, effects = game.effects:describe(c.scrapEffects, c.text) }),
+  })
+end
+
 -- onReady(obj) runs once TTS has finished spawning the object.
 local function spawn(game, data, position, rot, onReady)
   local obj = spawnObjectData({
@@ -454,8 +506,11 @@ local function draw(game, pile, uids)
     hire = def.hire and pile.key:find("^market%.row") ~= nil
   end
   local waiting, readied = (pile.style == "stack") and 1 or n, {}
+  local inPlay = pile.style == "row" and (pile.key:find("^%d+%.play$") or pile.key:find("^%d+%.bases$"))
   local function ready(obj)
     if cost then addBuyButton(game, obj, cost, word, hire) end
+    local uid = inPlay and obj.getGMNotes()
+    if uid and not (pile.secret and pile.secret[uid]) then Board.addScrapButton(game, obj, uid) end
     readied[#readied + 1] = obj
     if #readied == waiting then
       removeOld()

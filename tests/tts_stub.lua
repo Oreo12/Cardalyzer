@@ -25,6 +25,7 @@ local function newObject(kind, extra)
   obj.setRotationSmooth = function(r) obj.rotation = r end
   obj.setLock = function(v) obj.locked = v end
   obj.setHiddenFrom = function(colors) obj.hiddenFrom = colors end
+  obj.setDecals = function(d) obj.decals = d end
   obj.getLock = function() return obj.locked == true end
   obj.setRotation = function(r) obj.rotation = r end
   obj.setScale = function(s) obj.scale = s end

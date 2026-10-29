@@ -107,7 +107,10 @@ function UI_.actions(game)
     end
   end
 
-  for _, uid in ipairs(Actions.inPlay(p)) do
+  -- Scrap abilities sit on the cards themselves (Board.addScrapButton), or
+  -- here in the bar if rules.ui.scrapButton = false.
+  local inBar = game.rules.ui and game.rules.ui.scrapButton == false
+  for _, uid in ipairs(inBar and Actions.inPlay(p) or {}) do
     local c = game:cardOf(uid) -- a card copying another this turn shows that card's scrap ability
     if Actions.canScrap(game, seat, uid) then -- (some need an ally in play first)
       add(out.buttons, "cz-scrap-" .. uid, say("scrap", { card = c.name, effects = game.effects:describe(c.scrapEffects, c.text) }))
@@ -163,9 +166,10 @@ local FX = ' outline="#000000E0" outlineSize="1.5 -1.5"'
 
 -- Built-in symbols, hosted with the engine. The theme's symbols.folder (or
 -- the older rules.ui.iconBaseUrl) points elsewhere: a folder holding
--- coin.png, reticle.png, heart.png and shield.png. symbols.pictures replaces
--- any one of them, or adds a symbol of its own: { [name] = URL }.
-UI_.ICONS = { "coin", "reticle", "heart", "shield" }
+-- coin.png, reticle.png, heart.png, shield.png and scrap.png (the Scrap
+-- button on cards in play). symbols.pictures replaces any one of them, or
+-- adds a symbol of its own: { [name] = URL }.
+UI_.ICONS = { "coin", "reticle", "heart", "shield", "scrap" }
 UI_.ICON_BASE = "https://raw.githubusercontent.com/Oreo12/Cardalyzer/main/assets/icons/"
 
 -- The symbol for a resource or stat: its `icon` (a built-in name or a full
@@ -184,6 +188,13 @@ local function assetName(icon)
     return "cz_icon_" .. icon:gsub("[^%w]", ""):sub(-24)
   end
   return "cz_" .. icon
+end
+
+-- The image URL of a built-in symbol ("scrap"), after the theme's folder and pictures.
+function UI_.symbolUrl(rules, name)
+  local sym = Theme.of(rules).symbols
+  local base = sym.folder or (rules.ui and rules.ui.iconBaseUrl) or UI_.ICON_BASE
+  return sym.pictures[name] or (base .. name .. ".png")
 end
 
 -- Every image the UI uses, for UI.setCustomAssets.
