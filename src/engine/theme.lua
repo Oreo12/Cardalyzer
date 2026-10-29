@@ -32,7 +32,7 @@ Theme.DEFAULT = {
   grid = { label = 110, cell = 140, columns = 4, size = 14 },
   -- Symbols: a counter is a picture with its number over it (or beside it).
   symbols = {
-    pictures = {},       -- { [name] = URL }: replaces a built-in symbol (coin, reticle, heart, shield) or adds one
+    pictures = {},       -- { [name] = URL }: replaces a built-in symbol (coin, reticle, heart, shield, scrap) or adds one
     folder = nil,        -- a folder of the built-ins (<name>.png), instead of the engine's own
     defense = "shield",  -- the symbol in front of each base's defense
     tint = "#FFFFFF",    -- tints the pictures
