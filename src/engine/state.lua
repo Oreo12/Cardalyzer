@@ -36,6 +36,7 @@ function State.new(rules, count)
       out = false,  -- knocked out (see Actions.checkWin); turns skip them
       areas = {},   -- set-aside areas (rules.areas): { [key] = { uids } }
       lasting = {}, -- cards with next_effects, kept in play until the owner's next turn
+      facedown = {}, -- dealt cards of a faceDown type, not yet revealed (see Actions.reveal)
       nextJobs = {}, -- game:atNextTurn jobs, run at the start of the owner's next turn
       exhausted = {}, -- { [uid] = true }: cards used this round (Use), shown turned sideways
     }

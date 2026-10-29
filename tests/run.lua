@@ -52,7 +52,7 @@ local function assertConserved(game)
   end
   for _, p in ipairs(game.state.players) do
     visit(p.deck); visit(p.hand); visit(p.discard); visit(p.play); visit(p.bases); visit(p.objectives or {}); visit(p.completed or {})
-    visit(p.lasting or {}); for _, a in pairs(p.areas or {}) do visit(a) end
+    visit(p.lasting or {}); visit(p.facedown or {}); for _, a in pairs(p.areas or {}) do visit(a) end
   end
   local m = game.state.market
   visit(m.deck); visit(m.row); visit(m.scrap)
@@ -3546,6 +3546,67 @@ test("hiring a market card for one turn: Hire button, effects now, back under th
   local other = s.market.row[2]
   ok = game:hire(2, other)
   assert(not ok, "not a card to hire")
+end)
+
+test("face-down dealt cards: hidden from other players until their owner reveals them", function()
+  local game = boot()
+  local Util = Cardalyzer.require("engine.util")
+  local State = Cardalyzer.require("engine.state")
+  local Turn = Cardalyzer.require("engine.turn")
+  game.rules.cardTypes.scheme = { persistent = true, faceDown = true }
+  local merc = game.cards:get("tide_runner") -- +2 Gold
+  merc.type = "scheme"
+  Cardalyzer_onStartGame(HOST)
+  local s, p, red = game.state, game.state.players[1], game.state.players[2]
+  -- dealing one: face down, not in play
+  local uid = State.newCard(s, "tide_runner")
+  Turn.dealInto(game.rules, p, uid, merc)
+  eq(p.facedown[1], uid, "face down")
+  assert(not Util.indexOf(p.bases, uid), "not in play yet")
+  -- a type without faceDown goes straight into play
+  local plain = State.newCard(s, "war_anvil")
+  Turn.dealInto(game.rules, red, plain, game.cards:get("war_anvil"))
+  assert(Util.indexOf(red.bases, plain) and #red.facedown == 0, "dealt into play")
+  Cardalyzer.require("engine.board").sync(game)
+  local obj = getObjectFromGUID(s.view.piles["1.bases"][1])
+  eq(obj.data.GMNotes, uid, "shown in its owner's bases row")
+  local hidden = table.concat(obj.hiddenFrom or {}, ",")
+  assert(hidden:find("Red", 1, true) and hidden:find("Grey", 1, true) and not hidden:find("White", 1, true), "hidden from all but White: " .. hidden)
+  -- its effects wait until it's revealed
+  p.resources.gold = 0
+  game:refreshUI()
+  assert(tts.ui.xml:find("Reveal Tide Runner", 1, true), "a Reveal button")
+  assert(not game:reveal(2, uid), "only on its owner's turn")
+  click(HOST, "cz-reveal-" .. uid)
+  assert(Util.indexOf(p.bases, uid) and #p.facedown == 0, "revealed into play")
+  eq(p.resources.gold, 2, "its effects apply")
+  Cardalyzer.require("engine.board").sync(game)
+  local shown = getObjectFromGUID(s.view.piles["1.bases"][#s.view.piles["1.bases"]])
+  eq(shown.hiddenFrom, nil, "everyone sees it now")
+  assert(not game:reveal(1, uid), "can't reveal it twice")
+  assertConserved(game)
+  game.rules.cardTypes.scheme = nil
+end)
+
+test("a type with buyTo = \"play\" goes straight into play when bought", function()
+  local game = boot()
+  local Util = Cardalyzer.require("engine.util")
+  game.rules.cardTypes.champion = { persistent = true, replay = false, buyTo = "play" }
+  game.cards:get("tide_runner").type = "champion" -- +2 Gold
+  Cardalyzer_onStartGame(HOST)
+  local s, p = game.state, game.state.players[1]
+  local uid = Cardalyzer.require("engine.state").newCard(s, "tide_runner")
+  s.market.deck[#s.market.deck + 1] = s.market.row[1]
+  s.market.row[1] = uid
+  p.resources.gold = 1
+  p.flags.buyToTop = true -- "put the next card you buy on top" isn't used up by it
+  assert(game:buy(1, uid), "bought")
+  assert(Util.indexOf(p.bases, uid), "in play")
+  assert(not Util.indexOf(p.discard, uid), "not in the discard pile")
+  eq(p.resources.gold, 2, "paid 1, got its +2 at once")
+  eq(p.flags.buyToTop, true, "the flag waits for the next card")
+  assertConserved(game)
+  game.rules.cardTypes.champion = nil
 end)
 
 test("attacking a player: reactions from hand prevent or block the damage", function()

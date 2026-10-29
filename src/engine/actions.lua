@@ -43,6 +43,8 @@ end
 --   replay = false   a persistent card doesn't apply its effects again each turn
 --   target = false   it can't be attacked or destroyed (a hero)
 --   event = true     revealed into the market row, it resolves and is scrapped
+--   faceDown = true  dealt face down; its owner reveals it on their turn (Actions.reveal)
+--   buyTo = "play"   when bought, it goes straight into play instead of the discard pile
 function Actions.typeDef(game, c)
   return require("engine.cards").typeDef(game.rules, c)
 end
@@ -466,6 +468,7 @@ end
 --   flags.buyToPlay    straight into play (its effects apply)
 --   flags.buyToTop     on top of the deck
 --   flags.mayBuyToTop  asks: top of the deck or the discard pile (place_bought prompt)
+-- A card whose type has buyTo = "play" always goes straight into play.
 -- Afterwards a custom effect's onAcquire(game, seat, ctx) runs for the card.
 local function buyNow(game, seat, uid, free, toTop, toHand)
   local target = locate(game.state, uid) and card(game, uid)
@@ -511,7 +514,10 @@ local function buyNow(game, seat, uid, free, toTop, toHand)
     end
     return false
   end
-  if toHand or take("buyToHand") then
+  if Actions.typeDef(game, c).buyTo == "play" then -- a hero that joins you at once
+    Actions.fillMarket(game)
+    Actions.enterPlay(game, seat, uid)
+  elseif toHand or take("buyToHand") then
     player.hand[#player.hand + 1] = uid
   elseif take("buyToDeck") then -- shuffled into the deck
     player.deck[#player.deck + 1] = uid
@@ -645,7 +651,7 @@ end
 function Actions.setAside(game, seat, uid, key)
   local p = game.state.players[seat]
   if not p.areas[key] then error("no set-aside area '" .. tostring(key) .. "' in rules.areas", 0) end
-  for _, from in ipairs({ "hand", "play", "bases", "discard", "lasting" }) do
+  for _, from in ipairs({ "hand", "play", "bases", "discard", "lasting", "facedown" }) do
     if Util.removeValue(p[from], uid) then
       local area = p.areas[key]
       area[#area + 1] = uid
@@ -808,7 +814,7 @@ function Actions.score(game, seat)
   local p = game.state.players[seat]
   local win = game.rules.win or {}
   local total = win.stat and (p.stats[win.stat] or 0) or 0
-  local lists = { p.deck, p.hand, p.discard, p.play, p.bases, p.lasting or {} }
+  local lists = { p.deck, p.hand, p.discard, p.play, p.bases, p.lasting or {}, p.facedown or {} }
   for _, area in pairs(p.areas or {}) do lists[#lists + 1] = area end
   for _, list in ipairs(lists) do
     for _, uid in ipairs(list) do total = total + (card(game, uid).points or 0) end
@@ -1373,6 +1379,26 @@ function Actions.activate(game, seat, uid)
     end
   end
   return fail(say(game, "cantUse"))
+end
+
+---------------------------------------------------------------------------
+-- Face-down cards: dealt cards whose type has faceDown = true wait in
+-- player.facedown, seen only by their owner, and do nothing until revealed.
+-- Revealing one (on the owner's turn) puts it into play and applies its
+-- effects; custom effects see ctx.revealed. A Reveal button per card.
+---------------------------------------------------------------------------
+
+function Actions.reveal(game, seat, uid)
+  local ok, why = isActive(game, seat)
+  if not ok then return fail(why) end
+  local player = game.state.players[seat]
+  if not Util.removeValue(player.facedown or {}, uid) then return fail(say(game, "cantReveal")) end
+  player.bases[#player.bases + 1] = uid
+  local c = card(game, uid)
+  if game.notify then game:notify(say(game, "revealed", { name = player.name, card = c.name })) end
+  game.effects:apply(game, seat, c.effects, { uid = uid, card = c, revealed = true })
+  Actions.checkAllies(game, seat)
+  return true
 end
 
 ---------------------------------------------------------------------------

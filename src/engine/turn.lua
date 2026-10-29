@@ -33,6 +33,17 @@ end
 -- `opening` is the opening-hand rule (see Turn.openingRule); default rules.openingHand.
 -- `sets` ({ [key] = true }) limits the cards to those sets; a card with no
 -- set is always in. nil means every card.
+-- A card dealt to a player (deck = dealt, or a kit's dealt cards) goes into
+-- their play area, or face down beside it if its type has faceDown = true:
+-- hidden from the other players until its owner reveals it (Actions.reveal).
+function Turn.dealInto(rules, player, uid, card)
+  if require("engine.cards").typeDef(rules, card).faceDown then
+    player.facedown[#player.facedown + 1] = uid
+  else
+    player.bases[#player.bases + 1] = uid
+  end
+end
+
 -- `kits` ({ [seat] = kit }) gives players their own starting pack (rules.kits):
 -- the kit's set supplies that player's starter cards (instead of the usual
 -- ones) and its dealt cards go into their play area; its market cards join
@@ -86,7 +97,7 @@ function Turn.setup(state, rules, cards, random, opening, sets, kits, supplyChoi
       end
       starters = kitCards("starter", kit.starters)
       for _, card in ipairs(kitCards("dealt", kit.dealt)) do
-        for _ = 1, card.copies do player.bases[#player.bases + 1] = State.newCard(state, card.id) end
+        for _ = 1, card.copies do Turn.dealInto(rules, player, State.newCard(state, card.id), card) end
       end
       for key, value in pairs(kit.stats or {}) do player.stats[key] = value end
       player.handSize = kit.handSize
@@ -131,7 +142,10 @@ function Turn.setup(state, rules, cards, random, opening, sets, kits, supplyChoi
     Util.shuffle(pool, random)
     for _, player in ipairs(state.players) do
       for _ = 1, rules.deal.count or 1 do
-        if #pool > 0 then player.bases[#player.bases + 1] = State.newCard(state, table.remove(pool)) end
+        if #pool > 0 then
+          local id = table.remove(pool)
+          Turn.dealInto(rules, player, State.newCard(state, id), cards:get(id))
+        end
       end
     end
   end
