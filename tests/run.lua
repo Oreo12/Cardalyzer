@@ -3654,7 +3654,7 @@ test("a type with buyTo = \"play\" goes straight into play when bought", functio
   game.rules.cardTypes.champion = nil
 end)
 
-test("cards in play with a scrap ability get a see-through Scrap button across them", function()
+test("cards in play with a scrap ability get a Scrap button hanging off their bottom edge", function()
   local game = boot()
   Cardalyzer_onStartGame(HOST)
   local s, p = game.state, game.state.players[1]
@@ -3676,9 +3676,8 @@ test("cards in play with a scrap ability get a see-through Scrap button across t
   eq(b.label, "Scrap", "labelled")
   eq(b.click_function, "Cardalyzer_onScrapIcon", "clicks scrap it")
   assert(b.tooltip:find("Scrap Shade Scout", 1, true), "tooltip: " .. b.tooltip)
-  assert(b.color[4] < 1, "see-through")
   eq(b.position[1], 0, "centred across the card")
-  assert(b.position[3] > 1 and b.position[3] < 1.53, "near the bottom, still on the card: " .. b.position[3])
+  assert(b.position[3] - 100 / 410 > 1.53, "below the card, covering none of it: " .. b.position[3])
   eq(#objs[squire].buttons, 0, "no button on a card without a scrap ability")
   -- rules.ui.scrapButton.at: how far down the card
   game.rules.ui = game.rules.ui or {}
@@ -3700,7 +3699,7 @@ test("cards in play with a scrap ability get a see-through Scrap button across t
   local obj = tts.newObject("Card", {})
   Board.addScrapButton(game, obj, State.newCard(s, "shade_scout"))
   local sb = obj.buttons[1]
-  assert(sb.position[1] > 0.5 and sb.position[3] == 0, "toward the reader's bottom")
+  assert(sb.position[1] - 100 / 410 > 1.095 and sb.position[3] == 0, "off the reader's bottom edge")
   eq(sb.rotation[2], 270, "turned to read upright")
   assert(sb.width > b.width, "as wide as the card reads")
   game.rules.cardTypes.unit.playYaw = nil

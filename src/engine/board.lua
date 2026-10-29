@@ -358,13 +358,12 @@ local function addBuyButton(game, obj, cost, word, hire)
   })
 end
 
--- The Scrap button on a card in play with a scrap ability: a see-through
--- button across the card, like Buy, clicked by the card's owner
--- (Cardalyzer_onScrapIcon). TTS leaves script buttons out of a card's
--- Alt-zoom preview, so the whole card can still be read. rules.ui.scrapButton:
+-- The Scrap button on a card in play with a scrap ability: like Buy, it
+-- hangs off the card's bottom edge, so it covers none of the card; clicked
+-- by the card's owner (Cardalyzer_onScrapIcon). rules.ui.scrapButton:
 -- false for none (Scrap buttons go in the action bar instead), or
---   at       how far down the printed card the button's middle goes (0.9),
---            e.g. level with a scrap ability printed on the cards
+--   at       to put it on the card instead: how far down the printed card
+--            its middle goes, e.g. 0.9, level with a printed scrap ability
 --   color, textColor ("#RRGGBB" or {r, g, b, a}), fontSize, width, height
 -- A card type's scrapAt (a number, or function(card) returning one, for
 -- cards of one type printed differently by set) overrides `at` for its
@@ -387,11 +386,12 @@ function Board.addScrapButton(game, obj, uid, turned)
   if sideways then w, h = h, w end
   local at = def.scrapAt
   if type(at) == "function" then at = at(c) end
-  at = at or look.at or 0.9
+  at = at or look.at
   local units = Board.BUTTON_UNITS
   local height = look.height or 200
-  -- the button's middle, down from the card's centre, kept on the card
-  local down = math.min(at * h, h - height / units / 2) - h / 2
+  -- the button's middle, down from the card's centre: hanging just below
+  -- the card (covering none of it), or at `at` and kept on the card
+  local down = at and math.min(at * h, h - height / units / 2) - h / 2 or h / 2 + height / units / 2 + 0.02
   -- in button coordinates (x mirrored, +z the card's bottom), toward the
   -- reader's "down" for each way the card can lie
   local x, z = 0, down
@@ -405,7 +405,7 @@ function Board.addScrapButton(game, obj, uid, turned)
     tooltip = words.say(game.rules, "scrap", { card = c.name, effects = game.effects:describe(c.scrapEffects, c.text) }),
     position = { x, 0.6, z }, rotation = { 0, (360 - yaw) % 360, 0 }, -- (x is mirrored, so it turns the other way)
     width = look.width or math.floor((w - 0.3) * units), height = height, font_size = look.fontSize or 140,
-    color = Util.color(look.color) or { 0.1, 0.1, 0.1, 0.8 },
+    color = Util.color(look.color) or { 0.1, 0.1, 0.1, 0.9 },
     hover_color = { 0.2, 0.2, 0.2, 0.8 }, press_color = { 0.35, 0.35, 0.35, 0.9 },
     font_color = Util.color(look.textColor) or { 1, 0.85, 0.35 },
   })
