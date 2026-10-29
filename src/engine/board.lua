@@ -214,6 +214,15 @@ function Board.piles(game)
       for _, uid in ipairs(p.facedown) do secret[uid] = p.color end
       list[#list].secret = secret
     end
+    -- Objectives: the ones still secret are hidden from everyone but their
+    -- owner; completed ones are shown to all.
+    if #(p.objectives or {}) + #(p.completed or {}) > 0 and s.objectives then
+      local goals, secret = {}, {}
+      for _, uid in ipairs(p.completed or {}) do goals[#goals + 1] = uid end
+      for _, uid in ipairs(p.objectives or {}) do goals[#goals + 1] = uid; secret[uid] = p.color end
+      add(seat .. ".objectives", goals, s.objectives, "row", true)
+      if list[#list] and list[#list].key == seat .. ".objectives" then list[#list].secret = secret end
+    end
     -- How far each card in play is turned: its type's playYaw (cards printed
     -- sideways, such as bases, read the right way up in play but not in the
     -- market), plus a quarter turn when used this round (a Use button),

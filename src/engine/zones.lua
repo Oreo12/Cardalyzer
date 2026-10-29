@@ -101,6 +101,9 @@ function Zones.seatAreas(rules)
     deck = { along = -gap * 2, out = -3, width = 2.6, depth = 3.6 },
     discard = { along = gap * 2, out = -3, width = 2.6, depth = 3.6 },
     hand = { along = 0, out = -9, width = gap * 7, depth = 4 },
+    -- objectives (rules.objectives) lie face up between the deck and
+    -- discard pile, hidden from the other players until completed
+    objectives = { along = 0, out = -3, width = gap * 3, depth = 4 },
   }
   local over = rules.layout and rules.layout.areas or {}
   for name, area in pairs(areas) do
@@ -200,6 +203,7 @@ function Zones.layout(rules, fixedIds, count, facing, breaks)
       bases = area(f, "bases", 3),
       deck = area(f, "deck", 3),
       discard = area(f, "discard", 3),
+      objectives = area(f, "objectives", 3),
       -- A hand zone faces its seat at the seat's own yaw. TTS keeps a card's
       -- yaw relative to the hand zone, so cards dealt into it still use the
       -- card yaw (as in a stock TTS table: hand zone 0, held cards 180).
