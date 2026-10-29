@@ -349,6 +349,36 @@ local function addBuyButton(game, obj, cost, word, hire)
   })
 end
 
+-- The Scrap button on a card in play with a scrap ability: the scrap symbol
+-- (theme symbols, "scrap") stuck on the card's bottom-left corner, hanging a
+-- little over the edge, with a clear button over it (Cardalyzer_onScrapIcon).
+-- Bottom-left as printed: a card turned by its type's playYaw (printed
+-- sideways) has it on another corner of the object. rules.ui.scrapButton:
+-- false for none, or { size } (the symbol's width in table units, 0.6).
+-- Positions are the card's own: +x is its left, +z its bottom (buttons
+-- mirror x).
+function Board.addScrapButton(game, obj, uid)
+  local look = game.rules.ui and game.rules.ui.scrapButton
+  if look == false then return end
+  look = type(look) == "table" and look or {}
+  local c = game:cardOf(uid)
+  if not c or #c.scrapEffects == 0 then return end
+  local def = require("engine.cards").typeDef(game.rules, c)
+  local yaw = (def.playYaw or 0) % 360
+  local size = look.size or 0.6
+  local x, z = 1.095 - size / 4, 1.53 - size / 4 -- the corner, the symbol's centre a little inside it
+  if yaw == 90 then x = -x elseif yaw == 180 then x, z = -x, -z elseif yaw == 270 then z = -z end
+  obj.setDecals({ { name = "cz_scrap", url = require("engine.ui").symbolUrl(game.rules, "scrap"),
+    position = { x, 0.25, z }, rotation = { 90, (180 + yaw) % 360, 0 }, scale = { size, size, 1 } } })
+  local words = require("engine.words")
+  obj.createButton({
+    click_function = "Cardalyzer_onScrapIcon", function_owner = Global, label = "",
+    position = { -x, 0.3, z }, width = math.floor(size * 470), height = math.floor(size * 470),
+    color = { 0, 0, 0, 0 }, hover_color = { 1, 1, 1, 0.25 }, press_color = { 1, 1, 1, 0.45 },
+    tooltip = words.say(game.rules, "scrap", { card = c.name, effects = game.effects:describe(c.scrapEffects, c.text) }),
+  })
+end
+
 -- onReady(obj) runs once TTS has finished spawning the object.
 local function spawn(game, data, position, rot, onReady)
   local obj = spawnObjectData({
@@ -454,8 +484,11 @@ local function draw(game, pile, uids)
     hire = def.hire and pile.key:find("^market%.row") ~= nil
   end
   local waiting, readied = (pile.style == "stack") and 1 or n, {}
+  local inPlay = pile.style == "row" and (pile.key:find("^%d+%.play$") or pile.key:find("^%d+%.bases$"))
   local function ready(obj)
     if cost then addBuyButton(game, obj, cost, word, hire) end
+    local uid = inPlay and obj.getGMNotes()
+    if uid and not (pile.secret and pile.secret[uid]) then Board.addScrapButton(game, obj, uid) end
     readied[#readied + 1] = obj
     if #readied == waiting then
       removeOld()

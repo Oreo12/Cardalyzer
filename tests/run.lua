@@ -180,7 +180,7 @@ test("the UI: info panel on the right, action bar above the hand, Tidy table in 
   assert(xml:find('id="cz%-tidy"[^>]*colors="#D6DEE8'), "other buttons light")
   assert(xml:find('id="cz_seat_2"[^>]*color="#E5413F"'), "seat names tinted")
   assert(not xml:find('color="[^"]*"[^>]-color="'), "no duplicate color attributes")
-  eq(#tts.ui.assets, 4, "four symbols registered")
+  eq(#tts.ui.assets, 5, "five symbols registered")
 
   -- Stats sit beside each name as symbols with the number over them.
   assert(xml:find('id="cz_stat_2_health"[^>]*><Image image="cz_heart"'), "health as a heart")
@@ -3607,6 +3607,52 @@ test("a type with buyTo = \"play\" goes straight into play when bought", functio
   eq(p.flags.buyToTop, true, "the flag waits for the next card")
   assertConserved(game)
   game.rules.cardTypes.champion = nil
+end)
+
+test("cards in play with a scrap ability get a Scrap button on their bottom-left corner", function()
+  local game = boot()
+  Cardalyzer_onStartGame(HOST)
+  local s, p = game.state, game.state.players[1]
+  local State = Cardalyzer.require("engine.state")
+  local scout, squire = State.newCard(s, "shade_scout"), State.newCard(s, "squire") -- Scrap: +2 Might; none
+  p.play[#p.play + 1] = scout
+  p.play[#p.play + 1] = squire
+  Cardalyzer.require("engine.board").sync(game, { instant = true })
+  local objs = {}
+  for _, guid in ipairs(s.view.piles["1.play"]) do
+    local o = getObjectFromGUID(guid)
+    objs[o.data.GMNotes] = o
+  end
+  local o = objs[scout]
+  eq(#(o.decals or {}), 1, "the scrap symbol on the card")
+  assert(o.decals[1].url:find("scrap.png", 1, true), "the scrap symbol: " .. o.decals[1].url)
+  assert(o.decals[1].position[1] > 0.8 and o.decals[1].position[3] > 1.2, "on its bottom-left corner")
+  eq(#o.buttons, 1, "a button over it")
+  eq(o.buttons[1].click_function, "Cardalyzer_onScrapIcon", "clicks scrap it")
+  assert(o.buttons[1].tooltip:find("Scrap Shade Scout", 1, true), "tooltip: " .. o.buttons[1].tooltip)
+  eq(objs[squire].decals, nil, "no symbol on a card without a scrap ability")
+  -- someone else can't scrap White's card; White can
+  Cardalyzer_onScrapIcon(o, "Red")
+  assert(Cardalyzer.require("engine.util").indexOf(p.play, scout), "still in play")
+  local might = p.resources.might or 0
+  Cardalyzer_onScrapIcon(o, "White")
+  eq(p.resources.might, might + 2, "scrapped for +2 Might")
+  assert(not Cardalyzer.require("engine.util").indexOf(p.play, scout), "gone from play")
+  -- a type printed sideways: the printed bottom-left is another corner
+  game.rules.cardTypes.unit = game.rules.cardTypes.unit or {}
+  game.rules.cardTypes.unit.playYaw = 90
+  local obj = tts.newObject("Card", {})
+  Cardalyzer.require("engine.board").addScrapButton(game, obj, State.newCard(s, "shade_scout"))
+  assert(obj.decals[1].position[1] < 0 and obj.decals[1].position[3] > 0, "turned with the card")
+  eq(obj.decals[1].rotation[2], 270, "and the symbol upright")
+  game.rules.cardTypes.unit.playYaw = nil
+  -- rules.ui.scrapButton = false: none
+  game.rules.ui = game.rules.ui or {}
+  game.rules.ui.scrapButton = false
+  local plain = tts.newObject("Card", {})
+  Cardalyzer.require("engine.board").addScrapButton(game, plain, State.newCard(s, "shade_scout"))
+  eq(plain.decals, nil, "turned off")
+  game.rules.ui.scrapButton = nil
 end)
 
 test("attacking a player: reactions from hand prevent or block the damage", function()
