@@ -151,7 +151,7 @@ ui = {
 | `ui.describeCard` | `function(game, card, text) return text end` changes a card's tooltip on the table; `text` is Cardalyzer's own |
 | `ui.buyButton` | The look of the Buy button on market cards: `{ color="#1A1A1A", textColor="#FFD95A", fontSize=150, width=900, height=260, position={0, 0.6, 1.7} }` |
 | `ui.messages` | `{ count=3, chat=true }`: how many messages the info panel shows (0 for none), and whether they're copied to chat |
-| `ui.scrapButton` | The **Scrap** button on cards in play that have a scrap ability: the scrap symbol (`scrap.png`, or `theme.symbols.pictures.scrap`) on the card, clicked by its owner. `{ size = 0.38, corner = { right, top } }`: its width in table units (the same on every card), and where its top-right corner goes as fractions of the printed card from its left and top edges, so it can sit over a scrap symbol printed on the cards. A card type's `scrapCorner` (a `{ right, top }` or a `function(card)` returning one) overrides `corner` for its cards; sideways-printed types (`playYaw`) measure as they read. `false` puts Scrap buttons in the action bar instead |
+| `ui.scrapButton` | The **Scrap** button on cards in play that have a scrap ability, clicked by its owner. Like **Buy**, it hangs off the card's bottom edge (as the card reads, also for cards lying sideways), so it covers none of the card. `{ at, color, textColor, fontSize, width, height }`: `at` puts it on the card instead, its middle that far down the card (0.9 is near the bottom), for example over a scrap ability printed on the cards. A card type's `scrapAt` (a number, or a `function(card)` returning one) does the same for its cards. `false` puts Scrap buttons in the action bar instead |
 | `ui.turnUsedCards` | `false` stops cards that were used with their **Use** button from turning sideways |
 
 [Back to Top](#customising-the-look-of-your-game)
@@ -231,6 +231,13 @@ layout = {
 - `play`, `bases` and `objectives` also take `column = true`: their cards then run in a
   column toward the player instead of a row across, for a tall strip such as
   buildings down the side of a mat.
+  With `wrap = "left"` (or `"right"`), the area holds two columns side by
+  side, edge to edge: make it two cards wide. Cards fill the right-hand (or
+  left-hand) column first, then the other; past two full columns both close
+  up.
+- `play` and `bases` laid in a row take `wrap = true`: a full row starts
+  another below it, as many as fit in the area's depth; past that every row
+  closes up.
 - `marketDeck`, `scrap` and each fixed pile (by its card id, such as
   `hireling = { along = 9, out = 0 }`) take `{along, out}` from the middle of
   the market row. Use this to line them up with slots printed on a market

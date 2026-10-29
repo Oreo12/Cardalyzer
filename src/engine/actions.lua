@@ -468,6 +468,7 @@ end
 --   flags.buyToPlay    straight into play (its effects apply)
 --   flags.buyToTop     on top of the deck
 --   flags.mayBuyToTop  asks: top of the deck or the discard pile (place_bought prompt)
+--   flags.mayBuyToPlay asks: straight into play or the discard pile
 -- A card whose type has buyTo = "play" always goes straight into play.
 -- Afterwards a custom effect's onAcquire(game, seat, ctx) runs for the card.
 local function buyNow(game, seat, uid, free, toTop, toHand)
@@ -531,6 +532,8 @@ local function buyNow(game, seat, uid, free, toTop, toHand)
     player.discard[#player.discard + 1] = uid
     if take("mayBuyToTop") then
       Actions.prompt(game, seat, { kind = "place_bought", uid = uid, optional = false })
+    elseif take("mayBuyToPlay") then
+      Actions.prompt(game, seat, { kind = "place_bought", uid = uid, to = "play", optional = false })
     end
   end
   Actions.fillMarket(game)
@@ -716,7 +719,25 @@ function Actions.scrapFromPlay(game, seat, uid)
     return fail(say(game, "notInPlay"))
   end
   Actions.toScrap(game, uid, seat, "play")
-  game.effects:apply(game, seat, c.scrapEffects, { uid = uid, card = c })
+  -- cards in play may offer other abilities in its place: a custom effect's
+  -- scrapOptions(game, seat, ctx, used) returns a list of effect lists
+  local options = { { list = c.scrapEffects } }
+  for _, other in ipairs(Actions.inPlay(player)) do
+    local oc = card(game, other)
+    for _, effect in ipairs(oc.effects) do
+      local def = effect.key == "custom" and game.effects.custom[effect.fn]
+      if def and def.scrapOptions then
+        for _, list in ipairs(def.scrapOptions(game, seat, { uid = other, card = oc }, { uid = uid, card = c }) or {}) do
+          options[#options + 1] = { list = list }
+        end
+      end
+    end
+  end
+  if #options > 1 then
+    Actions.prompt(game, seat, { kind = "choice", options = options, uid = uid, optional = false })
+  else
+    game.effects:apply(game, seat, c.scrapEffects, { uid = uid, card = c })
+  end
   Actions.trigger(game, seat, "whenYouUseScrap", { uid = uid, card = c })
   return true
 end
@@ -1128,8 +1149,10 @@ function Actions.targets(game, seat, prompt)
   end
   local kind = prompt.kind
   if kind == "choice" then
+    -- an option is one effect, or { list = effects } for several at once
     for i, option in ipairs(prompt.options) do
-      out[#out + 1] = { value = tostring(i), label = game.effects:describe({ option }) }
+      local c = option.list and prompt.uid and card(game, prompt.uid)
+      out[#out + 1] = { value = tostring(i), label = game.effects:describe(option.list or { option }, c and c.text) }
     end
   elseif kind == "scrap" then
     -- from: any of "hand", "discard", "row" (the market row)
@@ -1203,7 +1226,7 @@ function Actions.targets(game, seat, prompt)
     end
   elseif kind == "place_bought" then
     if Util.indexOf(player.discard, prompt.uid) then
-      out[1] = { value = "top", label = say(game, "topOfDeck") }
+      out[1] = prompt.to == "play" and { value = "play", label = say(game, "intoPlay") } or { value = "top", label = say(game, "topOfDeck") }
       out[2] = { value = "discard", label = say(game, "yourDiscard") }
     end
   end
@@ -1265,7 +1288,8 @@ function Actions.pick(game, seat, value)
       return true
     end
     local c = prompt.uid and card(game, prompt.uid)
-    game.effects:apply(game, seat, { prompt.options[tonumber(value)] }, { uid = prompt.uid, card = c })
+    local option = prompt.options[tonumber(value)]
+    game.effects:apply(game, seat, option.list or { option }, { uid = prompt.uid, card = c })
     Actions.settle(game, seat)
     return true
   elseif kind == "scrap" then
@@ -1319,6 +1343,9 @@ function Actions.pick(game, seat, value)
   elseif kind == "place_bought" and value == "top" then
     Util.removeValue(player.discard, prompt.uid)
     player.deck[#player.deck + 1] = prompt.uid
+  elseif kind == "place_bought" and value == "play" then
+    Util.removeValue(player.discard, prompt.uid)
+    Actions.enterPlay(game, seat, prompt.uid)
   end
 
   prompt.picked = (prompt.picked or 0) + 1

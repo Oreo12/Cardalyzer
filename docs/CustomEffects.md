@@ -109,6 +109,7 @@ Flags clear at the end of the turn.
 | --- | --- |
 | `buyToTop` | on top of the deck |
 | `mayBuyToTop` | on top of the deck or to the discard pile: the player picks |
+| `mayBuyToPlay` | straight into play or to the discard pile: the player picks |
 | `buyToHand` | into the hand |
 | `buyToDeck` | shuffled into the deck |
 | `buyToPlay` | straight into play, its effects happening |
@@ -140,6 +141,7 @@ something happens. Most run while the card is in play.
 | `whenYouGain(game, seat, ctx, gain)` | gains a resource or stat on their turn (`gain` is `{ key, amount, first }`; `first` is true for the first gain of that key this turn) |
 | `whenYouScrap(game, seat, ctx, scrapped)` | scraps a card from hand or discard pile |
 | `whenYouUseScrap(game, seat, ctx, used)` | uses a card's scrap ability (`used` is `{ uid, card }`) |
+| `scrapOptions(game, seat, ctx, used)` | is about to use a card's scrap ability: return a list of effect lists (`Cards.parseEffects("authority:5")`) to offer instead; the player then chooses between them and the card's own |
 | `whenYouUseAlly(game, seat, ctx, used)` | has a faction bonus fire (`used` is `{ uid, card, faction }`) |
 | `whenYouDefeat(game, seat, ctx, defeated)` | defeats a monster in the market (`defeated` is `{ uid, card }`) |
 | `whenAttacked(game, seat, ctx, hit)` | is attacked (not their buildings). It can lower `hit.damage` |

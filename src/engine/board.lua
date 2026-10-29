@@ -299,8 +299,60 @@ function Board.rowPositions(spot, n, gap, cardWidth, sideways)
     rx, rz = -spot.forward[1], -spot.forward[2]
     length = spot.size and spot.size[3]
     -- (cards all lying sideways take up only their width)
+    local across = cardWidth and (sideways and cardWidth * 3.4 / 2.4 or cardWidth) or (sideways and 3.4 or 2.4)
     if not sideways then cardWidth = cardWidth and cardWidth * 3.4 / 2.4 end
     gap = (cardWidth or (sideways and 2.4 or 3.4)) + 0.4
+    -- wrap = "left" or "right" (true: left): two columns side by side, edge
+    -- to edge and centred in the area (which should be two cards wide); the
+    -- first fills down the right (or left) half, then the second; past two
+    -- full columns, both close up. The second return value gives each
+    -- card's column.
+    local per = length and math.max(1, math.floor((length - (cardWidth or gap - 0.4)) / gap) + 1)
+    if spot.wrap and per then
+      local side = spot.wrap == "right" and 1 or -1
+      local scale = cardWidth and cardWidth / 2.4 or 1
+      local wide = (sideways and Board.CARD_H or Board.CARD_W) * scale + 0.05
+      local rows = math.max(per, math.ceil(n / 2))
+      local step = gap
+      if rows > per then step = math.max((length - (cardWidth or gap - 0.4)) / (rows - 1), (cardWidth or 2.4) * 0.2) end
+      local out, cols = {}, {}
+      for i = 1, n do
+        local col, k = math.floor((i - 1) / rows), (i - 1) % rows
+        local down = (k - (rows - 1) / 2) * step
+        local aside = side * (col - 0.5) * wide
+        cols[i] = col + 1
+        out[i] = { spot.position[1] + rx * down + spot.right[1] * aside, spot.position[2] + (step < gap and k * 0.05 or 0),
+          spot.position[3] + rz * down + spot.right[2] * aside }
+      end
+      return out, cols
+    end
+  end
+  -- a row with wrap = true: when one row is full, more rows below it down
+  -- the area's depth (centred, the first nearest the table centre); past
+  -- the rows that fit, every row closes up
+  if spot.wrap and not spot.column and cardWidth and length and spot.size then
+    local scale = cardWidth / 2.4
+    local tall = (sideways and Board.CARD_W or Board.CARD_H) * scale
+    local rowStep = tall + 0.3
+    local per = math.max(1, math.floor((length - cardWidth) / gap) + 1)
+    local maxRows = math.max(1, math.floor((spot.size[3] - tall) / rowStep) + 1)
+    local rows = math.min(maxRows, math.ceil(n / per))
+    if rows > 1 then
+      local inRow = math.ceil(n / rows)
+      local step = gap
+      if inRow > per then step = math.max((length - cardWidth) / (inRow - 1), cardWidth * 0.2) end
+      local fx, fz = spot.forward[1], spot.forward[2]
+      local out = {}
+      for i = 1, n do
+        local r, k = math.floor((i - 1) / inRow), (i - 1) % inRow
+        local count = math.min(inRow, n - r * inRow)
+        local along = (k - (count - 1) / 2) * step
+        local outward = ((rows - 1) / 2 - r) * rowStep -- the first row furthest out
+        out[i] = { spot.position[1] + rx * along + fx * outward, spot.position[2] + (step < cardWidth and k * 0.05 or 0),
+          spot.position[3] + rz * along + fz * outward }
+      end
+      return out
+    end
   end
   if cardWidth and length and n > 1 then
     local fit = (length - cardWidth) / (n - 1)
@@ -358,55 +410,81 @@ local function addBuyButton(game, obj, cost, word, hire)
   })
 end
 
--- The Scrap button on a card in play with a scrap ability: the scrap symbol
--- (theme symbols, "scrap") stuck on the card, with a clear button over it
--- (Cardalyzer_onScrapIcon). rules.ui.scrapButton: false for none (Scrap
--- buttons go in the action bar instead), or
---   size    the symbol's width in table units, the same on every card (0.38)
---   corner  where the symbol's top-right corner goes, as fractions of the
---           printed card from its left and top edges: { right, top }
---           (default near the bottom-left corner, hanging a little over)
--- A card type's scrapCorner = { right, top } overrides corner for its cards
--- (a game whose bases print the scrap symbol somewhere else); it can also be
--- function(card) returning one (cards of one type printed differently by set). "Printed"
--- means as the card reads: a type turned by playYaw (printed sideways)
--- counts its left and top as they read in play.
+-- The Scrap button on a card in play with a scrap ability: like Buy, it
+-- hangs off the card's bottom edge, so it covers none of the card; clicked
+-- by the card's owner (Cardalyzer_onScrapIcon). rules.ui.scrapButton:
+-- false for none (Scrap buttons go in the action bar instead), or
+--   at       to put it on the card instead: how far down the printed card
+--            its middle goes, e.g. 0.9, level with a printed scrap ability
+--   color, textColor ("#RRGGBB" or {r, g, b, a}), fontSize, width, height
+-- A card type's scrapAt (a number, or function(card) returning one, for
+-- cards of one type printed differently by set) overrides `at` for its
+-- cards. "Printed" means as the card reads: a card turned by playYaw (printed
+-- sideways), or turned as used, has the button across it the way it reads.
+-- `turned` is how far the card is turned in play (degrees). `overlap` is set
+-- when its pile has closed up so the cards overlap: { column = true|nil,
+-- room = how much of each card still shows }; the button then moves to
+-- where it can be seen and clicked (with `at`, only once the cards cover
+-- each other).
 Board.CARD_W, Board.CARD_H = 2.19, 3.06
-function Board.addScrapButton(game, obj, uid)
+Board.BUTTON_UNITS = 410 -- button size units per table unit on a card
+function Board.addScrapButton(game, obj, uid, turned, overlap)
   local look = game.rules.ui and game.rules.ui.scrapButton
   if look == false then return end
   look = type(look) == "table" and look or {}
   local c = game:cardOf(uid)
   if not c or #c.scrapEffects == 0 then return end
   local def = require("engine.cards").typeDef(game.rules, c)
-  local yaw = (def.playYaw or 0) % 360
-  local turned = yaw == 90 or yaw == 270
-  local size = look.size or 0.38
+  local yaw = (turned or def.playYaw or 0) % 360
+  local sideways = yaw == 90 or yaw == 270
+  -- the card as the player sees it: width across, height down
   local w, h = Board.CARD_W, Board.CARD_H
-  if turned then w, h = h, w end -- the printed card's width and height
-  local corner = def.scrapCorner
-  if type(corner) == "function" then corner = corner(c) end
-  corner = corner or look.corner or { right = (size - 0.05) / w, top = 1 - (size - 0.05) / h }
-  -- the symbol's centre, measured from the printed card's left and top
-  local across = corner.right * w - size / 2
-  local down = corner.top * h + size / 2
-  -- to the card object's own position: +x is its left, +z its bottom
-  local x, z
-  if turned then
-    x, z = Board.CARD_W / 2 - down, Board.CARD_H / 2 - across
+  if sideways then w, h = h, w end
+  local at = def.scrapAt
+  if type(at) == "function" then at = at(c) end
+  at = at or look.at
+  local units = Board.BUTTON_UNITS
+  local width, height = look.width or math.floor((w - 0.3) * units), look.height or 200
+  local font = look.fontSize or 140
+  -- the button's middle, from the card's centre, in the player's view:
+  -- `right` across, `down` toward them
+  local right, down = 0, nil
+  -- on the card (`at`), it only has to move when the cards really overlap
+  if overlap and at and not overlap.covered then overlap = nil end
+  if overlap and overlap.column then
+    -- a closed-up column: only each card's top strip shows, so the button
+    -- goes beside that strip, off the card's right edge
+    width = look.width or 560
+    height = math.min(height, math.floor((overlap.room - 0.06) * units))
+    right, down = (overlap.outer and overlap.outer[uid] or 1) * (w / 2 + width / units / 2 + 0.05), -h / 2 + overlap.room / 2
+  elseif overlap then
+    -- a closed-up row: only each card's left strip shows, so the button goes
+    -- on that strip (at `at`), or above it, off the card's top edge
+    width = math.min(width, math.floor((overlap.room - 0.08) * units))
+    font = math.min(font, math.floor(width * 0.28))
+    right = -w / 2 + overlap.room / 2
+    down = at and math.min(at * h, h - height / units / 2) - h / 2 or -(h / 2 + height / units / 2 + 0.02)
+  elseif at then
+    down = math.min(at * h, h - height / units / 2) - h / 2 -- on the card
   else
-    x, z = Board.CARD_W / 2 - across, down - Board.CARD_H / 2
+    down = h / 2 + height / units / 2 + 0.02 -- hanging just below the card
   end
-  if yaw == 180 or yaw == 270 then x, z = -x, -z end
-  -- the symbol turns with the print, so it reads upright
-  obj.setDecals({ { name = "cz_scrap", url = require("engine.ui").symbolUrl(game.rules, "scrap"),
-    position = { x, 0.25, z }, rotation = { 90, (180 - yaw) % 360, 0 }, scale = { size, size, 1 } } })
+  -- to button coordinates (x mirrored, +z the card's own bottom), for each
+  -- way the card can lie
+  local x, z = right, down
+  if yaw == 90 then x, z = down, -right
+  elseif yaw == 180 then x, z = -right, -down
+  elseif yaw == 270 then x, z = -down, right end
   local words = require("engine.words")
   obj.createButton({
-    click_function = "Cardalyzer_onScrapIcon", function_owner = Global, label = "",
-    position = { -x, 0.3, z }, width = math.floor(size * 470), height = math.floor(size * 470),
-    color = { 0, 0, 0, 0 }, hover_color = { 1, 1, 1, 0.25 }, press_color = { 1, 1, 1, 0.45 },
+    click_function = "Cardalyzer_onScrapIcon", function_owner = Global,
+    label = words.say(game.rules, "scrapButton"),
     tooltip = words.say(game.rules, "scrap", { card = c.name, effects = game.effects:describe(c.scrapEffects, c.text) }),
+    position = { x, 0.6, z }, rotation = { 0, (360 - yaw) % 360, 0 }, -- (x is mirrored, so it turns the other way)
+    width = width, height = height, font_size = font,
+    color = Util.color(look.color) or { 0.1, 0.1, 0.1, 0.9 },
+    hover_color = { 0.2, 0.2, 0.2, 0.8 }, press_color = { 0.35, 0.35, 0.35, 0.9 },
+    font_color = Util.color(look.textColor) or { 1, 0.85, 0.35 },
   })
 end
 
@@ -516,10 +594,34 @@ local function draw(game, pile, uids)
   end
   local waiting, readied = (pile.style == "stack") and 1 or n, {}
   local inPlay = pile.style == "row" and (pile.key:find("^%d+%.play$") or pile.key:find("^%d+%.bases$"))
+  -- cards closed up so they overlap: how much of each still shows
+  local overlap = nil
+  if inPlay and n > 1 then
+    local at, cols = Board.rowPositions(pile.spot, n, rowGap(pile), pile.cardWidth, sideways(pile, uids))
+    local scale = (game.rules.layout and game.rules.layout.cardScale) or 1
+    local step = math.sqrt((at[2][1] - at[1][1]) ^ 2 + (at[2][3] - at[1][3]) ^ 2) / scale
+    -- the cards' length along the pile, as the player sees them
+    local length
+    if pile.spot.column then length = sideways(pile, uids) and Board.CARD_W or Board.CARD_H
+    else length = sideways(pile, uids) and Board.CARD_H or Board.CARD_W end
+    -- (also when there's no room left between them for a button below)
+    local below = pile.spot.column and 0.55 or -0.05
+    if step < length + below then
+      local covered = step < length - 0.05 -- the cards really overlap
+      -- a wrapped second column has its buttons on its outer side
+      local outer = {}
+      for i, col in ipairs(cols or {}) do
+        if col > 1 then outer[uids[i]] = pile.spot.wrap == "right" and 1 or -1 end
+      end
+      overlap = { column = pile.spot.column, room = math.min(step, length), outer = outer, covered = covered }
+    end
+  end
   local function ready(obj)
     if cost then addBuyButton(game, obj, cost, word, hire) end
     local uid = inPlay and obj.getGMNotes()
-    if uid and not (pile.secret and pile.secret[uid]) then Board.addScrapButton(game, obj, uid) end
+    if uid and not (pile.secret and pile.secret[uid]) then
+      Board.addScrapButton(game, obj, uid, pile.turned and pile.turned[uid] or 0, overlap)
+    end
     readied[#readied + 1] = obj
     if #readied == waiting then
       removeOld()
