@@ -107,7 +107,10 @@ function UI_.actions(game)
     end
   end
 
-  for _, uid in ipairs(Actions.inPlay(p)) do
+  -- Scrap abilities sit on the cards themselves (Board.addScrapButton), or
+  -- here in the bar if rules.ui.scrapButton = false.
+  local inBar = game.rules.ui and game.rules.ui.scrapButton == false
+  for _, uid in ipairs(inBar and Actions.inPlay(p) or {}) do
     local c = game:cardOf(uid) -- a card copying another this turn shows that card's scrap ability
     if Actions.canScrap(game, seat, uid) then -- (some need an ally in play first)
       add(out.buttons, "cz-scrap-" .. uid, say("scrap", { card = c.name, effects = game.effects:describe(c.scrapEffects, c.text) }))

@@ -1655,11 +1655,19 @@ test("a scrap ability with a faction prefix needs that ally in play", function()
   game.cards:get("hireling").scrapEffects = { { key = "might", amount = 2, ally = "forge" } }
   local h = put(1, "hand", "hireling")
   game:play(1, h)
-  game:refreshUI()
-  assert(not tts.ui.xml:find("cz-scrap-" .. h, 1, true), "no Scrap button without a Forge ally")
+  local Actions = Cardalyzer.require("engine.actions")
+  eq(Actions.canScrap(game, 1, h), false, "can't be scrapped without a Forge ally")
   eq(game:scrapFromPlay(1, h), false, "refused")
   game:play(1, put(1, "hand", "ember_smith"))
-  assert(tts.ui.xml:find("cz-scrap-" .. h, 1, true), "button once a Forge card is in play")
+  eq(Actions.canScrap(game, 1, h), true, "can be once a Forge card is in play")
+  -- with rules.ui.scrapButton = false the bar lists it
+  game.rules.ui = game.rules.ui or {}
+  game.rules.ui.scrapButton = false
+  game:refreshUI()
+  assert(tts.ui.xml:find("cz-scrap-" .. h, 1, true), "a Scrap button in the bar")
+  game.rules.ui.scrapButton = nil
+  game:refreshUI()
+  assert(not tts.ui.xml:find("cz-scrap-" .. h, 1, true), "otherwise only on the card")
   click(WHITE, "cz-scrap-" .. h)
   eq(game.state.players[1].resources.might, 2 + 2, "scrap effect (plus the Smith's 2)")
 end)
@@ -3626,7 +3634,18 @@ test("cards in play with a scrap ability get a Scrap button on their bottom-left
   local o = objs[scout]
   eq(#(o.decals or {}), 1, "the scrap symbol on the card")
   assert(o.decals[1].url:find("scrap.png", 1, true), "the scrap symbol: " .. o.decals[1].url)
-  assert(o.decals[1].position[1] > 0.8 and o.decals[1].position[3] > 1.2, "on its bottom-left corner")
+  local d = o.decals[1]
+  assert(d.position[1] > 0.8 and d.position[3] > 1.2, "on its bottom-left corner")
+  eq(d.scale[1], 0.38, "the default size")
+  -- a corner set in rules.ui.scrapButton: top-right at 17.5% across, 88% down
+  game.rules.ui = game.rules.ui or {}
+  game.rules.ui.scrapButton = { size = 0.4, corner = { right = 0.175, top = 0.88 } }
+  local placed = tts.newObject("Card", {})
+  Cardalyzer.require("engine.board").addScrapButton(game, placed, State.newCard(s, "shade_scout"))
+  local pd = placed.decals[1]
+  assert(math.abs(pd.position[1] - (1.095 - (0.175 * 2.19 - 0.2))) < 1e-6, "x: " .. pd.position[1])
+  assert(math.abs(pd.position[3] - (0.88 * 3.06 + 0.2 - 1.53)) < 1e-6, "z: " .. pd.position[3])
+  game.rules.ui.scrapButton = nil
   eq(#o.buttons, 1, "a button over it")
   eq(o.buttons[1].click_function, "Cardalyzer_onScrapIcon", "clicks scrap it")
   assert(o.buttons[1].tooltip:find("Scrap Shade Scout", 1, true), "tooltip: " .. o.buttons[1].tooltip)
@@ -3644,7 +3663,7 @@ test("cards in play with a scrap ability get a Scrap button on their bottom-left
   local obj = tts.newObject("Card", {})
   Cardalyzer.require("engine.board").addScrapButton(game, obj, State.newCard(s, "shade_scout"))
   assert(obj.decals[1].position[1] < 0 and obj.decals[1].position[3] > 0, "turned with the card")
-  eq(obj.decals[1].rotation[2], 270, "and the symbol upright")
+  eq(obj.decals[1].rotation[2], 90, "and the symbol upright")
   game.rules.cardTypes.unit.playYaw = nil
   -- rules.ui.scrapButton = false: none
   game.rules.ui = game.rules.ui or {}
