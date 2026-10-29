@@ -223,11 +223,12 @@ layout = {
 | `deck` | `{along=-2 × cardSpacing, out=-3, width=2.6, depth=3.6}` | no |
 | `discard` | `{along=2 × cardSpacing, out=-3, width=2.6, depth=3.6}` | no |
 | `hand` | `{along=0, out=-9, width=7 × cardSpacing, depth=4}` | no |
+| `objectives` | `{along=0, out=-3, width=3 × cardSpacing, depth=4}`: between the deck and discard pile | yes: objectives are only listed in the action bar |
 | `market` | `{x=0, z=0}`: where the middle of the market row goes | set `market.rowSize = 0` for no row |
 | `marketDeck` | left of the row | yes: the market deck isn't shown |
 | `scrap` | right of the piles | yes: scrapped cards leave the table (nothing can be dropped there) |
 
-- `play` and `bases` also take `column = true`: their cards then run in a
+- `play`, `bases` and `objectives` also take `column = true`: their cards then run in a
   column toward the player instead of a row across, for a tall strip such as
   buildings down the side of a mat.
 - `marketDeck`, `scrap` and each fixed pile (by its card id, such as

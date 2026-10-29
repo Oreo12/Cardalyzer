@@ -304,7 +304,9 @@ their turn. A card's effects apply when it's revealed (custom effects see
 ### Objectives
 `objectives = { count = 3, perTurn = 1, toWin = 3, label = "Missions" }`
 deals each player 3 secret `objective` cards. Each turn they can complete 1,
-and completing 3 wins the game.
+and completing 3 wins the game. They lie face up in each player's
+`objectives` area (see Customising, Areas), hidden from everyone else, who
+see their backs. A completed one is shown to all.
 
 ### Starting kits
 Kits are premade starting setups: a deck, cards in play, stats and hand

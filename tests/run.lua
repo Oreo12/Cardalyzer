@@ -405,6 +405,31 @@ test("save and reload restores the game without respawning zones", function()
   assertConserved(restored)
 end)
 
+test("loading a save (or TTS's Rewind) draws the table again from the state", function()
+  local game = boot()
+  Cardalyzer_onStartGame(HOST)
+  local saved = onSave()
+  local cards = function() return count(function(o) return o.data and o.data.GMNotes end) end
+  local before = cards()
+  -- TTS restores the objects but not their script buttons, plus a copy of a
+  -- card that was mid-flight when the snapshot was taken.
+  local objects, order = tts.objects, tts.order
+  for _, obj in ipairs(tts.live()) do obj.buttons = {} end
+  local stray = spawnObjectData({ data = Cardalyzer.require("engine.board").cardData(game, game.state.players[1].hand[1]) })
+  stray.setLock(true)
+  dofile("build/Global.lua")
+  tts.objects, tts.order = objects, order
+  onLoad(saved)
+  local restored = Cardalyzer.game
+  eq(cards(), before, "the stray copy is gone")
+  local buys = 0
+  for _, obj in ipairs(tts.live()) do
+    for _, b in ipairs(obj.buttons or {}) do if b.click_function == "Cardalyzer_onBuy" then buys = buys + 1 end end
+  end
+  eq(buys >= #restored.state.market.row, true, "Buy buttons back on the market (" .. buys .. ")")
+  assertConserved(restored)
+end)
+
 test("a corrupt save starts fresh instead of crashing", function()
   local game = boot("{not json")
   eq(game.state.started, false, "fresh state")
@@ -1977,6 +2002,14 @@ test("objectives: dealt face down, completed when met for a reward, enough of th
   local p = game.state.players[1]
   eq(#p.objectives, 2, "two each")
   eq(#game.state.players[2].objectives, 2, "for both players")
+  local Board = Cardalyzer.require("engine.board")
+  Board.sync(game, { instant = true })
+  local function goalObjects() return game.state.view.piles["1.objectives"] or {} end
+  eq(#goalObjects(), 2, "both on the table")
+  for _, guid in ipairs(goalObjects()) do
+    local hidden = table.concat(getObjectFromGUID(guid).hiddenFrom or {}, ",")
+    assert(hidden:find("Red", 1, true) and not hidden:find("White", 1, true), "only White sees them: " .. hidden)
+  end
   game:refreshUI()
   assert(tts.ui.xml:find("Your missions:", 1, true), "the active player sees their missions on their bar")
   assert(tts.ui.xml:find("Missions 0/2", 1, true), "progress in the info panel")
@@ -1988,6 +2021,10 @@ test("objectives: dealt face down, completed when met for a reward, enough of th
   click(WHITE, "cz-goal-" .. first)
   eq(#p.completed, 1, "completed")
   assert(tts.ui.xml:find("completed", 1, true), "announced")
+  Board.sync(game, { instant = true })
+  local shown = getObjectFromGUID(goalObjects()[1])
+  eq(shown.getGMNotes(), first, "the completed one first")
+  eq(shown.hiddenFrom, nil, "shown to everyone once completed")
   eq(game:completeObjective(1, p.objectives[1]), false, "only one per turn")
   -- next turn, the second one wins the game
   game.state.turn.completed = 0

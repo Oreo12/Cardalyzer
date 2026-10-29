@@ -382,8 +382,15 @@ end
 ---------------------------------------------------------------------------
 
 function Game:boot(saved)
-  self:loadState(saved)
+  local loaded = self:loadState(saved)
   Zones.build(self, self.layout)
+  -- A loaded game (a save, or TTS's Rewind) is drawn again from its state:
+  -- TTS doesn't save buttons made by script, and a snapshot taken mid-move
+  -- holds the short-lived copies of cards in flight.
+  if loaded and self.state.started then
+    Board.sweep(self)
+    Board.sync(self, { instant = true })
+  end
   self:refreshUI()
 end
 
