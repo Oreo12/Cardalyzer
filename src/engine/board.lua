@@ -358,7 +358,8 @@ end
 --           printed card from its left and top edges: { right, top }
 --           (default near the bottom-left corner, hanging a little over)
 -- A card type's scrapCorner = { right, top } overrides corner for its cards
--- (a game whose bases print the scrap symbol somewhere else). "Printed"
+-- (a game whose bases print the scrap symbol somewhere else); it can also be
+-- function(card) returning one (cards of one type printed differently by set). "Printed"
 -- means as the card reads: a type turned by playYaw (printed sideways)
 -- counts its left and top as they read in play.
 Board.CARD_W, Board.CARD_H = 2.19, 3.06
@@ -374,7 +375,9 @@ function Board.addScrapButton(game, obj, uid)
   local size = look.size or 0.38
   local w, h = Board.CARD_W, Board.CARD_H
   if turned then w, h = h, w end -- the printed card's width and height
-  local corner = def.scrapCorner or look.corner or { right = (size - 0.05) / w, top = 1 - (size - 0.05) / h }
+  local corner = def.scrapCorner
+  if type(corner) == "function" then corner = corner(c) end
+  corner = corner or look.corner or { right = (size - 0.05) / w, top = 1 - (size - 0.05) / h }
   -- the symbol's centre, measured from the printed card's left and top
   local across = corner.right * w - size / 2
   local down = corner.top * h + size / 2
