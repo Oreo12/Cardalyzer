@@ -109,6 +109,7 @@ Flags clear at the end of the turn.
 | --- | --- |
 | `buyToTop` | on top of the deck |
 | `mayBuyToTop` | on top of the deck or to the discard pile: the player picks |
+| `mayBuyToPlay` | straight into play or to the discard pile: the player picks |
 | `buyToHand` | into the hand |
 | `buyToDeck` | shuffled into the deck |
 | `buyToPlay` | straight into play, its effects happening |

@@ -468,6 +468,7 @@ end
 --   flags.buyToPlay    straight into play (its effects apply)
 --   flags.buyToTop     on top of the deck
 --   flags.mayBuyToTop  asks: top of the deck or the discard pile (place_bought prompt)
+--   flags.mayBuyToPlay asks: straight into play or the discard pile
 -- A card whose type has buyTo = "play" always goes straight into play.
 -- Afterwards a custom effect's onAcquire(game, seat, ctx) runs for the card.
 local function buyNow(game, seat, uid, free, toTop, toHand)
@@ -531,6 +532,8 @@ local function buyNow(game, seat, uid, free, toTop, toHand)
     player.discard[#player.discard + 1] = uid
     if take("mayBuyToTop") then
       Actions.prompt(game, seat, { kind = "place_bought", uid = uid, optional = false })
+    elseif take("mayBuyToPlay") then
+      Actions.prompt(game, seat, { kind = "place_bought", uid = uid, to = "play", optional = false })
     end
   end
   Actions.fillMarket(game)
@@ -1203,7 +1206,7 @@ function Actions.targets(game, seat, prompt)
     end
   elseif kind == "place_bought" then
     if Util.indexOf(player.discard, prompt.uid) then
-      out[1] = { value = "top", label = say(game, "topOfDeck") }
+      out[1] = prompt.to == "play" and { value = "play", label = say(game, "intoPlay") } or { value = "top", label = say(game, "topOfDeck") }
       out[2] = { value = "discard", label = say(game, "yourDiscard") }
     end
   end
@@ -1319,6 +1322,9 @@ function Actions.pick(game, seat, value)
   elseif kind == "place_bought" and value == "top" then
     Util.removeValue(player.discard, prompt.uid)
     player.deck[#player.deck + 1] = prompt.uid
+  elseif kind == "place_bought" and value == "play" then
+    Util.removeValue(player.discard, prompt.uid)
+    Actions.enterPlay(game, seat, prompt.uid)
   end
 
   prompt.picked = (prompt.picked or 0) + 1
