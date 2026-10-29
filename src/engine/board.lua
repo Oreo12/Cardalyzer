@@ -389,9 +389,9 @@ function Board.addScrapButton(game, obj, uid, turned)
   if type(at) == "function" then at = at(c) end
   at = at or look.at or 0.9
   local units = Board.BUTTON_UNITS
-  local height = look.height or 230
+  local height = look.height or 200
   -- the button's middle, down from the card's centre, kept on the card
-  local down = math.min(at * h, h - height / units / 2 - 0.03) - h / 2
+  local down = math.min(at * h, h - height / units / 2) - h / 2
   -- in button coordinates (x mirrored, +z the card's bottom), toward the
   -- reader's "down" for each way the card can lie
   local x, z = 0, down
@@ -403,9 +403,9 @@ function Board.addScrapButton(game, obj, uid, turned)
     click_function = "Cardalyzer_onScrapIcon", function_owner = Global,
     label = words.say(game.rules, "scrapButton"),
     tooltip = words.say(game.rules, "scrap", { card = c.name, effects = game.effects:describe(c.scrapEffects, c.text) }),
-    position = { x, 0.3, z }, rotation = { 0, yaw, 0 },
-    width = look.width or math.floor((w - 0.3) * units), height = height, font_size = look.fontSize or 150,
-    color = Util.color(look.color) or { 0.1, 0.1, 0.1, 0.55 },
+    position = { x, 0.6, z }, rotation = { 0, (360 - yaw) % 360, 0 }, -- (x is mirrored, so it turns the other way)
+    width = look.width or math.floor((w - 0.3) * units), height = height, font_size = look.fontSize or 140,
+    color = Util.color(look.color) or { 0.1, 0.1, 0.1, 0.8 },
     hover_color = { 0.2, 0.2, 0.2, 0.8 }, press_color = { 0.35, 0.35, 0.35, 0.9 },
     font_color = Util.color(look.textColor) or { 1, 0.85, 0.35 },
   })

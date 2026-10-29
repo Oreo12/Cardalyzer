@@ -3701,7 +3701,7 @@ test("cards in play with a scrap ability get a see-through Scrap button across t
   Board.addScrapButton(game, obj, State.newCard(s, "shade_scout"))
   local sb = obj.buttons[1]
   assert(sb.position[1] > 0.5 and sb.position[3] == 0, "toward the reader's bottom")
-  eq(sb.rotation[2], 90, "turned to read upright")
+  eq(sb.rotation[2], 270, "turned to read upright")
   assert(sb.width > b.width, "as wide as the card reads")
   game.rules.cardTypes.unit.playYaw = nil
   -- rules.ui.scrapButton = false: none
