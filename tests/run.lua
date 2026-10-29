@@ -3703,6 +3703,49 @@ test("cards in play with a scrap ability get a Scrap button hanging off their bo
   eq(sb.rotation[2], 270, "turned to read upright")
   assert(sb.width > b.width, "as wide as the card reads")
   game.rules.cardTypes.unit.playYaw = nil
+  -- a closed-up pile: the button moves to the strip of the card still showing
+  local col = tts.newObject("Card", {})
+  Board.addScrapButton(game, col, State.newCard(s, "shade_scout"), 0, { column = true, room = 0.9 })
+  local cb = col.buttons[1]
+  assert(cb.position[1] - cb.width / 410 / 2 > 1.095, "a column: beside the card")
+  assert(math.abs(cb.position[3] - (-1.53 + 0.45)) < 1e-6, "level with its top strip: " .. cb.position[3])
+  local row = tts.newObject("Card", {})
+  Board.addScrapButton(game, row, State.newCard(s, "shade_scout"), 0, { room = 1.2 })
+  local rb = row.buttons[1]
+  assert(rb.position[3] < -1.53, "a row: above the card")
+  assert(math.abs(rb.position[1] - (-1.095 + 0.6)) < 1e-6, "over its left strip: " .. rb.position[1])
+  assert(rb.width / 410 <= 1.2, "no wider than the strip")
+  -- in play, a column too long for its area closes up and uses that
+  game.rules.ui.scrapButton = nil
+  local many = {}
+  for i = 1, 12 do many[i] = State.newCard(s, "shade_scout"); p.play[#p.play + 1] = many[i] end
+  Board.sync(game, { instant = true })
+  local last = getObjectFromGUID(s.view.piles["1.play"][#s.view.piles["1.play"]])
+  assert(last.buttons[1].position[3] < -1.53, "an overlapping play row puts them above the cards")
+  -- a column with wrap: two columns edge to edge inside the area, never a third
+  local wide = 3.06 + 0.05
+  local spot = { position = { 0, 1, 0 }, right = { 1, 0 }, forward = { 0, 1 }, size = { 2 * wide, 3, 11.7 }, column = true, wrap = "left" }
+  local four = Board.rowPositions(spot, 4, 2.8, 2.4, true)
+  assert(math.abs(four[1][1] - wide / 2) < 1e-6, "four fit in the right-hand column: " .. four[1][1])
+  local pos, cols = Board.rowPositions(spot, 6, 2.8, 2.4, true)
+  eq(cols[5], 2, "the fifth starts the second column")
+  assert(math.abs(pos[5][1] + wide / 2) < 1e-6, "to its left, edge to edge: " .. pos[5][1])
+  for _, at in ipairs(pos) do
+    assert(math.abs(at[1]) + 3.06 / 2 <= spot.size[1] / 2 + 1e-6, "inside the area")
+  end
+  -- a row with wrap = true: a full row starts another, down the area's depth
+  local area = { position = { 0, 1, 0 }, right = { 1, 0 }, forward = { 0, 1 }, size = { 14.4, 3, 11.7 }, wrap = true }
+  local one = Board.rowPositions(area, 5, 2.9, 2.4, false)
+  eq(one[1][3], 0, "five fit in one row")
+  local two = Board.rowPositions(area, 6, 2.9, 2.4, false)
+  assert(two[1][3] > 0 and two[6][3] < 0, "six: two rows, the first nearer the centre")
+  local full = Board.rowPositions(area, 20, 2.9, 2.4, false)
+  for _, at in ipairs(full) do
+    assert(math.abs(at[1]) + 1.095 <= 7.2 + 1e-6 and math.abs(at[3]) + 1.53 <= 5.85 + 1e-6, "inside the area")
+  end
+  local lots, lotCols = Board.rowPositions(spot, 12, 2.8, 2.4, true)
+  eq(lotCols[12], 2, "twelve still in two columns")
+  assert(lots[2][3] - lots[1][3] > -2.8, "which close up")
   -- rules.ui.scrapButton = false: none
   game.rules.ui.scrapButton = false
   local plain = tts.newObject("Card", {})

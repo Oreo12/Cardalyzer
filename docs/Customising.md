@@ -231,6 +231,13 @@ layout = {
 - `play`, `bases` and `objectives` also take `column = true`: their cards then run in a
   column toward the player instead of a row across, for a tall strip such as
   buildings down the side of a mat.
+  With `wrap = "left"` (or `"right"`), the area holds two columns side by
+  side, edge to edge: make it two cards wide. Cards fill the right-hand (or
+  left-hand) column first, then the other; past two full columns both close
+  up.
+- `play` and `bases` laid in a row take `wrap = true`: a full row starts
+  another below it, as many as fit in the area's depth; past that every row
+  closes up.
 - `marketDeck`, `scrap` and each fixed pile (by its card id, such as
   `hireling = { along = 9, out = 0 }`) take `{along, out}` from the middle of
   the market row. Use this to line them up with slots printed on a market

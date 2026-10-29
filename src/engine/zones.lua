@@ -183,6 +183,7 @@ function Zones.layout(rules, fixedIds, count, facing, breaks)
     local s = spot(f, name == "hand" and y + 2 or y, a.along, a.out, ownYaw or yaw, { a.width, height, a.depth })
     s.hidden = a.hidden
     s.column = a.column
+    s.wrap = a.wrap
     return s
   end
   for seat = 1, count do
