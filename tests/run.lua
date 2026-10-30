@@ -730,6 +730,26 @@ test("attacking spends the whole might pool on the opponent's health", function(
   assert(lastBroadcast():find("no Might", 1, true), lastBroadcast())
 end)
 
+test("Tidy table has a cooldown shared by every player", function()
+  local game = blank()
+  local Game = Cardalyzer.require("engine.game")
+  local clock, now = Game.clock, 1000
+  Game.clock = function() return now end
+  local tidied = 0
+  local tidy = game.tidy
+  game.tidy = function(g) tidied = tidied + 1; return tidy(g) end
+  click(WHITE, "cz-tidy")
+  eq(tidied, 1, "tidied")
+  now = now + 5
+  click(RED, "cz-tidy")
+  eq(tidied, 1, "not again so soon, even by another player")
+  assert(lastBroadcast():find("Try again in 10 s", 1, true), lastBroadcast())
+  now = now + 10
+  click(WHITE, "cz-tidy")
+  eq(tidied, 2, "fine after 15 seconds")
+  Game.clock = clock
+end)
+
 test("attack can be split: how much on a player, the rest on a building", function()
   local game, put = blank()
   local vault = put(2, "bases", "seed_vault") -- defense 4

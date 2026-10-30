@@ -636,6 +636,19 @@ function Game:tidy()
   return true
 end
 
+-- The Tidy table button: respawning every pile is heavy, so it has a
+-- cooldown shared by everyone (rules.ui.tidyCooldown seconds, default 15).
+Game.clock = function() return os.time() end
+function Game:tidyButton()
+  local cooldown = self.rules.ui and self.rules.ui.tidyCooldown or 15
+  local now = Game.clock()
+  if self.lastTidy and now - self.lastTidy < cooldown then
+    return false, Words.say(self.rules, "tidyWait", { n = cooldown - (now - self.lastTidy) })
+  end
+  self.lastTidy = now
+  return self:tidy()
+end
+
 -- Runs an action, then redraws the piles that changed (next frame, so a card
 -- the player just dropped isn't destroyed inside its own drop event).
 -- Players knocked out, and the winner, are announced.

@@ -33,6 +33,7 @@ Words.DEFAULT = {
   -- the corner
   rulebooks = "Rulebooks",
   tidy = "Tidy table",
+  tidyWait = "Tidy table was just used. Try again in {n} s.",
   -- the action bar
   playAll = "Play all ({n})",
   endTurn = "End Turn",
