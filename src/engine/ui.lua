@@ -68,6 +68,7 @@ function UI_.promptFor(game, seat)
   if prompt.optional then
     local word = prompt.kind == "reminder" and "done" or "skip"
     if prompt.kind == "react" then word = prompt.picked and "done" or "noReveal" end
+    if prompt.kind == "attack_amount" then word = "cancel" end
     choices[#choices + 1] = { id = "cz-done", label = say(word) }
   end
   return Actions.promptText(game, prompt) .. more, choices

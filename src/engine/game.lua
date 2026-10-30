@@ -676,7 +676,8 @@ function Game:defeat(seat, uid) return self:act(Actions.defeat, seat, uid) end
 function Game:call(seat, uid) return self:act(Actions.call, seat, uid) end
 function Game:hire(seat, uid) return self:act(Actions.hire, seat, uid) end
 function Game:scrapFromPlay(seat, uid) return self:act(Actions.scrapFromPlay, seat, uid) end
-function Game:attack(seat, target, baseUid) return self:act(Actions.attack, seat, target, baseUid) end
+function Game:attack(seat, target, baseUid, amount) return self:act(Actions.attack, seat, target, baseUid, amount) end
+function Game:aimAttack(seat, target) return self:act(Actions.aimAttack, seat, target) end
 function Game:pick(seat, value) return self:act(Actions.pick, seat, value) end
 function Game:done(seat) return self:act(Actions.done, seat) end
 function Game:endTurn(seat) return self:act(Actions.endTurn, seat) end

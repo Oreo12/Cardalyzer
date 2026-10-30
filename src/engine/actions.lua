@@ -912,9 +912,10 @@ function Actions.defenseOf(game, owner, uid)
   return math.max(0, defense)
 end
 
--- Without baseUid, spends the whole attack pool on the target player's
--- win stat. With it, spends the base's defense to destroy that base.
-function Actions.attack(game, seat, target, baseUid)
+-- Without baseUid, spends `amount` of the attack pool (default: all of it)
+-- on the target player's win stat. With it, spends the base's defense to
+-- destroy that base.
+function Actions.attack(game, seat, target, baseUid, amount)
   local ok, why = isActive(game, seat)
   if not ok then return fail(why) end
   if not Actions.phaseAllows(game, "attack") then return notThisPhase(game) end
@@ -939,17 +940,49 @@ function Actions.attack(game, seat, target, baseUid)
     if pool < defense then return fail(say(game, "needs", { card = c.name, n = defense, resource = label })) end
     player.resources[key] = pool - defense
     Actions.destroyBase(game, target, baseUid)
+    if game.notify then
+      game:notify(say(game, "destroysBase", { attacker = player.name, name = victim.name, card = c.name, n = defense, resource = label }))
+    end
     return true
   end
 
   if #guards > 0 then return fail(say(game, "guardsFirst")) end
   local stat = game.rules.win and game.rules.win.stat
   if not stat then return fail("These rules have no stat to attack (rules.win.stat).") end
-  -- The whole pool is spent. The defender may first reveal reactions from
+  -- The amount is spent. The defender may first reveal reactions from
   -- their hand (block, prevent:N); then the damage lands (opponents_damage).
-  player.resources[key] = 0
-  Actions.hitOne(game, seat, target, { key = "opponents_damage", amount = pool })
+  amount = math.max(1, math.min(pool, math.floor(tonumber(amount) or pool)))
+  player.resources[key] = pool - amount
+  Actions.hitOne(game, seat, target, { key = "opponents_damage", amount = amount })
   return true
+end
+
+-- Anywhere besides attacking `target` directly that seat's attack pool could
+-- go: another opponent open to attack, or a base it could destroy.
+local function otherAttackTargets(game, seat, target, pool)
+  for _, other in ipairs(game:opponentsOf(seat)) do
+    local guards = Actions.guards(game, other)
+    if other ~= target and #guards == 0 then return true end
+    for _, uid in ipairs(game.state.players[other].bases) do
+      local open = #guards == 0 or Util.indexOf(guards, uid)
+      if open and Actions.typeDef(game, card(game, uid)).target ~= false
+        and pool >= Actions.defenseOf(game, other, uid) then return true end
+    end
+  end
+  return false
+end
+
+-- The Attack button: when the pool could also go somewhere else, asks how
+-- much to spend on this player (an attack_amount prompt); otherwise all of it.
+function Actions.aimAttack(game, seat, target)
+  local key = Actions.resourceFor(game.rules, "attack")
+  local pool = key and game.state.players[seat].resources[key] or 0
+  if pool > 1 and target ~= seat and game.state.players[target] and otherAttackTargets(game, seat, target, pool)
+    and isActive(game, seat) and Actions.phaseAllows(game, "attack") and #Actions.guards(game, target) == 0 then
+    Actions.prompt(game, seat, { kind = "attack_amount", target = target, amount = pool, count = 1, optional = true })
+    return true
+  end
+  return Actions.attack(game, seat, target)
 end
 
 ---------------------------------------------------------------------------
@@ -1064,6 +1097,10 @@ function Actions.promptText(game, prompt)
   local n, kind = prompt.count, prompt.kind
   local cards = say(game, n == 1 and "card" or "cards")
   if kind == "choice" then return say(game, "chooseOne") end
+  if kind == "attack_amount" then
+    local _, label = Actions.resourceFor(game.rules, "attack")
+    return say(game, "attackHowMuch", { name = game.state.players[prompt.target].name, resource = label })
+  end
   if kind == "scrap" then
     local from = prompt.from or { "hand", "discard" }
     local names = { hand = "yourHand", discard = "yourDiscardPile", row = "theMarketRow" }
@@ -1148,6 +1185,23 @@ function Actions.targets(game, seat, prompt)
     if passes(prompt, card(game, uid)) then add(uid, where) end
   end
   local kind = prompt.kind
+  if kind == "attack_amount" then
+    -- steps to change the amount, then the attack itself
+    local key, label = Actions.resourceFor(game.rules, "attack")
+    local pool = key and player.resources[key] or 0
+    local amount = math.min(prompt.amount, pool)
+    for _, step in ipairs({ -5, -1, 1, 5 }) do
+      local n = amount + step
+      if n >= 1 and n <= pool then
+        out[#out + 1] = { value = (step > 0 and "+" or "") .. step, label = (step > 0 and "+" or "−") .. math.abs(step) }
+      end
+    end
+    if amount >= 1 then
+      out[#out + 1] = { value = "go", label = say(game, "attackFor",
+        { name = state.players[prompt.target].name, n = amount, resource = label }) }
+    end
+    return out
+  end
   if kind == "choice" then
     -- an option is one effect, or { list = effects } for several at once
     for i, option in ipairs(prompt.options) do
@@ -1278,6 +1332,16 @@ function Actions.pick(game, seat, value)
   if not valid then return fail(say(game, "notAnOption")) end
 
   local kind = prompt.kind
+  if kind == "attack_amount" then
+    if value ~= "go" then
+      local key = Actions.resourceFor(game.rules, "attack")
+      prompt.amount = math.min(prompt.amount, player.resources[key] or 0) + tonumber(value)
+      return true
+    end
+    finish(game, seat)
+    Actions.settle(game, seat)
+    return Actions.attack(game, seat, prompt.target, nil, prompt.amount)
+  end
   if kind == "choice" or kind == "pick" then
     finish(game, seat)
     if kind == "pick" then

@@ -192,7 +192,7 @@ function handleUI(player, _, id)
   if action == "playall" then
     run(player.color, game.playAll, seat)
   elseif action == "attack" then
-    run(player.color, game.attack, seat, tonumber(arg))
+    run(player.color, game.aimAttack, seat, tonumber(arg))
   elseif action == "hit" then
     local target, uid = arg:match("^(%d+)%-(.+)$")
     run(player.color, game.attack, seat, tonumber(target), uid)

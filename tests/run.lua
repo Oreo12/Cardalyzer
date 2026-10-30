@@ -730,6 +730,64 @@ test("attacking spends the whole might pool on the opponent's health", function(
   assert(lastBroadcast():find("no Might", 1, true), lastBroadcast())
 end)
 
+test("attack can be split: how much on a player, the rest on a building", function()
+  local game, put = blank()
+  local vault = put(2, "bases", "seed_vault") -- defense 4
+  local p, red = game.state.players[1], game.state.players[2]
+  p.resources.might = 12
+  game:refreshUI()
+  click(WHITE, "cz-attack-2")
+  eq(p.prompts[1] and p.prompts[1].kind, "attack_amount", "asked how much")
+  assert(tts.ui.xml:find("How much Might on Red?", 1, true), "the question")
+  assert(tts.ui.xml:find("Attack Red for 12", 1, true), "starts at all of it")
+  assert(not tts.ui.xml:find("cz-pick-+5", 1, true), "can't go over the pool")
+  click(WHITE, "cz-pick--5")
+  click(WHITE, "cz-pick--1")
+  click(WHITE, "cz-pick-+1")
+  click(WHITE, "cz-pick--1")
+  click(WHITE, "cz-pick--1")
+  assert(tts.ui.xml:find("Attack Red for 5", 1, true), "12 - 5 - 1 + 1 - 1 - 1")
+  eq(p.resources.might, 12, "nothing spent yet")
+  click(WHITE, "cz-pick-go")
+  eq(red.stats.health, 35, "5 damage")
+  eq(p.resources.might, 7, "7 left")
+  local notes = game.notices.all
+  eq(notes[#notes], "White hits Red for 5 Health (Red: 35)", "says where it went")
+  eq(#p.prompts, 0, "prompt closed")
+  click(WHITE, "cz-hit-2-" .. vault)
+  assert(has(red.discard, vault), "building destroyed")
+  eq(p.resources.might, 3, "3 left")
+  eq(notes[#notes], "White destroys Red's Seed Vault (4 Might)", "and the building")
+  click(WHITE, "cz-attack-2")
+  eq(red.stats.health, 32, "nowhere else to spend it: all of it at once")
+  eq(p.resources.might, 0)
+  -- Cancel spends nothing
+  put(2, "bases", "seed_vault")
+  p.resources.might = 6
+  game:refreshUI()
+  click(WHITE, "cz-attack-2")
+  click(WHITE, "cz-done")
+  eq(p.resources.might, 6, "cancelled")
+  eq(red.stats.health, 32)
+end)
+
+test("attack split across three players", function()
+  local game = boot()
+  click(HOST, "cz-players-3")
+  DBE_start()
+  local s = game.state
+  s.players[1].resources.might = 12
+  game:refreshUI()
+  click(HOST, "cz-attack-2")
+  click(HOST, "cz-pick--5"); click(HOST, "cz-pick--1"); click(HOST, "cz-pick--1")
+  click(HOST, "cz-pick-go")
+  eq(s.players[2].stats.health, 40 - 5, "Red takes 5")
+  click(HOST, "cz-attack-3")
+  click(HOST, "cz-pick-go")
+  eq(s.players[3].stats.health, 40 - 7, "Blue takes the other 7")
+  eq(s.players[1].resources.might, 0)
+end)
+
 test("guard buildings must fall before the player or other buildings", function()
   local game, put = blank()
   local wall = put(2, "bases", "stone_wall")
@@ -920,6 +978,7 @@ test("with three players, turns go round and a player at 0 health is out", funct
   s.players[2].owed.discard = 1
   s.players[1].resources.might = 5
   click(HOST, "cz-attack-2")
+  click(HOST, "cz-pick-go") -- Blue could take some too, so it asks how much
   eq(s.players[2].out, true, "Red is out")
   eq(s.winner, nil, "two players left")
   eq(s.players[2].owed.discard, nil, "owes nothing once out")
@@ -1989,7 +2048,10 @@ test("whenAttacked lets the defender's cards reduce the damage", function()
   local before = game.state.players[2].stats.health
   game.state.players[1].resources.might = 5
   click(WHITE, "cz-attack-2")
+  click(WHITE, "cz-pick-go") -- the den could be hit too, so it asks how much
   eq(game.state.players[2].stats.health, before - 4, "5 Might, 1 blocked")
+  local notes = game.notices.all
+  eq(notes[#notes], "White hits Red for 4 Health, 1 stopped (Red: " .. (before - 4) .. ")", "says how much was stopped")
 end)
 
 test("objectives: dealt face down, completed when met for a reward, enough of them wins", function()
