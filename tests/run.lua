@@ -3887,5 +3887,20 @@ test("a fixed pile can be placed by its card id, like the market deck and scrap 
   assertConserved(game)
 end)
 
+test("a game's own records in state.turn are cleared when the next turn starts", function()
+  local game = boot()
+  Cardalyzer_onStartGame(HOST)
+  local turn = game.state.turn
+  turn.usedShield, turn.paid = true, { c1 = true }
+  local first, number = turn.first, turn.number
+  Cardalyzer_onEndTurn(HOST)
+  eq(game.state.turn.usedShield, nil, "own flag")
+  eq(game.state.turn.paid, nil, "own table")
+  eq(game.state.turn.active, 2, "active")
+  eq(game.state.turn.number, number + 1, "number")
+  eq(game.state.turn.first, first, "first")
+  assert(game.state.turn.played and game.state.turn.allyFired, "the engine's records are back, empty")
+end)
+
 print(string.format("\n%d passed, %d failed", passed, failed))
 if failed > 0 then os.exit(1) end
