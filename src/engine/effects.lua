@@ -6,6 +6,7 @@
 -- ctx carries { uid, card } of the card the effect came from, when there is one.
 -- `game` is the facade from engine/game.lua; handlers change game.state only.
 local Util = require("engine.util")
+local Words = require("engine.words")
 
 local Effects = {}
 Effects.__index = Effects
@@ -237,6 +238,14 @@ function Effects.new(rules)
       Actions.trigger(game, victim, "whenAttacked", blow)
       local stats = game.state.players[victim].stats
       stats[stat] = (stats[stat] or 0) - math.max(0, blow.damage)
+      if game.notify then -- where the damage went, for everyone
+        local label = stat
+        for _, st in ipairs(game.rules.stats or {}) do if st.key == stat then label = st.label or st.key end end
+        local dealt = math.max(0, blow.damage)
+        game:notify(Words.say(game.rules, dealt < amount and "hitsReduced" or "hits", {
+          attacker = game.state.players[attacker].name, name = game.state.players[victim].name,
+          n = dealt, saved = amount - dealt, stat = label, left = stats[stat] }))
+      end
       Actions.checkWin(game)
     end,
     text = function(amount)

@@ -136,7 +136,7 @@ function handleUI(player, _, id)
   -- the market's mat, shared: cz-mktset-<n> and cz-mktstyle-<n>
   if action == "mktset" then return run(player.color, game.setMat, player.color, "marketset", arg) end
   if action == "mktstyle" then return run(player.color, game.setMat, player.color, "marketstyle", arg) end
-  if action == "tidy" then return run(player.color, game.tidy) end
+  if action == "tidy" then return run(player.color, game.tidyButton) end
   if action == "rulebooks" then return run(player.color, game.toggleRulebooks) end
   if action == "button" then return run(player.color, game.pressButton, tonumber(arg), player.color) end
   if action == "end" then return Cardalyzer_onEndTurn(player) end
@@ -192,7 +192,7 @@ function handleUI(player, _, id)
   if action == "playall" then
     run(player.color, game.playAll, seat)
   elseif action == "attack" then
-    run(player.color, game.attack, seat, tonumber(arg))
+    run(player.color, game.aimAttack, seat, tonumber(arg))
   elseif action == "hit" then
     local target, uid = arg:match("^(%d+)%-(.+)$")
     run(player.color, game.attack, seat, tonumber(target), uid)

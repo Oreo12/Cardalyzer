@@ -636,6 +636,19 @@ function Game:tidy()
   return true
 end
 
+-- The Tidy table button: respawning every pile is heavy, so it has a
+-- cooldown shared by everyone (rules.ui.tidyCooldown seconds, default 15).
+Game.clock = function() return os.time() end
+function Game:tidyButton()
+  local cooldown = self.rules.ui and self.rules.ui.tidyCooldown or 15
+  local now = Game.clock()
+  if self.lastTidy and now - self.lastTidy < cooldown then
+    return false, Words.say(self.rules, "tidyWait", { n = cooldown - (now - self.lastTidy) })
+  end
+  self.lastTidy = now
+  return self:tidy()
+end
+
 -- Runs an action, then redraws the piles that changed (next frame, so a card
 -- the player just dropped isn't destroyed inside its own drop event).
 -- Players knocked out, and the winner, are announced.
@@ -676,7 +689,8 @@ function Game:defeat(seat, uid) return self:act(Actions.defeat, seat, uid) end
 function Game:call(seat, uid) return self:act(Actions.call, seat, uid) end
 function Game:hire(seat, uid) return self:act(Actions.hire, seat, uid) end
 function Game:scrapFromPlay(seat, uid) return self:act(Actions.scrapFromPlay, seat, uid) end
-function Game:attack(seat, target, baseUid) return self:act(Actions.attack, seat, target, baseUid) end
+function Game:attack(seat, target, baseUid, amount) return self:act(Actions.attack, seat, target, baseUid, amount) end
+function Game:aimAttack(seat, target) return self:act(Actions.aimAttack, seat, target) end
 function Game:pick(seat, value) return self:act(Actions.pick, seat, value) end
 function Game:done(seat) return self:act(Actions.done, seat) end
 function Game:endTurn(seat) return self:act(Actions.endTurn, seat) end

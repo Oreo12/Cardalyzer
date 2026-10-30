@@ -33,10 +33,13 @@ Words.DEFAULT = {
   -- the corner
   rulebooks = "Rulebooks",
   tidy = "Tidy table",
+  tidyWait = "Tidy table was just used. Try again in {n} s.",
   -- the action bar
   playAll = "Play all ({n})",
   endTurn = "End Turn",
   attack = "Attack {name} ({n} {resource})",
+  attackHowMuch = "How much {resource} on {name}?",
+  attackFor = "Attack {name} for {n}",
   destroy = "Destroy {card} ({n})",
   scrap = "Scrap {card}: {effects}",
   use = "Use {card}",
@@ -113,6 +116,9 @@ Words.DEFAULT = {
   event = "Event: {card}. {effects}",
   reveals = "{name} reveals {card}: {effects}",
   unaffected = "{name} is unaffected.",
+  hits = "{attacker} hits {name} for {n} {stat} ({name}: {left})",
+  hitsReduced = "{attacker} hits {name} for {n} {stat}, {saved} stopped ({name}: {left})",
+  destroysBase = "{attacker} destroys {name}'s {card} ({n} {resource})",
   ally = "{card} ally: {effects}",
   tutorialHidden = "Tutorial button hidden. Type !tutorial in chat to bring it back.",
   hostOnlyNewGame = "Only the host can start a new game.",
