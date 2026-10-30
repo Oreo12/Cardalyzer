@@ -439,6 +439,9 @@ local function turnCounters(game, color)
     end
   end
   if xml == "" then return nil end
+  -- whose they are, in their seat colour (everyone sees this row)
+  xml = text("cz_resowner_" .. color, p.name, 18, 'color="' .. (UI_.seatColors[p.color] or "#FFFFFF")
+    .. '" fontStyle="Bold"' .. FX) .. xml
   return '<HorizontalLayout spacing="12" preferredHeight="' .. symbolSize("turn") .. '" childForceExpandWidth="false" childAlignment="MiddleCenter">'
     .. xml .. '</HorizontalLayout>'
 end
