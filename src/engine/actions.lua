@@ -1476,12 +1476,21 @@ end
 -- Turn start and end
 ---------------------------------------------------------------------------
 
+-- What state.turn keeps from one turn to the next; everything else in it,
+-- a game's own fields included, is this turn's record and starts fresh.
+local KEEP_TURN = { active = true, number = true, first = true, round = true }
+
 -- Start of a seat's turn: this turn's records (allies fired, cards played,
 -- copies) are cleared, owed discards become a prompt, and persistent cards
 -- in play apply their effects (and allies) again.
 function Actions.startTurn(game, seat)
   local player = game.state.players[seat]
   local turn = game.state.turn
+  local stale = {}
+  for key in pairs(turn) do
+    if not KEEP_TURN[key] then stale[#stale + 1] = key end
+  end
+  for _, key in ipairs(stale) do turn[key] = nil end
   turn.allyFired, turn.played, turn.copies = {}, {}, {}
   turn.factions, turn.atEnd, turn.scrapped = {}, {}, { total = 0, handOrDiscard = 0 }
   turn.granted, turn.gained, turn.allyFactions, turn.completed = {}, {}, {}, 0

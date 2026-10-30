@@ -185,4 +185,6 @@ something happens. Most run while the card is in play.
 | `scrapped` | How many cards were scrapped: `total`, and `handOrDiscard` |
 | `defeated` | How many monsters were defeated |
 
+A custom effect can keep its own records here too (`game.state.turn.usedShield = true`). Every field except `active`, `number`, `first` and `round` is cleared when the next turn starts.
+
 [Back to Top](#custom-effects-lua-for-unusual-cards)
