@@ -148,7 +148,10 @@ end
 
 -- One object for a whole pile: a Card for one uid, a Deck for more.
 -- Our piles keep the top card last; a TTS deck lists its top card first.
-function Board.stackData(game, uids)
+-- A deck laid face up is the other way up, so the card on view is the last
+-- one it lists: a face-up pile (a discard pile) lists ours in order, so its
+-- latest card is the one showing.
+function Board.stackData(game, uids, faceUp)
   if #uids == 1 then return Board.cardData(game, uids[1]) end
   local deck = {
     Name = "Deck",
@@ -158,7 +161,9 @@ function Board.stackData(game, uids)
     ContainedObjects = {},
     Transform = transform((game.rules.layout and game.rules.layout.cardScale) or 1),
   }
-  for i = #uids, 1, -1 do
+  local from, to, step = #uids, 1, -1
+  if faceUp then from, to, step = 1, #uids, 1 end
+  for i = from, to, step do
     local data = Board.cardData(game, uids[i])
     deck.DeckIDs[#deck.DeckIDs + 1] = data.CardID
     deck.ContainedObjects[#deck.ContainedObjects + 1] = data
@@ -688,7 +693,7 @@ local function draw(game, pile, uids)
   local guids = view.piles[pile.key]
   local rot = rotation(pile.spot, pile.faceUp)
   if pile.style == "stack" then
-    guids[1] = spawn(game, data(Board.stackData(game, uids)), pile.spot.position, rot, ready)
+    guids[1] = spawn(game, data(Board.stackData(game, uids, pile.faceUp)), pile.spot.position, rot, ready)
   else
     local positions = Board.rowPositions(pile.spot, n, rowGap(pile), pile.style == "row" and pile.cardWidth or nil,
       sideways(pile, uids))

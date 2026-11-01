@@ -446,7 +446,9 @@ function UI_.coopRows(game)
   local rows = {}
   local h = math.max(symbolSize("seat"), 20)
   local function line(id, label, value, color, extra)
-    local xml = text(id, label, 16, 'color="' .. color .. '" fontStyle="Bold" preferredWidth="150"' .. FX)
+    -- (a long name shrinks to fit beside its life and counters)
+    local xml = text(id, label, 16, 'color="' .. color .. '" fontStyle="Bold" preferredWidth="150" alignment="MiddleRight"'
+      .. ' resizeTextForBestFit="true" resizeTextMinSize="10" resizeTextMaxSize="16"' .. FX)
       .. counter(id .. "_life", "heart", math.max(0, value), symbolSize("seat")) .. (extra or "")
     rows[#rows + 1] = { '<HorizontalLayout spacing="4" preferredHeight="' .. h .. '" childForceExpandWidth="false" childAlignment="MiddleRight">'
       .. xml .. '</HorizontalLayout>', h }

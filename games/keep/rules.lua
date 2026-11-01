@@ -69,6 +69,7 @@ local rules = {
         counters = { { key = "scales", label = "Scales", start = 3, min = 0 } },
         unleash = function(game)
           game:prompt(game.state.turn.active, { kind = "choice", vote = true, optional = false,
+            text = "The Ash Wyrm unleashes: choose one",
             options = { { key = "home_damage", amount = 3 }, { key = "damage_any", amount = 2 } } })
         end,
         whenDamaged = function(game, amount)
