@@ -46,7 +46,8 @@ function UI_.turnLine(game)
   use(game)
   local state = game.state
   if not state.started then return say("notStarted") end
-  if state.winner then return say("wins", { name = Actions.winnerNames(game) }) end
+  if state.winner then return Actions.resultLine(game) end
+  if state.coop and state.coop.turn then return say("enemyTurnLine", { n = state.turn.number, enemy = state.coop.enemy.name }) end
   local active = state.players[state.turn.active]
   local phase = Actions.phase(game)
   if phase then return say("phaseLine", { n = state.turn.number, name = active.name, phase = phase.label or phase.key }) end
@@ -90,6 +91,13 @@ function UI_.actions(game)
 
   local key, label = Actions.resourceFor(game.rules, "attack")
   local pool = key and Actions.phaseAllows(game, "attack") and p.resources[key] or 0
+  -- co-op: attack the enemy or one of its minions
+  if pool > 0 and state.coop then
+    add(out.buttons, "cz-strike-enemy", say("attackEnemy", { name = state.coop.enemy.name, n = pool }))
+    for _, uid in ipairs(require("engine.coop").minions(game)) do
+      add(out.buttons, "cz-strike-" .. uid, say("attackEnemy", { name = game:cardOf(uid).name, n = math.min(pool, state.coop.enemy.hp[uid] or 0) }))
+    end
+  end
   if pool > 0 then
     for _, other in ipairs(game:opponentsOf(seat)) do
       local guards = Actions.guards(game, other)
@@ -287,6 +295,11 @@ local TIPS = {
   ["cz-menuat-left"] = function() return "Menus and choices on the left of your screen, clear of TTS's own menus." end,
   ["cz-menuat-right"] = function() return "Menus and choices on the right of your screen, clear of TTS's own menus." end,
   ["cz-menuat-top"] = function() return "Menus and choices at the top of your screen." end,
+  ["cz-continue"] = function() return "Let the enemy take its next step." end,
+  ["cz-closevote"] = function() return "Close the vote now with the votes cast so far (host only)." end,
+  ["cz-enemystep-off"] = function() return "The enemy's turn plays out by itself, with a short pause between steps (host only)." end,
+  ["cz-enemystep-on"] = function() return "The enemy's turn stops after each step until someone presses Continue (host only)." end,
+  ["cz-strike-enemy"] = function() return "Spend all of it on the enemy." end,
 }
 for _, kind in ipairs({ "setup", "kit", "settings", "mat", "tutorial", "winner", "choice" }) do
   TIPS["cz-tuck-" .. kind] = function() return "Tuck this away, just for you. A Show button by Tidy table brings it back." end
@@ -395,7 +408,7 @@ local function seatRow(game, seat)
   local state, rules = game.state, game.rules
   local p = state.players[seat]
   local active = state.started and state.turn.active == seat
-  local name = (active and "▶ " or "") .. p.name .. (p.out and say("out") or "")
+  local name = (active and "▶ " or "") .. p.name .. (p.out and say("out") or "") .. (p.down and say("exhaustedMark") or "")
   local xml = text("cz_seat_" .. seat, name, 16, 'color="' .. (UI_.seatColors[p.color] or "#FFFFFF") .. '"'
     .. (active and ' fontStyle="Bold"' or "") .. ' preferredWidth="110"' .. FX)
   if not p.out then
@@ -421,6 +434,60 @@ local function seatRow(game, seat)
   local h = math.max(symbolSize("seat"), symbolSize("base"), 20)
   return '<HorizontalLayout spacing="4" preferredHeight="' .. h .. '" childForceExpandWidth="false" childAlignment="MiddleRight">'
     .. xml .. '</HorizontalLayout>' .. piles, h + 14 + 4
+end
+
+-- A co-op game's rows for the info panel: the home's life, the enemy's life
+-- and counters, its piles, and Continue while its turn waits (step mode).
+-- Returns { { xml, height } }.
+function UI_.coopRows(game)
+  use(game)
+  local c = game.state.coop
+  local Coop = require("engine.coop")
+  local rows = {}
+  local h = math.max(symbolSize("seat"), 20)
+  local function line(id, label, value, color, extra)
+    local xml = text(id, label, 16, 'color="' .. color .. '" fontStyle="Bold" preferredWidth="150"' .. FX)
+      .. counter(id .. "_life", "heart", math.max(0, value), symbolSize("seat")) .. (extra or "")
+    rows[#rows + 1] = { '<HorizontalLayout spacing="4" preferredHeight="' .. h .. '" childForceExpandWidth="false" childAlignment="MiddleRight">'
+      .. xml .. '</HorizontalLayout>', h }
+  end
+  line("cz_home", Coop.homeLabel(game.rules), c.home, accent())
+  local def = Coop.enemyDef(game) or {}
+  local extra = ""
+  for _, spec in ipairs(def.counters or {}) do
+    extra = extra .. text("cz_enemy_" .. spec.key, (spec.label or spec.key) .. " " .. (c.enemy.counters[spec.key] or 0), 13, FX)
+  end
+  line("cz_enemy", c.enemy.name, c.enemy.life, "#E5585E", extra)
+  rows[#rows + 1] = { text("cz_enemy_piles", say("enemyLine", { deck = #c.enemy.deck, discard = #c.enemy.discard }), 11,
+    'color="#C8CED6" alignment="MiddleRight" preferredHeight="14"' .. FX), 14 }
+  if c.turn and c.turn.paused then
+    rows[#rows + 1] = { '<HorizontalLayout preferredHeight="30" childForceExpandWidth="false" childAlignment="MiddleRight">'
+      .. smallButton("cz-continue", say("continue"), 15, "primary") .. '</HorizontalLayout>', 30 }
+  end
+  return rows
+end
+
+-- The open vote's panel for one player: the question, each option with its
+-- votes (theirs marked), who hasn't voted, and Close vote (host only).
+function UI_.votePanel(game, color, scale)
+  use(game)
+  local seat, prompt = Actions.openVote(game)
+  if not prompt then return "" end
+  local options, waiting = Actions.voteTally(game)
+  local mine = prompt.votes and prompt.votes[color]
+  local buttons = {}
+  for _, o in ipairs(options) do
+    buttons[#buttons + 1] = { id = "cz-vote-" .. o.value, label = (o.value == mine and "▶ " or "") .. say("voteFor", { label = o.label, n = o.votes }) }
+  end
+  buttons[#buttons + 1] = { id = "cz-closevote", label = say("closeVote") }
+  buttons[#buttons + 1] = { id = "cz-tuck-choice", label = say("hide") }
+  local title = say("vote", { what = Actions.promptText(game, prompt) })
+  local extra = nil
+  if #waiting > 0 then
+    extra = { text("cz_vote_wait_" .. color, say("voteWaiting", { names = table.concat(waiting, ", ") }), 14,
+      'alignment="MiddleCenter" color="#C8CED6" preferredHeight="20"' .. FX), 20 }
+  end
+  return UI_.centrePanel("cz_vote_" .. color, color, title, accent(), 18, extra, buttons, scale, "choice")
 end
 
 -- The active player's per-turn counters (Trade, Combat) that are above 0, for
@@ -534,6 +601,9 @@ function UI_.infoPanel(game, suffix, attrs, bottom)
     for _, st in ipairs(game.rules.stats or {}) do if st.key == pool.key then label = st.label or st.key end end
     row(text("cz_pool", say("pool", { n = math.max(0, state.pool), label = label }), 13, 'alignment="MiddleRight" color="' .. accent()
       .. '" preferredHeight="18"' .. FX), 18)
+  end
+  if state.coop and state.started then
+    for _, r in ipairs(UI_.coopRows(game)) do row(r[1], r[2]) end
   end
   for seat = 1, #state.players do row(seatRow(game, seat)) end
   for i, msg in ipairs(game.notices and game.notices.all or {}) do
@@ -751,6 +821,33 @@ function UI_.supplyRows(game)
   return UI_.optionRows("cz_supply", supply.label or say("supply"), list)
 end
 
+-- Co-op: the enemy (cz-enemy-<i>; 0 is random) and the difficulty
+-- (cz-difficulty-<i>), when the rules offer a choice.
+function UI_.enemyRows(game)
+  local coop = game.rules.coop
+  if not coop then return {} end
+  local out = {}
+  local enemies = coop.enemies or {}
+  if #enemies > 1 then
+    local chosen = game:setupChoice("enemy") or 0
+    local list = { { id = "cz-enemy-0", label = say("random"), on = chosen == 0, tooltip = "Face an enemy picked at random." } }
+    for i, e in ipairs(enemies) do
+      list[#list + 1] = { id = "cz-enemy-" .. i, label = e.name or e.key, on = chosen == i, tooltip = e.text }
+    end
+    for _, r in ipairs(UI_.optionRows("cz_enemy", say("enemyChoice"), list)) do out[#out + 1] = r end
+  end
+  local diffs = coop.difficulties or {}
+  if #diffs > 1 then
+    local chosen = game:setupChoice("difficulty") or coop.difficulty or 1
+    local list = {}
+    for i, d in ipairs(diffs) do
+      list[#list + 1] = { id = "cz-difficulty-" .. i, label = d.label, on = chosen == i, tooltip = d.about }
+    end
+    for _, r in ipairs(UI_.optionRows("cz_difficulty", say("difficulty"), list)) do out[#out + 1] = r end
+  end
+  return out
+end
+
 function UI_.setupPanel(game, color)
   use(game)
   local buttons = { { id = "cz-new", label = say("playGame") } }
@@ -775,6 +872,7 @@ function UI_.setupPanel(game, color)
   end
   for _, r in ipairs(UI_.setRows(game)) do add(r) end
   for _, r in ipairs(UI_.supplyRows(game)) do add(r) end
+  for _, r in ipairs(UI_.enemyRows(game)) do add(r) end
   -- rules.ui.setupMenu(game, color, menu, UI) may change the menu (its
   -- title, its rows of XML, each rowHeight tall, and its buttons) or return
   -- XML of its own to draw instead. See docs/Customising.md, "Your Own New Game Menu".
@@ -910,7 +1008,16 @@ function UI_.settingsPanel(game, color)
     spots[#spots + 1] = { "cz-menuat-" .. where, say(where), at == where and "selected" or "secondary" }
   end
   rows = rows .. settingRow("cz_set_menus_" .. color, say("menus"), nil, spots)
-  return centrePanel("cz_settings_" .. color, color, say("settings"), accent(), 22, { rows, 114 },
+  local height = 114
+  -- co-op: the enemy's turns play out by themselves or a step at a time (shared, host only)
+  if game.rules.coop then
+    local step = game.state.view.enemyStep == true
+    rows = rows .. settingRow("cz_set_enemy_" .. color, say("enemyTurns"), nil, {
+      { "cz-enemystep-off", say("auto"), step and "secondary" or "selected" },
+      { "cz-enemystep-on", say("stepThrough"), step and "selected" or "secondary" } })
+    height = height + 38
+  end
+  return centrePanel("cz_settings_" .. color, color, say("settings"), accent(), 22, { rows, height },
     { { id = "cz-settingsclose", label = say("close") }, hideButton("settings") }, scale)
 end
 
@@ -1024,8 +1131,8 @@ function UI_.xml(game)
     local winner = state.players[state.winner]
     for _, color in ipairs(Tutorial.allColors) do
       if not (game.setupOpen and game.setupOpen[color]) and shown(color) and not UI_.tucked(game, color, "winner") then
-        parts[#parts + 1] = centrePanel("cz_winner_" .. color, color, say("wins", { name = Actions.winnerNames(game) }),
-          UI_.seatColors[winner.color] or accent(), 34, nil, { { id = "cz-again", label = say("playAgain") }, hideButton("winner") },
+        parts[#parts + 1] = centrePanel("cz_winner_" .. color, color, Actions.resultLine(game),
+          (not state.coop and UI_.seatColors[winner.color]) or accent(), 34, nil, { { id = "cz-again", label = say("playAgain") }, hideButton("winner") },
           UI_.scaleOf(game, color))
       end
     end
@@ -1077,21 +1184,34 @@ function UI_.xml(game)
       list[#list + 1] = hideButton("choice")
       parts[#parts + 1] = centrePanel(id, who, words, accent(), 18, nil, list, k, "choice")
     end
-    if acts.prompt then choice("cz_choice", color, acts.prompt, acts.choices, scale) end
-    -- Other players' waiting choices (from events), each on their own screen.
-    for seat, p in ipairs(state.players) do
-      if seat ~= state.turn.active then
-        local text, choices = UI_.promptFor(game, seat)
-        if text then choice("cz_choice_" .. p.color, p.color, text, choices, UI_.scaleOf(game, p.color)) end
+    -- A vote open (the players choose together): everyone at the table sees
+    -- it in place of their own choices.
+    local voteSeat = Actions.openVote(game)
+    if voteSeat then
+      for _, p in ipairs(state.players) do
+        if shown(p.color) and not UI_.tucked(game, p.color, "choice") then
+          parts[#parts + 1] = UI_.votePanel(game, p.color, UI_.scaleOf(game, p.color))
+        end
+      end
+    else
+      if acts.prompt then choice("cz_choice", color, acts.prompt, acts.choices, scale) end
+      -- Other players' waiting choices (from events), each on their own screen.
+      for seat, p in ipairs(state.players) do
+        if seat ~= state.turn.active then
+          local text, choices = UI_.promptFor(game, seat)
+          if text then choice("cz_choice_" .. p.color, p.color, text, choices, UI_.scaleOf(game, p.color)) end
+        end
       end
     end
+    -- (no action bar while a co-op enemy takes its turn)
+    local enemyTurn = state.coop and state.coop.turn
     local bar, barHeight = buttonRows(acts.buttons, 12, 1100, { ["cz-playall"] = 17, ["cz-end"] = 17 })
     if acts.goals then -- the active player's secret goals, on their bar only
       bar = text("cz_goals", acts.goals, 12, 'alignment="MiddleCenter" color="#C8CED6" preferredHeight="18"' .. FX) .. bar
       barHeight = barHeight + 22
     end
     local barAt = positions.bar
-    if shown(color) then parts[#parts + 1] = sized('<Panel id="cz_actions" visibility="' .. color .. '" width="1120" height="'
+    if shown(color) and not enemyTurn then parts[#parts + 1] = sized('<Panel id="cz_actions" visibility="' .. color .. '" width="1120" height="'
       .. barHeight .. '" rectAlignment="' .. barAt.anchor .. '" offsetXY="' .. (barAt.x or 0) .. ' ' .. UI_.barY(game, color) .. '"' .. PANEL
       .. '><VerticalLayout spacing="4" childForceExpandHeight="false">' .. bar .. '</VerticalLayout></Panel>', scale) end
     for _, p in ipairs(state.players) do
@@ -1166,7 +1286,8 @@ function UI_.tabsFor(game, color)
     mat = game.matOpen and game.matOpen[color],
     tutorial = game.tutorialOpen and game.tutorialOpen[color],
     winner = state.winner ~= nil,
-    choice = state.started and not state.winner and seat ~= nil and state.players[seat].prompts[1] ~= nil,
+    choice = state.started and not state.winner and seat ~= nil
+      and (state.players[seat].prompts[1] ~= nil or Actions.openVote(game) ~= nil),
   }
   local names = { setup = say("newGame"), kit = game.rules.kitName or "Kit", settings = say("settings"), mat = say("changeMat"),
     tutorial = say("tutorial"), winner = say("result"), choice = say("yourChoice") }

@@ -89,6 +89,15 @@ WORDS = {
     "prevent": "Prevent {n} damage",
     "set_aside": "Put this in your {area}",
     "set_aside_hand": "Put a card from hand in your {area}",
+    # co-op games
+    "damage": "Deal {n} damage",
+    "silence": "Silence {n} minion",
+    "home_damage": "Home suffers {n} damage",
+    "home_heal": "Home gains {n} life",
+    "damage_each": "Each player suffers {n} damage",
+    "damage_lowest": "The player with the least life suffers {n} damage",
+    "damage_any": "Any player suffers {n} damage",
+    "unleash": "Unleash x{n}",
 }
 NAMES = {}  # card id -> name, for keywords that name a card (gain:silk)
 
@@ -147,6 +156,8 @@ def draw_card(card):
     subtitle = f"{names} · {types}"
     if card.get("faction") in (None, "", "none") or names == types:
         subtitle = types
+    if card.get("tier"):  # a co-op enemy card
+        subtitle += f" · Tier {card['tier']}"
     d.text((CARD_W / 2, 122), subtitle, font=font(20), fill=(80, 80, 80), anchor="mm")
 
     # Art area placeholder
@@ -154,6 +165,8 @@ def draw_card(card):
     d.text((CARD_W / 2, 222), card["id"], font=font(18), fill=(120, 120, 120), anchor="mm")
 
     lines = []
+    if card.get("now_effects"):
+        lines.append("Now: " + effect_text(card["now_effects"]))
     if card.get("effects"):
         lines.append(effect_text(card["effects"]))
     if card.get("ally_effects"):
@@ -177,6 +190,12 @@ def draw_card(card):
     if card.get("defense") is not None:
         d.rectangle([CARD_W - 104, CARD_H - 92, CARD_W - 28, CARD_H - 28], fill=(60, 60, 70))
         d.text((CARD_W - 66, CARD_H - 60), str(card["defense"]), font=font(32), fill="white", anchor="mm")
+    # co-op enemy cards: a minion's life, a power's tokens
+    for key, fill in (("life", (170, 40, 50)), ("power", (110, 60, 160))):
+        if card.get(key) is not None:
+            d.ellipse([CARD_W - 104, CARD_H - 104, CARD_W - 28, CARD_H - 28], fill=fill, outline=(40, 20, 20), width=3)
+            d.text((CARD_W - 66, CARD_H - 66), str(card[key]), font=font(32), fill="white", anchor="mm")
+            d.text((CARD_W - 66, CARD_H - 116), key.title(), font=font(16), fill=fill, anchor="mm")
     if card.get("points"):
         d.ellipse([CARD_W - 104, CARD_H - 104, CARD_W - 28, CARD_H - 28], fill=(62, 142, 90), outline=(20, 60, 30), width=3)
         d.text((CARD_W - 66, CARD_H - 66), str(card["points"]), font=font(32), fill="white", anchor="mm")

@@ -171,7 +171,8 @@ function Zones.layout(rules, fixedIds, count, facing, breaks)
   pileRows[#pileRows + 1] = line
   -- lanes: the market row (with the first row of piles), further rows of
   -- piles, then the extra markets, `pitch` apart and centred
-  local lanes = #pileRows + #extras
+  -- (a co-op game's enemy has a lane of its own, the last)
+  local lanes = #pileRows + #extras + (rules.coop and 1 or 0)
   local grow = (lanes - 1) * pitch / 2
   distance = distance + grow
   local mainOut = -(lanes - 1) * pitch / 2
@@ -267,6 +268,31 @@ function Zones.layout(rules, fixedIds, count, facing, breaks)
       deck = spot(centre, y, start - gap * 1.5, out, yaw),
       area = spot(centre, y, o.along or 0, out, yaw, { size * gap + 1, 3, 4.5 }),
     }
+  end
+  -- A co-op enemy (rules.coop): its cards in play in a row (rules.coop.row
+  -- cards wide, default 5), its deck to the left, its discard pile to the
+  -- right, then its extra decks (rules.coop.decks), each with its discard
+  -- pile beside it. rules.layout.areas.enemyPlay / enemyDeck / enemyDiscard
+  -- / enemy:<key> = { along, out } move them.
+  if rules.coop then
+    local out = mainOut + (lanes - 1) * pitch
+    local width = (rules.coop.row or 5) * gap
+    local function at(name, along, size)
+      local o = type(over[name]) == "table" and over[name] or {}
+      local s = spot(centre, y, o.along or along, o.out or out, yaw, size)
+      s.hidden = over[name] == false or nil
+      return s
+    end
+    result.enemy = {
+      play = at("enemyPlay", 0, { width, 3, 4.5 }),
+      deck = at("enemyDeck", -(width / 2 + gap * 0.9)),
+      discard = at("enemyDiscard", width / 2 + gap * 0.9),
+      decks = {},
+    }
+    for i, d in ipairs(rules.coop.decks or {}) do
+      local along = width / 2 + gap * (0.9 + 2.2 * i)
+      result.enemy.decks[d.key] = { deck = at("enemy:" .. d.key, along), discard = at("enemy:" .. d.key .. ":discard", along + gap) }
+    end
   end
   return result
 end
@@ -371,6 +397,17 @@ function Zones.outlines(rules, layout, colors)
     if #extra.row > 0 then box("row", extra.area, marketRgb, 0.12, 0) end
     for _, slot in ipairs(extra.row) do box("slots", slot, marketRgb) end
     box("marketDeck", extra.deck, marketRgb)
+  end
+  -- the co-op enemy's areas, in its own colour (rules.outlines.enemy)
+  if layout.enemy then
+    local enemyRgb = Util.color(opts.enemy) or { 0.8, 0.2, 0.25 }
+    box("enemy", layout.enemy.play, enemyRgb, 0.12, 0)
+    box("enemy", layout.enemy.deck, enemyRgb)
+    box("enemy", layout.enemy.discard, enemyRgb)
+    for _, d in pairs(layout.enemy.decks) do
+      box("enemy", d.deck, enemyRgb)
+      box("enemy", d.discard, enemyRgb)
+    end
   end
   return lines
 end

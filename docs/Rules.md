@@ -20,6 +20,7 @@ sit) is covered separately, in [Customising](Customising.md).
 9. [Card Sets, Kits, Dealt Cards and Objectives](#card-sets-kits-dealt-cards-and-objectives)
 10. [Set-Aside Areas](#set-aside-areas)
 11. [Art, Rulebooks, Tutorial and Animation](#art-rulebooks-tutorial-and-animation)
+12. [Co-op Games](#co-op-games)
 
 ## The Basics
 
@@ -380,5 +381,93 @@ Cards go in with the `set_aside` and `set_aside_hand` keywords.
 
 Everything about the screen and the table (`ui`, `layout`, `outlines`) is in
 [Customising](Customising.md).
+
+[Back to Top](#rules-setting-up-your-game)
+
+## Co-op Games
+In a co-op game the players win or lose **together** against an automated
+enemy with its own life, deck and turns, while defending a **home** with its
+own life. `games/keep` (Hollow Keep) is a complete example. Co-op is still
+being built: a turn-order deck, prep slots and effects that help other
+players come next.
+
+```lua
+coop = {
+  life = "life",                         -- the players' life (one of your stats)
+  home = { label = "The Keep", life = 30 },
+  enemyTurns = "round",                  -- after every round; "each": after every player's turn
+  pause = 1.0,                           -- seconds between the enemy's steps
+  tiers = { [1] = { 2, 2, 2 }, [2] = { 3, 2, 2 }, otherwise = { 5, 4, 3 } },
+  decks = { { key = "wave", label = "Wave" } },
+  difficulties = {
+    { label = "Gentle", about = "...", homeLife = 10, enemyLife = -10 },
+    { label = "Normal" },
+    { label = "Hard", enemyLife = 10, harder = true },
+  },
+  difficulty = 2,
+  enemies = { { key = "tide", name = "The Drowned Tide", life = 50, text = "...", ... } },
+},
+```
+
+**Winning and losing.** The players win when the enemy's life reaches 0, or
+when it has no cards left in its deck or in play at the end of its turn.
+They lose when the home's life reaches 0 or every player is exhausted. An
+enemy's `check`, or `coop.check`, can decide either way (`return "win",
+"reason"` or `"lose"`). `game:coopEnd("won"|"lost", reason)` ends it from
+anywhere.
+
+**The enemy's deck** is built for each game: for each tier, the number of
+basic cards `tiers` gives for that many players (picked at random), plus all
+of the chosen enemy's own cards of that tier, shuffled. The tiers are
+stacked with tier 1 on top and never shuffled again. Leave `tiers` out to
+use every basic card. Extra decks (`decks`) hold cards with `deck` =
+`enemy:<key>`.
+
+**The enemy's turn** comes after every round (or every turn). It plays out
+by itself, one step at a time with a message for each, and nobody can act
+meanwhile:
+1. its `atTurnStart`;
+2. each minion in play, oldest first, does its `effects` (unless silenced);
+   each power loses one, and at 0 does its `effects` and is discarded;
+3. it draws its top card: an `attack` resolves and is discarded, a `minion`
+   enters with its `life`, a `power` with its `power`; `now_effects` run first;
+4. its `atTurnEnd`.
+
+In **Settings**, the host can switch **Enemy turns** to **Step by step**:
+the enemy then waits for anyone to press **Continue** after each step.
+
+**Exhausted players.** A player at 0 life is exhausted: they keep playing
+but can't gain life, the "least life" effects pass them by, and damage to
+them hits the home `exhaustedDamage` times over (default 2). When a player
+is exhausted the enemy unleashes twice, unless the enemy's or the rules'
+`onExhausted(game, seat)` does something else. Nobody goes above the life
+they started with.
+
+**Votes.** When the players choose together ("any player suffers 4
+damage", or anything asked during the enemy's turn), everyone gets the
+question and votes; votes can change until it closes. It closes when
+everyone has voted, or when the host presses **Close vote**. Most votes
+wins; a tie goes to the player whose turn it is (or is next). With one
+player there's no vote.
+
+**Each enemy** in `enemies`:
+
+| Field | What it is |
+| --- | --- |
+| `key`, `name`, `life`, `text` | Its id (the cards' `enemy` column), name, life and rules (shown in the New Game menu) |
+| `counters = { { key, label, start, min, max } }` | Its own counters (tokens, tracks), shown beside its life. `game:enemyCounter(key)`, `game:addEnemyCounter(key, n)` |
+| `unleash(game, ctx)` | Its signature move, for `unleash:N` and exhaustion. For "A or B", queue a `choice` prompt with `vote = true` |
+| `setup(game)` | At the start of the game |
+| `atTurnStart(game)`, `atTurnEnd(game)` | At the start and end of its turn |
+| `whenDamaged(game, amount, "enemy")` | Returns the damage it really takes (0: none) |
+| `check(game)` | Returns `"win"` or `"lose"` and a reason, to end the game its own way |
+| `onExhausted(game, seat)` | Instead of unleashing twice when a player is exhausted |
+| `onDeckEmpty(game)` | When it has no card to draw |
+| `deckOutWins = false` | Running out of cards doesn't win the game |
+
+A minion card's custom effect can have `whenDamaged(game, ctx, amount)` too.
+In the New Game menu the host picks the enemy (or Random) and the
+difficulty; the rules read `game.state.coop.harder` for a difficulty's
+harder rules.
 
 [Back to Top](#rules-setting-up-your-game)

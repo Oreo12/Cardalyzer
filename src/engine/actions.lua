@@ -127,6 +127,9 @@ local function isActive(game, seat)
   local state = game.state
   if not state.started then return false, say(game, "notStartedYet") end
   if state.winner then return false, say(game, "gameOver") end
+  if state.coop and state.coop.turn then
+    return false, say(game, "enemyTurnNow", { enemy = require("engine.coop").enemyName(game) })
+  end
   if state.turn.active ~= seat then
     return false, say(game, "othersTurn", { name = state.players[state.turn.active].name })
   end
@@ -798,6 +801,7 @@ end
 -- rules.win.check(game), in any kind of game, may decide instead: it returns
 -- the winning seat, a list of seats (a shared win), or nil to play on.
 function Actions.checkWin(game)
+  if game.rules.coop then return require("engine.coop").check(game) end
   local win = game.rules.win
   if win and win.check and not game.state.winner then
     local result = win.check(game)
@@ -818,6 +822,16 @@ end
 function Actions.declare(game, seats)
   game.state.winner = seats[1]
   game.state.winners = #seats > 1 and seats or nil
+end
+
+-- How the game ended, for the info panel and the game-over panel: "<name>
+-- wins!", or in a co-op game "You win! ..." / "You lose: ...".
+function Actions.resultLine(game)
+  local c = game.state.coop
+  if c and c.result then
+    return say(game, c.result == "won" and "coopWon" or "coopLost", { reason = c.reason or "" })
+  end
+  return say(game, "wins", { name = Actions.winnerNames(game) })
 end
 
 -- The winner's name, or the names of everyone sharing the win.
@@ -999,6 +1013,7 @@ end
 -- The other seats still in the game, in turn order from seat's left.
 local function opponentsInOrder(game, seat)
   local out, count = {}, #game.state.players
+  if game.rules.coop then return out end -- (in a co-op game the others are allies)
   for step = 1, count - 1 do
     local other = (seat + step - 1) % count + 1
     if not game.state.players[other].out then out[#out + 1] = other end
@@ -1088,6 +1103,13 @@ end
 
 function Actions.prompt(game, seat, prompt)
   prompt.count = prompt.count or 1
+  -- asked during a co-op enemy's turn: the enemy waits for the answer, and
+  -- with more than one player it's the players' choice (a vote)
+  local coop = game.state.coop
+  if coop and coop.turn then
+    prompt.enemy = true
+    if #game.state.players > 1 and prompt.vote == nil then prompt.vote = true end -- (vote = false: only that player answers)
+  end
   local prompts = game.state.players[seat].prompts
   prompts[#prompts + 1] = prompt
 end
@@ -1147,6 +1169,14 @@ function Actions.promptText(game, prompt)
     })
   end
   if kind == "place_bought" then return say(game, "whereGoes", { card = card(game, prompt.uid).name }) end
+  if kind == "target" then
+    if prompt.silence then return say(game, "silenceWhich") end
+    return say(game, "damageWhich", { n = prompt.amount })
+  end
+  if kind == "player" then
+    if prompt.damage then return say(game, "whoSuffers", { n = prompt.damage }) end
+    return say(game, "choosePlayer")
+  end
   if kind == "opponent" then
     local owed = prompt.owe and prompt.owe.discard
     return owed and say(game, "chooseOpponentDiscard", { n = owed, cards = say(game, owed == 1 and "card" or "cards") })
@@ -1278,6 +1308,28 @@ function Actions.targets(game, seat, prompt)
     for _, uid in ipairs(reactions(game, seat, prompt)) do
       out[#out + 1] = { value = uid, label = say(game, "reveal", { card = card(game, uid).name }) }
     end
+  elseif kind == "target" then
+    -- co-op: the enemy (unless silencing) and its minions, with their life
+    local c = state.coop
+    if c then
+      if not prompt.silence then
+        out[#out + 1] = { value = "enemy", label = c.enemy.name .. " (" .. math.max(0, c.enemy.life) .. ")" }
+      end
+      for _, uid in ipairs(require("engine.coop").minions(game)) do
+        if not (prompt.silence and c.enemy.silenced[uid]) then
+          out[#out + 1] = { value = uid, label = card(game, uid).name .. " (" .. (c.enemy.hp[uid] or 0) .. ")" }
+        end
+      end
+    end
+  elseif kind == "player" then
+    -- a player (prompt.among limits it; prompt.others leaves out the asker)
+    local key = require("engine.coop").lifeKey(game.rules)
+    for s, p in ipairs(state.players) do
+      if (not prompt.among or Util.indexOf(prompt.among, s)) and not (prompt.others and s == seat) then
+        local life = key and (" (" .. (p.stats[key] or 0) .. (p.down and say(game, "exhaustedMark") or "") .. ")") or ""
+        out[#out + 1] = { value = tostring(s), label = p.name .. life }
+      end
+    end
   elseif kind == "place_bought" then
     if Util.indexOf(player.discard, prompt.uid) then
       out[1] = prompt.to == "play" and { value = "play", label = say(game, "intoPlay") } or { value = "top", label = say(game, "topOfDeck") }
@@ -1404,6 +1456,19 @@ function Actions.pick(game, seat, value)
       for _, uid in ipairs(prompt.placed) do Util.removeValue(player.deck, uid) end
       for i = #prompt.placed, 1, -1 do player.deck[#player.deck + 1] = prompt.placed[i] end
     end
+  elseif kind == "target" then
+    local Coop = require("engine.coop")
+    if prompt.silence then
+      state.coop.enemy.silenced[value] = true
+      if game.notify then game:notify(say(game, "silenced", { name = player.name, card = card(game, value).name })) end
+    else
+      Coop.damageEnemy(game, seat, value, prompt.amount)
+    end
+  elseif kind == "player" then
+    local chosen = tonumber(value)
+    if prompt.damage then require("engine.coop").damagePlayer(game, chosen, prompt.damage) end
+    local def = prompt.custom and game.effects.custom[prompt.custom]
+    if def and def.onPick then def.onPick(game, seat, chosen, prompt) end
   elseif kind == "place_bought" and value == "top" then
     Util.removeValue(player.discard, prompt.uid)
     player.deck[#player.deck + 1] = prompt.uid
@@ -1664,11 +1729,145 @@ function Actions.endTurn(game, seat)
   Turn.endTurn(game.state, game.rules, game.random)
   for _, uid in ipairs(keep) do player.hand[#player.hand + 1] = uid end
   -- a round is over when play comes back round to the first seat
-  Actions.checkEnd(game, game.state.turn.active == (game.state.turn.first or game.rules.firstSeat or 1))
+  local roundOver = game.state.turn.active == (game.state.turn.first or game.rules.firstSeat or 1)
+  Actions.checkEnd(game, roundOver)
   Actions.checkWin(game)
   if game.state.winner then return true end
+  -- a co-op enemy's turn comes first, if it's due (Game:driveEnemy runs it,
+  -- then the next player's turn starts)
+  local Coop = require("engine.coop")
+  if Coop.due(game, roundOver) then
+    Coop.beginTurn(game)
+    return true
+  end
   Actions.startTurn(game, game.state.turn.active)
   return true
+end
+
+---------------------------------------------------------------------------
+-- Co-op: what players do to the enemy on their turn (engine/coop.lua)
+---------------------------------------------------------------------------
+
+-- Spends the attack resource on the enemy ("enemy": all of it) or one of
+-- its minions (a uid: as much as the minion has life left).
+function Actions.attackEnemy(game, seat, target)
+  local ok, why = isActive(game, seat)
+  if not ok then return fail(why) end
+  local c = game.state.coop
+  if not c then return fail(say(game, "cantUse")) end
+  if not Actions.phaseAllows(game, "attack") then return notThisPhase(game) end
+  local key, label = Actions.resourceFor(game.rules, "attack")
+  if not key then return fail("These rules have no resource with spend = \"attack\".") end
+  local player = game.state.players[seat]
+  local pool = player.resources[key] or 0
+  if pool <= 0 then return fail(say(game, "nothingToAttack", { resource = label })) end
+  local amount = pool
+  if target ~= "enemy" then
+    if not c.enemy.hp[target] then return fail(say(game, "notInPlay")) end
+    amount = math.min(pool, c.enemy.hp[target])
+  end
+  player.resources[key] = pool - amount
+  require("engine.coop").damageEnemy(game, seat, target, amount)
+  return true
+end
+
+-- Pays an enemy power's cost (the buy resource) to discard it.
+function Actions.payPower(game, seat, uid)
+  local ok, why = isActive(game, seat)
+  if not ok then return fail(why) end
+  local c = game.state.coop
+  if not (c and c.enemy.power[uid]) then return fail(say(game, "notInPlay")) end
+  local cd = card(game, uid)
+  if cd.cost <= 0 then return fail(say(game, "cantUse")) end
+  if not Actions.phaseAllows(game, "buy") and not skipAheadFor(game, "buy") then return notThisPhase(game) end
+  local key, label = Actions.resourceFor(game.rules, "buy")
+  local player = game.state.players[seat]
+  if not key or (player.resources[key] or 0) < cd.cost then
+    return fail(say(game, "notEnough", { resource = label or "", card = cd.name, n = cd.cost }))
+  end
+  player.resources[key] = player.resources[key] - cd.cost
+  require("engine.coop").discard(game, uid)
+  if game.notify then game:notify(say(game, "powerPaid", { name = player.name, card = cd.name, n = cd.cost, resource = label })) end
+  return true
+end
+
+---------------------------------------------------------------------------
+-- Votes: a prompt with vote = true (and more than one player) is answered
+-- by everyone. Each player clicks an option and may change it until the
+-- vote closes: when everyone has voted, or the host closes it. Most votes
+-- wins; a tie goes to the vote of the player the prompt belongs to (the
+-- active player, or during a co-op enemy's turn the player whose turn is
+-- next), else the first tied option. An optional prompt has a "skip" option.
+---------------------------------------------------------------------------
+
+-- The vote open now: the seat it belongs to and its prompt (nil if none).
+function Actions.openVote(game)
+  if #game.state.players < 2 then return nil end
+  for seat, p in ipairs(game.state.players) do
+    local prompt = p.prompts[1]
+    if prompt and prompt.vote then return seat, prompt end
+  end
+  return nil
+end
+
+-- The options of the open vote, in order, each with its votes:
+-- { { value, label, votes = n, voters = { colors } } }, and who hasn't voted.
+function Actions.voteTally(game)
+  local seat, prompt = Actions.openVote(game)
+  if not prompt then return {}, {} end
+  local options = {}
+  for _, t in ipairs(Actions.targets(game, seat, prompt)) do
+    options[#options + 1] = { value = t.value, label = t.label, votes = 0, voters = {} }
+  end
+  if prompt.optional then options[#options + 1] = { value = "skip", label = say(game, "skip"), votes = 0, voters = {} } end
+  local waiting = {}
+  for _, p in ipairs(game.state.players) do
+    local v = prompt.votes and prompt.votes[p.color]
+    local found = false
+    for _, o in ipairs(options) do
+      if o.value == v then
+        o.votes = o.votes + 1
+        o.voters[#o.voters + 1] = p.color
+        found = true
+      end
+    end
+    if not found then waiting[#waiting + 1] = p.name end
+  end
+  return options, waiting
+end
+
+-- `voter` (a seat) votes for `value`.
+function Actions.castVote(game, voter, value)
+  local _, prompt = Actions.openVote(game)
+  if not prompt then return fail(say(game, "noVote")) end
+  local valid = false
+  for _, o in ipairs((Actions.voteTally(game))) do if o.value == value then valid = true end end
+  if not valid then return fail(say(game, "notAnOption")) end
+  prompt.votes = prompt.votes or {}
+  prompt.votes[game.state.players[voter].color] = value
+  local _, waiting = Actions.voteTally(game)
+  if #waiting == 0 then return Actions.closeVote(game) end
+  return true
+end
+
+-- Closes the open vote with the votes cast so far and answers its prompt.
+function Actions.closeVote(game)
+  local seat, prompt = Actions.openVote(game)
+  if not prompt then return fail(say(game, "noVote")) end
+  local options = Actions.voteTally(game)
+  local best, tied = -1, {}
+  for _, o in ipairs(options) do
+    if o.votes > best then best, tied = o.votes, { o } elseif o.votes == best then tied[#tied + 1] = o end
+  end
+  local own = prompt.votes and prompt.votes[game.state.players[seat].color]
+  local winner = tied[1]
+  for _, o in ipairs(tied) do if o.value == own then winner = o end end
+  if not winner then return fail(say(game, "noVote")) end
+  prompt.votes = nil
+  prompt.vote = nil
+  if game.notify then game:notify(say(game, "voteResult", { choice = winner.label, n = winner.votes })) end
+  if winner.value == "skip" then return Actions.done(game, seat) end
+  return Actions.pick(game, seat, winner.value)
 end
 
 return Actions

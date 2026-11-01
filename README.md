@@ -106,7 +106,7 @@ tokens, no more than four players and no teams. See
 | 5. A first full game, playable by 2 to 4 players | Done |
 | 6. A second, different game (Lantern Fair), a porting guide and a blank template | Done |
 | 7. [Steam Workshop](https://steamcommunity.com/sharedfiles/filedetails/?id=3829026544) release | Done |
-| 8. Co-operative games: players win or lose together against an automated enemy with its own turns and deck, plus a shuffled turn-order deck | Planned |
+| 8. Co-operative games: players win or lose together against an automated enemy with its own turns and deck, plus a shuffled turn-order deck | In progress: the enemy, its turns, the home, exhaustion and votes are in (`games/keep`) |
 | 9. Several games in one save, switched from a menu, each keeping its own progress | Planned |
 
 ## Contributing

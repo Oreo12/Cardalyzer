@@ -10,7 +10,9 @@ Cards.__index = Cards
 -- objective: each player is dealt rules.objectives.count face down (secret goals).
 -- supply: a pool of piles; each game rules.supply.count of them are laid out
 -- beside the fixed piles (at random, or a preset picked in the New Game menu).
-Cards.DECKS = { starter = true, market = true, fixed = true, dealt = true, objective = true, supply = true }
+-- enemy: the automated enemy's deck in a co-op game (rules.coop); enemy:<key> one
+-- of its extra decks (rules.coop.decks).
+Cards.DECKS = { starter = true, market = true, fixed = true, dealt = true, objective = true, supply = true, enemy = true }
 
 -- Effects with no amount. Everything else needs "keyword:amount".
 -- block: in react_effects, the attack doesn't affect the player who revealed it.
@@ -99,8 +101,8 @@ local function parseRow(row, index)
 
   local deck = blank(row.deck) and "market" or row.deck
   -- "market:<key>" puts a card in one of the extra markets (rules.markets)
-  if not Cards.DECKS[deck] and not deck:match("^market:[%w_]+$") then
-    fail("deck must be starter, market, market:<key>, fixed, dealt, objective or supply, got '" .. deck .. "'")
+  if not Cards.DECKS[deck] and not deck:match("^market:[%w_]+$") and not deck:match("^enemy:[%w_]+$") then
+    fail("deck must be starter, market, market:<key>, fixed, dealt, objective, supply, enemy or enemy:<key>, got '" .. deck .. "'")
   end
 
   local ok, effects = pcall(Cards.parseEffects, row.effects)
@@ -115,6 +117,8 @@ local function parseRow(row, index)
   if not okReact then fail(react) end
   local okNext, nextFx = pcall(Cards.parseEffects, row.next_effects)
   if not okNext then fail(nextFx) end
+  local okNow, nowFx = pcall(Cards.parseEffects, row.now_effects)
+  if not okNow then fail(nowFx) end
 
   local factions = {}
   for _, f in ipairs(Util.split(blank(row.faction) and "none" or row.faction, "/")) do
@@ -156,6 +160,13 @@ local function parseRow(row, index)
     defense = tonumber(row.defense),
     points = tonumber(row.points) or 0, -- victory points, for rules.win.type = "points"
     starting = tonumber(row.starting) or 0, -- copies in each player's starting deck, whatever its deck
+    -- co-op enemy cards (deck = enemy): which enemy's own card (nil: basic),
+    -- its tier, a minion's life, a power's tokens, and effects on entering
+    enemy = not blank(row.enemy) and row.enemy or nil,
+    tier = tonumber(row.tier),
+    life = tonumber(row.life),
+    power = tonumber(row.power),
+    nowEffects = nowFx,
     text = row.text or "",
   }
 end

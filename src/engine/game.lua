@@ -14,6 +14,7 @@ local Rulebooks = require("engine.rulebooks")
 local Kits = require("engine.kits")
 local Mats = require("engine.mats")
 local Words = require("engine.words")
+local Coop = require("engine.coop")
 
 local Game = {}
 Game.__index = Game
@@ -59,6 +60,7 @@ end
 -- The other seats still in the game (players who are out are left out).
 function Game:opponentsOf(seat)
   local out = {}
+  if self.rules.coop then return out end -- (in a co-op game the others are allies)
   for other, p in ipairs(self.state.players) do
     if other ~= seat and not p.out then out[#out + 1] = other end
   end
@@ -177,6 +179,25 @@ function Game:gainFromPile(seat, id)
   return Actions.gainFromPile(self, seat, id)
 end
 
+-- Co-op (engine/coop.lua), for a game's enemies and custom effects:
+--   game:enemyCounter(key) / game:addEnemyCounter(key, n)   the enemy's counters
+--   game:drawEnemyCard(key, reshuffle)   resolve the top card of extra deck `key`
+--   game:enemyEnters(uid)                put an enemy card into play (or resolve it)
+--   game:damagePlayer(seat, n) / game:damageHome(n) / game:healHome(n)
+--   game:damageEnemy(seat, target, n)    target "enemy" or a minion's uid
+--   game:unleash(n)                      the enemy's signature move
+--   game:coopEnd("won"|"lost", reason)   ends the game for everyone
+function Game:enemyCounter(key) return self.state.coop and self.state.coop.enemy.counters[key] or 0 end
+function Game:addEnemyCounter(key, n) return Coop.addCounter(self, key, n) end
+function Game:drawEnemyCard(key, reshuffle) return Coop.drawExtra(self, key, reshuffle) end
+function Game:enemyEnters(uid) return Coop.enter(self, uid) end
+function Game:damagePlayer(seat, n) return Coop.damagePlayer(self, seat, n) end
+function Game:damageHome(n) return Coop.damageHome(self, n) end
+function Game:healHome(n) return Coop.healHome(self, n) end
+function Game:damageEnemy(seat, target, n) return Coop.damageEnemy(self, seat, target, n) end
+function Game:unleash(n) return Coop.unleash(self, n) end
+function Game:coopEnd(result, reason) return Coop.finish(self, result, reason) end
+
 -- Queues a choice for a player; custom effects use this too, e.g.
 -- game:prompt(seat, { kind = "free_buy", maxCost = 4 }). See engine/actions.lua.
 function Game:prompt(seat, prompt)
@@ -192,6 +213,9 @@ function Game:setupState()
   self.state.view = view -- keep zone GUIDs so zones aren't respawned
   Turn.setup(self.state, self.rules, self.cards, self.random, Turn.openingRule(self.rules, self:setupChoice("opening")),
     self:setsInPlay(), self:kitsFor(count), self:setupChoice("supply"))
+  if self.rules.coop then
+    Coop.setup(self, self:setupChoice("enemy"), self:setupChoice("difficulty"), self:setsInPlay(), self.random)
+  end
   self:updatePiles()
   Actions.setAsideEvents(self)
   Actions.startTurn(self, self.state.turn.active)
@@ -315,6 +339,71 @@ function Game:setSupply(i)
   return true
 end
 
+-- Co-op (host only): the enemy for the next New Game (0 is random, i is
+-- rules.coop.enemies[i]) and its difficulty (rules.coop.difficulties[i]).
+function Game:setEnemy(i)
+  local list = self.rules.coop and self.rules.coop.enemies or {}
+  if not i or (i ~= 0 and not list[i]) then return false, "That isn't one of the enemies." end
+  self.state.view.setup = self.state.view.setup or {}
+  self.state.view.setup.enemy = i
+  self:refreshUI()
+  return true
+end
+
+function Game:setDifficulty(i)
+  local list = self.rules.coop and self.rules.coop.difficulties or {}
+  if not i or not list[i] then return false, "That isn't one of the difficulties." end
+  self.state.view.setup = self.state.view.setup or {}
+  self.state.view.setup.difficulty = i
+  self:refreshUI()
+  return true
+end
+
+-- Co-op: does the enemy's turn stop after each step for a Continue click
+-- (on), or play out by itself (off)? Shared and saved (state.view.enemyStep).
+function Game:setEnemyStep(on)
+  self.state.view.enemyStep = on or nil
+  local c = self.state.coop
+  if not on and c and c.turn and c.turn.paused then return self:continueEnemy() end
+  self:refreshUI()
+  return true
+end
+
+-- Runs the enemy's turn one step at a time: a pause (rules.coop.pause
+-- seconds) before each step, the table redrawn after it. In step mode it
+-- stops after each step until someone presses Continue; a question for the
+-- players (a vote) stops it until it's answered (Game:act starts it again).
+function Game:driveEnemy(now)
+  local c = self.state.coop
+  if not (c and c.turn) or c.turn.paused or self.enemyTimer then return end
+  self.enemyTimer = true
+  local function go()
+    self.enemyTimer = nil
+    local turn = self.state.coop and self.state.coop.turn
+    if not turn or turn.paused then return end
+    local status = Coop.step(self)
+    self:afterStep()
+    if status == "more" then
+      if self.state.view.enemyStep then
+        turn.paused = true
+        self:refreshUI()
+      else
+        self:driveEnemy()
+      end
+    end
+  end
+  Wait.time(go, now and 0.05 or (self.rules.coop.pause or 1.2))
+end
+
+-- Continue (step mode): the enemy takes its next step.
+function Game:continueEnemy()
+  local c = self.state.coop
+  if not (c and c.turn) then return false, Words.say(self.rules, "cantUse") end
+  c.turn.paused = nil
+  self:driveEnemy(true)
+  return true
+end
+
 -- Picks option i of rules.openingHands for the next New Game (host only).
 function Game:setOpening(i)
   local options = self.rules.openingHands or {}
@@ -392,6 +481,8 @@ function Game:boot(saved)
     Board.sync(self, { instant = true })
   end
   self:refreshUI()
+  -- a game saved during the enemy's turn carries on with it
+  if loaded then self:driveEnemy() end
 end
 
 function Game:refreshUI()
@@ -653,33 +744,46 @@ end
 -- the player just dropped isn't destroyed inside its own drop event).
 -- Players knocked out, and the winner, are announced.
 function Game:act(action, ...)
-  local wasOut, hadWinner, wasActive = {}, self.state.winner, self.state.turn.active
-  for seat, p in ipairs(self.state.players) do wasOut[seat] = p.out end
+  self.before = { wasOut = {}, hadWinner = self.state.winner, wasActive = self.state.turn.active }
+  for seat, p in ipairs(self.state.players) do self.before.wasOut[seat] = p.out end
   local ok, why = action(self, ...)
   if ok then
     Actions.settle(self, self.state.turn.active)
-    -- a choice tucked away and since answered: the next one shows again
-    for _, p in ipairs(self.state.players) do
-      if not p.prompts[1] then self:untuck(p.color, "choice") end
-    end
-    -- a new turn: the market turns to face its player (the cards glide over
-    -- in Board.sync; zones and outlines move here)
-    if self.rules.market.turnsWithPlayer and self.state.turn.active ~= wasActive then
-      self:relayout()
-      Zones.build(self, self.layout)
-    end
-    for seat, p in ipairs(self.state.players) do
-      if p.out and not wasOut[seat] and seat ~= self.state.winner then self:notify(Words.say(self.rules, "isOut", { name = p.name })) end
-    end
-    if self.state.winner and not hadWinner then
-      self:notify(Words.say(self.rules, "wins", { name = Actions.winnerNames(self) }))
-    end
-    Wait.frames(function()
-      Board.sync(self)
-      self:refreshUI()
-    end, 1)
+    self:afterStep()
+    -- a co-op enemy's turn (just begun, or waiting on a vote now answered)
+    self:driveEnemy()
   end
   return ok, why
+end
+
+-- After an action or an enemy step: the next choice shows again if one was
+-- tucked away, the market turns to face a new player, players knocked out
+-- and the result are announced, and the table is redrawn.
+function Game:afterStep()
+  local before = self.before or { wasOut = {}, wasActive = self.state.turn.active }
+  for _, p in ipairs(self.state.players) do
+    if not p.prompts[1] then self:untuck(p.color, "choice") end
+  end
+  -- a new turn: the market turns to face its player (the cards glide over
+  -- in Board.sync; zones and outlines move here)
+  if self.rules.market.turnsWithPlayer and self.state.turn.active ~= before.wasActive then
+    self:relayout()
+    Zones.build(self, self.layout)
+  end
+  before.wasActive = self.state.turn.active
+  for seat, p in ipairs(self.state.players) do
+    if p.out and not before.wasOut[seat] and seat ~= self.state.winner then self:notify(Words.say(self.rules, "isOut", { name = p.name })) end
+    before.wasOut[seat] = p.out
+  end
+  if self.state.winner and not before.hadWinner then
+    self:notify(Actions.resultLine(self))
+  end
+  before.hadWinner = self.state.winner
+  self.before = before
+  Wait.frames(function()
+    Board.sync(self)
+    self:refreshUI()
+  end, 1)
 end
 
 function Game:play(seat, uid) return self:act(Actions.play, seat, uid) end
@@ -698,6 +802,10 @@ function Game:completeObjective(seat, uid) return self:act(Actions.completeObjec
 function Game:activate(seat, uid) return self:act(Actions.activate, seat, uid) end
 function Game:reveal(seat, uid) return self:act(Actions.reveal, seat, uid) end
 function Game:nextPhase(seat) return self:act(Actions.nextPhase, seat) end
+function Game:attackEnemy(seat, target) return self:act(Actions.attackEnemy, seat, target) end
+function Game:payPower(seat, uid) return self:act(Actions.payPower, seat, uid) end
+function Game:castVote(seat, value) return self:act(Actions.castVote, seat, value) end
+function Game:closeVote() return self:act(Actions.closeVote) end
 
 -- A Buy button was clicked on a market card or a fixed pile's deck object.
 function Game:buyObject(seat, guid, uid)
