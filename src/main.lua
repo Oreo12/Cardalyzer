@@ -186,6 +186,21 @@ function handleUI(player, _, id)
     return run(player.color, game.setOpening, tonumber(arg))
   end
   if action:sub(1, 3) == "tut" then return game:tutorial(player.color, action) end
+  -- Co-op: the enemy, the difficulty and how its turns play are the host's;
+  -- anyone at the table can press Continue (step mode).
+  if action == "enemy" or action == "difficulty" or action == "enemystep" or action == "closevote" then
+    if not player.host and not player.promoted then
+      return tell(player.color, say(action == "closevote" and "hostOnlyVote" or "hostOnlyEnemy"))
+    end
+    if action == "enemy" then return run(player.color, game.setEnemy, tonumber(arg)) end
+    if action == "difficulty" then return run(player.color, game.setDifficulty, tonumber(arg)) end
+    if action == "closevote" then return run(player.color, game.closeVote) end
+    return run(player.color, game.setEnemyStep, arg == "on")
+  end
+  if action == "continue" then
+    if not game:seatOfColor(player.color) then return tell(player.color, say("takeASeat")) end
+    return run(player.color, game.continueEnemy)
+  end
 
   local seat = game:seatOfColor(player.color)
   if not seat then return tell(player.color, say("takeASeat")) end
@@ -212,8 +227,23 @@ function handleUI(player, _, id)
     run(player.color, game.completeObjective, seat, arg)
   elseif action == "done" then
     run(player.color, game.done, seat)
+  elseif action == "strike" then
+    run(player.color, game.attackEnemy, seat, arg)
+  elseif action == "vote" then
+    run(player.color, game.castVote, seat, arg)
   end
 end
+
+-- Co-op: the Discard · N button on an enemy power (pay to discard it).
+function Cardalyzer_onEnemyCard(obj, color)
+  if not game then return end
+  local seat = game:seatOfColor(color)
+  if not seat then return tell(color, say("takeASeat")) end
+  run(color, game.payPower, seat, obj.getGMNotes())
+end
+
+-- Buttons that only show something (an enemy card's life) do nothing when clicked.
+function Cardalyzer_noop() end
 
 -- Typing !tutorial in chat shows the Tutorial button again and opens it.
 function onChat(message, player)

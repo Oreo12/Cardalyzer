@@ -28,6 +28,13 @@ jobs:
           git diff --exit-code -- games/lantern/cards.json games/lantern/art.json
       - run: python tools/bundle.py games/lantern -o build/lantern/Global.lua
       - run: lua tests/lantern.lua
+      - name: Hollow Keep's card data and art are up to date with cards.csv
+        run: |
+          python tools/csv2json.py games/keep/cards.csv
+          python tools/make_sheets.py games/keep --title "Hollow Keep"
+          git diff --exit-code -- games/keep/cards.json games/keep/art.json
+      - run: python tools/bundle.py games/keep -o build/keep/Global.lua
+      - run: lua tests/keep.lua
       - name: The blank template builds and plays
         run: |
           python tools/csv2json.py games/template/cards.csv
@@ -36,3 +43,4 @@ jobs:
           python tools/bundle.py games/template -o build/template/Global.lua
           CZ_BUILD=build/template/Global.lua lua tests/smoke.lua
           CZ_BUILD=build/lantern/Global.lua lua tests/smoke.lua
+          CZ_BUILD=build/keep/Global.lua lua tests/smoke.lua

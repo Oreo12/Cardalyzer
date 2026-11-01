@@ -150,6 +150,19 @@ test("the market deck's top card is the deck object's first card", function()
   eq(getObjectFromGUID(guid).data.ContainedObjects[1].GMNotes, top, "top card")
 end)
 
+test("a face-up pile shows its latest card: the deck object lists it last", function()
+  local game = boot()
+  Cardalyzer_onStartGame(HOST)
+  local p = game.state.players[1]
+  for _, uid in ipairs(p.hand) do p.discard[#p.discard + 1] = uid end
+  p.hand = {}
+  Cardalyzer.require("engine.board").sync(game, { instant = true })
+  local obj = getObjectFromGUID(game.state.view.piles["1.discard"][1])
+  local listed = obj.data.ContainedObjects
+  eq(listed[#listed].GMNotes, p.discard[#p.discard], "the latest card is on view")
+  eq(listed[1].GMNotes, p.discard[1], "the first discarded at the bottom")
+end)
+
 test("End Turn is refused for the wrong player", function()
   local game = boot()
   Cardalyzer_onStartGame(HOST)

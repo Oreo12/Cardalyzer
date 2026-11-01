@@ -53,6 +53,11 @@ local function count()
   visit(s.market.deck); visit(s.market.row); visit(s.market.scrap)
   for _, pile in pairs(s.market.fixed) do visit(pile) end
   for _, m in ipairs(s.markets or {}) do visit(m.deck); visit(m.row) end
+  if s.coop then -- a co-op enemy's piles
+    local e = s.coop.enemy
+    visit(e.deck); visit(e.discard); visit(e.play)
+    for _, d in pairs(e.decks or {}) do visit(d.deck); visit(d.discard) end
+  end
   local instances = 0
   for _ in pairs(s.cards) do instances = instances + 1 end
   assert(total == instances, "cards lost: " .. total .. " in piles, " .. instances .. " made")

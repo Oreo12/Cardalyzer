@@ -1,0 +1,121 @@
+{
+  "back": "art/back.jpg",
+  "sheets": [
+    {
+      "file": "art/sheet_1.jpg",
+      "numWidth": 10,
+      "numHeight": 3,
+      "count": 27
+    }
+  ],
+  "cards": {
+    "spark": {
+      "sheet": 1,
+      "index": 0
+    },
+    "jab": {
+      "sheet": 1,
+      "index": 1
+    },
+    "ward_bolt": {
+      "sheet": 1,
+      "index": 2
+    },
+    "ember_shard": {
+      "sheet": 1,
+      "index": 3
+    },
+    "flare": {
+      "sheet": 1,
+      "index": 4
+    },
+    "hearth_mend": {
+      "sheet": 1,
+      "index": 5
+    },
+    "hush": {
+      "sheet": 1,
+      "index": 6
+    },
+    "war_horn": {
+      "sheet": 1,
+      "index": 7
+    },
+    "firestorm": {
+      "sheet": 1,
+      "index": 8
+    },
+    "undertow": {
+      "sheet": 1,
+      "index": 9
+    },
+    "lash": {
+      "sheet": 1,
+      "index": 10
+    },
+    "grasping_reed": {
+      "sheet": 1,
+      "index": 11
+    },
+    "rising_murk": {
+      "sheet": 1,
+      "index": 12
+    },
+    "breaker": {
+      "sheet": 1,
+      "index": 13
+    },
+    "gloom_warden": {
+      "sheet": 1,
+      "index": 14
+    },
+    "siege_tide": {
+      "sheet": 1,
+      "index": 15
+    },
+    "cataclysm": {
+      "sheet": 1,
+      "index": 16
+    },
+    "abyss_herald": {
+      "sheet": 1,
+      "index": 17
+    },
+    "endless_dark": {
+      "sheet": 1,
+      "index": 18
+    },
+    "swell_surge": {
+      "sheet": 1,
+      "index": 19
+    },
+    "drowned_knight": {
+      "sheet": 1,
+      "index": 20
+    },
+    "flood": {
+      "sheet": 1,
+      "index": 21
+    },
+    "wave_crash": {
+      "sheet": 1,
+      "index": 22
+    },
+    "wave_pull": {
+      "sheet": 1,
+      "index": 23
+    },
+    "ash_breath": {
+      "sheet": 1,
+      "index": 24
+    },
+    "cinder_whelp": {
+      "sheet": 1,
+      "index": 25
+    },
+    "wyrmfire": {
+      "sheet": 1,
+      "index": 26
+    }
+  }
+}

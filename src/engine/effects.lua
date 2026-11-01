@@ -34,11 +34,14 @@ function Effects.new(rules)
     })
   end
 
+  local lifeKey = rules.coop and require("engine.coop").lifeKey(rules)
   for _, stat in ipairs(rules.stats or {}) do
     local key, label = stat.key, stat.label or Util.titleCase(stat.key)
     self.own[key] = true
     self:register(key, {
       apply = function(game, seat, amount)
+        -- (co-op: an exhausted player gains no life, and nobody goes past their start)
+        if key == lifeKey then amount = require("engine.coop").lifeGain(game, seat, amount) end
         local stats = game.state.players[seat].stats
         stats[key] = (stats[key] or 0) + amount
         Effects.noteGain(game, seat, key, amount)
@@ -277,6 +280,75 @@ function Effects.new(rules)
     text = function() return "Block the attack" end,
   })
 
+  -- Co-op games (rules.coop, engine/coop.lua). A player's damage:N goes to
+  -- the enemy, or to one of its minions they pick; silence:N skips a
+  -- minion's next turn. The rest are the enemy's: to the home, to every
+  -- player, to the player with the least life, to any player (the players
+  -- vote), and its signature move (unleash).
+  local function Coop() return require("engine.coop") end
+  local function homeName() return Coop().homeLabel(rules) end
+  self:register("damage", {
+    apply = function(game, seat, amount)
+      if #Coop().minions(game) > 0 then
+        game:prompt(seat, { kind = "target", amount = amount, optional = false })
+      else
+        Coop().damageEnemy(game, seat, "enemy", amount)
+      end
+    end,
+    text = function(amount) return "Deal " .. amount .. " damage" end,
+  })
+  self:register("silence", {
+    apply = function(game, seat, amount)
+      if #Coop().minions(game) > 0 then
+        game:prompt(seat, { kind = "target", silence = true, count = amount, optional = true })
+      end
+    end,
+    text = function(amount) return "Silence " .. (amount == 1 and "a minion" or (amount .. " minions")) end,
+  })
+  self:register("home_damage", {
+    apply = function(game, _, amount) Coop().damageHome(game, amount) end,
+    text = function(amount) return homeName() .. " suffers " .. amount .. " damage" end,
+  })
+  self:register("home_heal", {
+    apply = function(game, _, amount) Coop().healHome(game, amount) end,
+    text = function(amount) return homeName() .. " gains " .. amount .. " life" end,
+  })
+  self:register("damage_each", {
+    apply = function(game, _, amount)
+      for seat in ipairs(game.state.players) do Coop().damagePlayer(game, seat, amount) end
+    end,
+    text = function(amount) return "Each player suffers " .. amount .. " damage" end,
+  })
+  self:register("damage_lowest", {
+    apply = function(game, seat, amount)
+      -- the player with the least life (not exhausted, unless everyone is);
+      -- a tie is the players' choice
+      local key, low, tied = Coop().lifeKey(rules), nil, {}
+      local anyUp = false
+      for _, p in ipairs(game.state.players) do if not p.down then anyUp = true end end
+      for s, p in ipairs(game.state.players) do
+        if not (anyUp and p.down) then
+          local life = p.stats[key] or 0
+          if not low or life < low then low, tied = life, { s } elseif life == low then tied[#tied + 1] = s end
+        end
+      end
+      if #tied == 1 then return Coop().damagePlayer(game, tied[1], amount) end
+      if #tied > 1 then game:prompt(seat, { kind = "player", among = tied, damage = amount, vote = true, optional = false }) end
+    end,
+    text = function(amount) return "The player with the least life suffers " .. amount .. " damage" end,
+  })
+  self:register("damage_any", {
+    apply = function(game, seat, amount)
+      if #game.state.players == 1 then return Coop().damagePlayer(game, 1, amount) end
+      game:prompt(seat, { kind = "player", damage = amount, vote = true, optional = false })
+    end,
+    text = function(amount) return "Any player suffers " .. amount .. " damage" end,
+  })
+  self:register("unleash", {
+    apply = function(game, _, amount) Coop().unleash(game, amount) end,
+    text = function(amount) return amount == 1 and "Unleash" or ("Unleash " .. amount .. " times") end,
+  })
+
   for name, def in pairs(rules.customEffects or {}) do
     self:registerCustom(name, def)
   end
@@ -425,7 +497,7 @@ function Effects:validate(cards)
   local problems = {}
   for _, card in ipairs(cards.list) do
     for _, list in ipairs({ card.effects, card.allyEffects, card.scrapEffects, card.doubleAllyEffects or {}, card.reactEffects or {},
-      card.nextEffects or {} }) do
+      card.nextEffects or {}, card.nowEffects or {} }) do
       local flat = {}
       for _, effect in ipairs(list) do
         if effect.key == "choice" then

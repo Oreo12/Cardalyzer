@@ -57,7 +57,8 @@ It also covers the card play in deck-building board games.
 - **Boards, tokens and maps.** Only cards are tracked.
 - **Hidden roles, trick-taking, bidding, or real-time play.**
 - **More than four players, or teams.** Every game is a free-for-all for 2 to
-  4 players (co-operative games are planned). Four seats need a table about
+  4 players, or a co-operative game for 1 to 4 against an automated enemy
+  (in progress: the turn-order deck and prep slots aren't in yet). Four seats need a table about
   60 units wide; on a smaller one, lower `layout.seatSpread`.
 - **The table's own seats.** Cardalyzer removes every hand zone the table
   came with and seats its players itself (see

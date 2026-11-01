@@ -148,7 +148,10 @@ end
 
 -- One object for a whole pile: a Card for one uid, a Deck for more.
 -- Our piles keep the top card last; a TTS deck lists its top card first.
-function Board.stackData(game, uids)
+-- A deck laid face up is the other way up, so the card on view is the last
+-- one it lists: a face-up pile (a discard pile) lists ours in order, so its
+-- latest card is the one showing.
+function Board.stackData(game, uids, faceUp)
   if #uids == 1 then return Board.cardData(game, uids[1]) end
   local deck = {
     Name = "Deck",
@@ -158,7 +161,9 @@ function Board.stackData(game, uids)
     ContainedObjects = {},
     Transform = transform((game.rules.layout and game.rules.layout.cardScale) or 1),
   }
-  for i = #uids, 1, -1 do
+  local from, to, step = #uids, 1, -1
+  if faceUp then from, to, step = 1, #uids, 1 end
+  for i = from, to, step do
     local data = Board.cardData(game, uids[i])
     deck.DeckIDs[#deck.DeckIDs + 1] = data.CardID
     deck.ContainedObjects[#deck.ContainedObjects + 1] = data
@@ -274,8 +279,51 @@ function Board.piles(game)
       end
     end
   end
+  -- A co-op enemy: its deck (face down), discard pile, cards in play (each
+  -- labelled with its life or power: pile.labels), and its extra decks.
+  local c = state.coop
+  if c and layout.enemy then
+    local spots = layout.enemy
+    add("enemy.deck", c.enemy.deck, facing(spots.deck), "stack", false)
+    add("enemy.discard", c.enemy.discard, facing(spots.discard), "stack", true)
+    add("enemy.play", c.enemy.play, facing(spots.play), "row", true)
+    if list[#list] and list[#list].key == "enemy.play" then list[#list].labels = require("engine.coop").labels(game) end
+    for key, pile in pairs(c.enemy.decks or {}) do
+      local at = spots.decks[key]
+      if at then
+        add("enemy.deck." .. key, pile.deck, facing(at.deck), "stack", false)
+        add("enemy.discard." .. key, pile.discard, facing(at.discard), "stack", true)
+      end
+    end
+  end
   for i = first, #list do list[i].facing = yaw end
   return list
+end
+
+-- The labels on a co-op enemy's cards in play (Coop.labels): its life or
+-- power left, shown as a button over the card's middle, and for a power
+-- with a cost a Discard · N button any player can press on their turn
+-- (Cardalyzer_onEnemyCard). TTS doesn't show buttons in the Alt-zoom view.
+function Board.addEnemyButtons(game, obj, label)
+  if not label then return end
+  local look = game.rules.ui and game.rules.ui.buyButton or {}
+  local words = require("engine.words")
+  obj.createButton({
+    click_function = "Cardalyzer_noop", function_owner = Global, label = label.text,
+    position = { 0, 0.6, 0 }, width = 900, height = 260, font_size = 160,
+    color = { 0.45, 0.05, 0.08, 0.92 }, hover_color = { 0.45, 0.05, 0.08, 0.92 }, press_color = { 0.45, 0.05, 0.08, 0.92 },
+    font_color = { 1, 1, 1 },
+  })
+  if label.cost then
+    obj.createButton({
+      click_function = "Cardalyzer_onEnemyCard", function_owner = Global,
+      label = words.say(game.rules, "payDiscard", { n = label.cost }),
+      tooltip = words.say(game.rules, "payDiscardTip", { n = label.cost }),
+      position = { 0, 0.6, 1.7 }, width = look.width or 900, height = look.height or 260, font_size = look.fontSize or 150,
+      color = Util.color(look.color) or { 0.1, 0.1, 0.1, 0.9 },
+      font_color = Util.color(look.textColor) or { 1, 0.85, 0.35 },
+    })
+  end
 end
 
 -- The yaw the market's cards use: the card yaw of the active player's seat.
@@ -514,7 +562,15 @@ function Board.clearPile(game, key)
 end
 
 -- A pile's signature: its uids in order. Unchanged signature = nothing to redraw.
-local function signature(uids, turned, secret)
+local function labelSig(labels)
+  if not labels then return "" end
+  local parts = {}
+  for uid, l in pairs(labels) do parts[#parts + 1] = uid .. "=" .. l.text .. (l.cost or "") end
+  table.sort(parts)
+  return "|" .. table.concat(parts, ";")
+end
+local function signature(uids, turned, secret, labels)
+  if labels then return signature(uids, turned, secret) .. labelSig(labels) end
   if (not turned or not next(turned)) and not secret then return table.concat(uids, ",") end
   local parts = {}
   for i, uid in ipairs(uids) do
@@ -618,6 +674,7 @@ local function draw(game, pile, uids)
   end
   local function ready(obj)
     if cost then addBuyButton(game, obj, cost, word, hire) end
+    if pile.labels then Board.addEnemyButtons(game, obj, pile.labels[obj.getGMNotes()]) end
     local uid = inPlay and obj.getGMNotes()
     if uid and not (pile.secret and pile.secret[uid]) then
       Board.addScrapButton(game, obj, uid, pile.turned and pile.turned[uid] or 0, overlap)
@@ -636,7 +693,7 @@ local function draw(game, pile, uids)
   local guids = view.piles[pile.key]
   local rot = rotation(pile.spot, pile.faceUp)
   if pile.style == "stack" then
-    guids[1] = spawn(game, data(Board.stackData(game, uids)), pile.spot.position, rot, ready)
+    guids[1] = spawn(game, data(Board.stackData(game, uids, pile.faceUp)), pile.spot.position, rot, ready)
   else
     local positions = Board.rowPositions(pile.spot, n, rowGap(pile), pile.style == "row" and pile.cardWidth or nil,
       sideways(pile, uids))
@@ -655,7 +712,7 @@ end
 function Board.renderPile(game, pile)
   game.state.view.at = game.state.view.at or {}
   draw(game, pile, pile.uids)
-  game.state.view.sig[pile.key] = signature(pile.uids, pile.turned, pile.secret)
+  game.state.view.sig[pile.key] = signature(pile.uids, pile.turned, pile.secret, pile.labels)
 end
 
 -- Animation timing in seconds. rules.animate = false turns animation off;
@@ -711,7 +768,7 @@ function Board.sync(game, opts)
   view.facing = view.facing or {}
   for _, pile in ipairs(Board.piles(game)) do
     local key = pile.key
-    local sig = signature(pile.uids, pile.turned, pile.secret)
+    local sig = signature(pile.uids, pile.turned, pile.secret, pile.labels)
     local old = view.sig[key]
     -- Same cards, but the pile itself moved (the market turning to face a new
     -- player): glide its objects to the new spot.
@@ -743,7 +800,7 @@ function Board.sync(game, opts)
       view.gen[key] = (view.gen[key] or 0) + 1
       view.sig[key] = sig
       local before, beforeCount = {}, 0
-      for uid in (old or ""):gmatch("[^,]+") do before[uid] = true; beforeCount = beforeCount + 1 end
+      for uid in (old or ""):gsub("|.*$", ""):gmatch("[^,]+") do before[uid] = true; beforeCount = beforeCount + 1 end
       local uids, staying, arriving = {}, {}, {}
       for i, uid in ipairs(pile.uids) do
         uids[i] = uid

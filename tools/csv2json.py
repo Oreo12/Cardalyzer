@@ -22,9 +22,13 @@ COLUMNS = ["id", "name", "deck", "faction", "type", "cost", "copies",
 # react_effects: revealed from the hand when an opponent attacks.
 # starting: copies in each player's starting deck, for a card that is also in a pile.
 # next_effects: at the start of the owner's next turn (the card stays in play until then).
-OPTIONAL = ["double_ally_effects", "set", "condition", "points", "react_effects", "starting", "next_effects"]
+# Co-op enemy cards (deck enemy or enemy:<key>): enemy (whose own card; blank
+# for a basic card), tier, life (a minion), power (a power's tokens) and
+# now_effects (when it's drawn).
+OPTIONAL = ["double_ally_effects", "set", "condition", "points", "react_effects", "starting", "next_effects",
+            "enemy", "tier", "life", "power", "now_effects"]
 REQUIRED = ["id", "name", "cost", "copies", "effects"]
-DECKS = {"starter", "market", "fixed", "dealt", "objective", "supply"}
+DECKS = {"starter", "market", "fixed", "dealt", "objective", "supply", "enemy"}
 # One effect: keyword:amount, custom:name, a keyword that names a card
 # (gain:silk) or a bare keyword like reminder, optionally prefixed by a
 # faction (blob=combat:2, ally effects only).
@@ -74,8 +78,8 @@ def convert(rows):
 
         deck = row.get("deck") or "market"
         # "market:<key>" puts a card in an extra market (rules.markets)
-        if deck not in DECKS and not re.fullmatch(r"market:\w+", deck):
-            errors.append(f"card '{card_id}': deck must be one of {sorted(DECKS)} or market:<key>, got '{deck}'")
+        if deck not in DECKS and not re.fullmatch(r"(?:market|enemy):\w+", deck):
+            errors.append(f"card '{card_id}': deck must be one of {sorted(DECKS)}, market:<key> or enemy:<key>, got '{deck}'")
 
         card = {
             "id": card_id,
@@ -96,6 +100,11 @@ def convert(rows):
             "defense": parse_int(row.get("defense"), "defense", card_id, errors, allow_blank=True),
             "points": parse_int(row.get("points"), "points", card_id, errors, allow_blank=True),
             "starting": parse_int(row.get("starting"), "starting", card_id, errors, allow_blank=True),
+            "enemy": row.get("enemy") or None,
+            "tier": parse_int(row.get("tier"), "tier", card_id, errors, allow_blank=True),
+            "life": parse_int(row.get("life"), "life", card_id, errors, allow_blank=True),
+            "power": parse_int(row.get("power"), "power", card_id, errors, allow_blank=True),
+            "now_effects": check_effects(row.get("now_effects"), "now_effects", card_id, errors) or None,
             "text": row.get("text", ""),
         }
         cards.append({k: v for k, v in card.items() if v is not None})

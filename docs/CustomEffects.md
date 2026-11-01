@@ -172,6 +172,24 @@ something happens. Most run while the card is in play.
 | `game:cardOf(uid)` | What a card acts as right now, copies included |
 | `game:atTurnEnd(job)`, `game:atNextTurn(seat, job)` | Queue a job for the end of this turn or the start of a player's next turn |
 
+In a co-op game (see [Co-op Games](Rules.md#co-op-games)):
+
+| Call | What it does |
+| --- | --- |
+| `game:damagePlayer(seat, n)`, `game:damageHome(n)`, `game:healHome(n)` | Damage a player (exhausting them at 0) or the home, or heal the home |
+| `game:damageEnemy(seat, target, n)` | Damage the enemy (`"enemy"`) or a minion (its uid) |
+| `game:unleash(n)` | The enemy's signature move |
+| `game:enemyCounter(key)`, `game:addEnemyCounter(key, n)` | Read or change one of the enemy's counters |
+| `game:drawEnemyCard(key, reshuffle)` | Resolve the top card of extra deck `key` (with `reshuffle`, shuffle it back in) |
+| `game:enemyEnters(uid)` | Put an enemy card into play, or resolve it |
+| `game:coopEnd("won" or "lost", reason)` | End the game for everyone |
+
+A prompt with `vote = true` is answered by everyone (see Votes). Two co-op
+prompt kinds: `{ kind = "player", damage = 3 }` (pick a player: `among` a
+list of seats, `others = true` leaves the asker out; a custom effect's
+`onPick(game, seat, chosenSeat, prompt)` runs) and `{ kind = "target",
+amount = 3 }` (the enemy or a minion takes the damage).
+
 [Back to Top](#custom-effects-lua-for-unusual-cards)
 
 ## What a Turn Remembers

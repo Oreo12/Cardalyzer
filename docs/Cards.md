@@ -49,6 +49,21 @@ Only the first few are needed for most cards.
 | `set` | Which card set it belongs to (a `key` from `sets` in your rules). The host turns sets on and off in the New Game menu | `expansion1` |
 | `condition` | For an `objective` card: the custom effect that checks whether its goal is met | `sevenShips` |
 
+**Enemy cards (co-op games).** Cards with `deck` = `enemy` make up the
+enemy's deck, and `enemy:<key>` one of its extra decks (see
+[Co-op Games](Rules.md#co-op-games)). Their `type` says what they do:
+`attack` (resolves when drawn), `minion` (stays, acts every enemy turn) or
+`power` (counts down, goes off at 0). A power's `cost` is what players pay
+to discard it; 0 means they can't.
+
+| Column | What it is | Example |
+| --- | --- | --- |
+| `tier` | 1, 2 or 3: when it comes up. Tier 1 cards are on top of the enemy deck | `2` |
+| `enemy` | The enemy whose own card it is (an enemy's `key`). Blank: a basic card every enemy uses | `tide` |
+| `life` | A minion's life | `8` |
+| `power` | A power's countdown | `2` |
+| `now_effects` | Effects the moment it's drawn, before anything else | `home_damage:1` |
+
 **Two factions or types.** Put a `/` between them: `forge/grove`, or
 `action/attack`. A card with two types has everything both types give: a
 `unit/wall` stays in play *and* guards. The faction `any` counts as every
@@ -156,6 +171,26 @@ Opponents holding a reaction card may reveal it first (see
 | Keyword | What it does |
 | --- | --- |
 | `reminder` | Shows the card's `text` to the player until they click Done, for a rule that isn't automated |
+
+### Co-op games
+
+For players' cards:
+
+| Keyword | What it does |
+| --- | --- |
+| `damage:3` | Deals 3 damage to the enemy, or to one of its minions the player picks |
+| `silence:1` | The player may silence a minion: it skips its next enemy turn |
+| `home_heal:2` | The home gains 2 life (never past its start) |
+
+For the enemy's cards:
+
+| Keyword | What it does |
+| --- | --- |
+| `home_damage:4` | The home suffers 4 damage |
+| `damage_each:2` | Every player suffers 2 damage |
+| `damage_lowest:2` | The player with the least life suffers 2 damage (a tie is put to a vote) |
+| `damage_any:4` | Any player suffers 4 damage: the players vote on who |
+| `unleash:1` | The enemy's signature move (its `unleash`), that many times |
 
 `gain` and `opponents_gain` take a card's `id` instead of a number, and
 `set_aside` and `set_aside_hand` take an area's `key`.
